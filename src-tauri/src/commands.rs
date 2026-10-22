@@ -6,6 +6,7 @@ use crate::search::{self, ListArgs, ListResult};
 use crate::state::{AppState, Settings};
 use base64::Engine;
 use serde::Serialize;
+use std::path::Path;
 use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -17,6 +18,12 @@ fn changed(app: &AppHandle) {
 
 fn data_url(bytes: &[u8]) -> String {
     format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes))
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ShortcutConflict {
+    pub status: String,
+    pub message: String,
 }
 
 // ───────────── listing / reading ─────────────
@@ -225,8 +232,6 @@ fn run_shell(cmd: &str, input: &str, timeout: std::time::Duration) -> Res<String
     use std::io::Write;
     use std::os::windows::process::CommandExt;
     use std::process::{Command, Stdio};
-    // chcp 65001: pipes carry UTF-8 (Persian text survives). /S /C "..." + raw_arg keeps the user's
-    // own quotes intact (Rust's normal argument escaping uses \" which cmd.exe does not understand).
     let line = format!("/S /C \"chcp 65001 >nul & {cmd}\"");
     let mut child = Command::new("cmd")
         .raw_arg(line)
@@ -260,7 +265,6 @@ fn run_shell(cmd: &str, input: &str, timeout: std::time::Duration) -> Res<String
         }
         Ok(Err(e)) => Err(e.to_string()),
         Err(_) => {
-            // timed out: kill the whole process tree so nothing keeps running in the background
             let _ = Command::new("taskkill")
                 .args(["/PID", &pid.to_string(), "/T", "/F"])
                 .creation_flags(0x0800_0000)
@@ -459,11 +463,17 @@ pub async fn hide_tray(app: AppHandle) -> Res<()> {
 }
 
 #[tauri::command]
+pub async fn resize_tray(app: AppHandle, height: u32) -> Res<()> {
+    crate::windowing::resize_tray(&app, height);
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn request_erase_from_tray(app: AppHandle) -> Res<()> {
     crate::windowing::hide_tray(&app);
     std::thread::spawn(move || {
         crate::windowing::show_popup(&app, Some("center"), true);
-        std::thread::sleep(std::time::Duration::from_millis(350));
+        std::thread::sleep(std::time::Duration::from_millis(120));
         let _ = app.emit("erase-request", ());
     });
     Ok(())
@@ -476,10 +486,26 @@ pub async fn open_settings(app: AppHandle) -> Res<()> {
 }
 
 #[tauri::command]
-pub async fn erase_history(app: AppHandle, state: State<'_, AppState>) -> Res<()> {
-    db::erase_history(&state.db.lock())?;
+pub async fn erase_history(app: AppHandle, state: State<'_, AppState>, include_pinned: Option<bool>) -> Res<usize> {
+    let inc = include_pinned.unwrap_or(false);
+    let active_board = state.settings.read().active_pinboard;
+    let deleted = db::erase_history(&state.db.lock(), inc, active_board)?;
+    {
+        let mut q = state.queue.lock();
+        if inc {
+            q.items.clear();
+            q.basket.clear();
+        } else {
+            let conn = state.db.lock();
+            q.items.retain(|&id| db::get_row(&conn, id).is_some());
+            q.basket.retain(|e| db::get_row(&conn, e.id).is_some());
+        }
+    }
+    crate::queue::sync_intercept(&app);
+    let _ = app.emit("queue-changed", ());
+    let _ = app.emit("status-changed", ());
     changed(&app);
-    Ok(())
+    Ok(deleted)
 }
 
 #[tauri::command]
@@ -504,6 +530,163 @@ pub async fn recent_apps(state: State<'_, AppState>) -> Res<Vec<AppInfo>> {
 pub async fn quit_app(app: AppHandle) -> Res<()> {
     app.exit(0);
     Ok(())
+}
+
+// ───────────── system fonts, shortcut conflict check, Explorer integration ─────────────
+
+#[tauri::command]
+pub async fn list_system_fonts() -> Res<Vec<String>> {
+    Ok(crate::platform::win::list_system_fonts())
+}
+
+#[tauri::command]
+pub async fn check_shortcut_conflict(
+    state: State<'_, AppState>,
+    shortcut: String,
+    role: String,
+) -> Res<ShortcutConflict> {
+    let trimmed = shortcut.trim();
+    if trimmed.is_empty() {
+        return Ok(ShortcutConflict { status: "ok".into(), message: String::new() });
+    }
+    let Some((mods, vk)) = crate::platform::win::parse_shortcut(trimmed) else {
+        return Ok(ShortcutConflict { status: "invalid".into(), message: "Invalid shortcut combination".into() });
+    };
+
+    // 1. Check against other ClipNest shortcuts
+    let s = state.settings.read().clone();
+    let app_shortcuts = [
+        ("open", &s.shortcut_open, "Open ClipNest"),
+        ("queue", &s.shortcut_queue, "Paste queue on/off"),
+        ("plain", &s.shortcut_plain_toggle, "Toggle plain-text mode"),
+        ("pause", &s.shortcut_pause, "Pause / resume capture"),
+    ];
+    for (r, val, label) in app_shortcuts {
+        if r != role && !val.trim().is_empty() {
+            if let Some((om, ovk)) = crate::platform::win::parse_shortcut(val) {
+                if om == mods && ovk == vk {
+                    return Ok(ShortcutConflict {
+                        status: "conflict_app".into(),
+                        message: format!("Conflicts with ClipNest shortcut: {label}"),
+                    });
+                }
+            }
+        }
+    }
+
+    // 2. Check standard editing and system shortcuts
+    let m_ctrl = (mods & crate::platform::win::MOD_CTRL) != 0;
+    let m_alt = (mods & crate::platform::win::MOD_ALT) != 0;
+    let m_shift = (mods & crate::platform::win::MOD_SHIFT) != 0;
+    let m_win = (mods & crate::platform::win::MOD_WIN) != 0;
+
+    if m_ctrl && !m_alt && !m_shift && !m_win {
+        let standard = match vk {
+            0x43 => Some("Ctrl+C (Copy)"),
+            0x56 => Some("Ctrl+V (Paste)"),
+            0x58 => Some("Ctrl+X (Cut)"),
+            0x5A => Some("Ctrl+Z (Undo)"),
+            0x59 => Some("Ctrl+Y (Redo)"),
+            0x41 => Some("Ctrl+A (Select All)"),
+            0x53 => Some("Ctrl+S (Save)"),
+            0x46 => Some("Ctrl+F (Find)"),
+            0x50 => Some("Ctrl+P (Print)"),
+            0x57 => Some("Ctrl+W (Close Tab)"),
+            0x54 => Some("Ctrl+T (New Tab)"),
+            0x4E => Some("Ctrl+N (New Window)"),
+            _ => None,
+        };
+        if let Some(desc) = standard {
+            return Ok(ShortcutConflict {
+                status: "conflict_os".into(),
+                message: format!("Conflicts with standard editing shortcut: {desc}"),
+            });
+        }
+    }
+
+    if m_alt && !m_ctrl && !m_shift && !m_win && (vk == 0x09 || vk == 0x73) {
+        return Ok(ShortcutConflict {
+            status: "conflict_os".into(),
+            message: "Conflicts with Windows system shortcut (Alt+Tab / Alt+F4)".into(),
+        });
+    }
+
+    if m_win {
+        if !m_ctrl && !m_alt && !m_shift && vk == 0x56 {
+            return Ok(ShortcutConflict {
+                status: "hook_override".into(),
+                message: "Overrides Windows Clipboard History (Win+V) via low-level keyboard hook".into(),
+            });
+        }
+        let win_reserved = match (m_ctrl, m_alt, m_shift, vk) {
+            (false, false, false, 0x4C) => Some("Win+L (Lock PC — enforced by Windows kernel)"),
+            (false, false, false, 0x44) => Some("Win+D (Show Desktop)"),
+            (false, false, false, 0x45) => Some("Win+E (File Explorer)"),
+            (false, false, false, 0x52) => Some("Win+R (Run Dialog)"),
+            (false, false, false, 0x49) => Some("Win+I (Windows Settings)"),
+            (false, false, false, 0x58) => Some("Win+X (Power User Menu)"),
+            (false, false, false, 0x53) => Some("Win+S (Windows Search)"),
+            (false, false, false, 0x09) => Some("Win+Tab (Task View)"),
+            (false, false, false, 0x50) => Some("Win+P (Project Display)"),
+            (false, false, false, 0x41) => Some("Win+A (Quick Settings)"),
+            (false, false, false, 0x4E) => Some("Win+N (Notification Center)"),
+            (false, false, false, 0x47) => Some("Win+G (Xbox Game Bar)"),
+            (false, false, false, 0x20) => Some("Win+Space (Input Language)"),
+            (false, false, true, 0x53) => Some("Win+Shift+S (Snipping Tool)"),
+            _ => None,
+        };
+        if let Some(desc) = win_reserved {
+            return Ok(ShortcutConflict {
+                status: "conflict_os".into(),
+                message: format!("Conflicts with Windows shortcut: {desc}"),
+            });
+        }
+        return Ok(ShortcutConflict {
+            status: "ok".into(),
+            message: "Available (captured via low-level keyboard hook)".into(),
+        });
+    }
+
+    // 3. Check if already registered by this exact role in our own process
+    let current_val = match role.as_str() {
+        "open" => &s.shortcut_open,
+        "queue" => &s.shortcut_queue,
+        "plain" => &s.shortcut_plain_toggle,
+        "pause" => &s.shortcut_pause,
+        _ => "",
+    };
+    if let Some((cm, cvk)) = crate::platform::win::parse_shortcut(current_val) {
+        if cm == mods && cvk == vk {
+            return Ok(ShortcutConflict { status: "ok".into(), message: "Active and available".into() });
+        }
+    }
+
+    // 4. Probe Windows RegisterHotKey to detect if another app has claimed it
+    match crate::platform::win::probe_hotkey_available(trimmed) {
+        Ok(true) => Ok(ShortcutConflict { status: "ok".into(), message: "Available (no conflict in Windows)".into() }),
+        Ok(false) => Ok(ShortcutConflict {
+            status: "conflict_os".into(),
+            message: "Already registered by another running application or Windows".into(),
+        }),
+        Err(e) => Ok(ShortcutConflict { status: "invalid".into(), message: e }),
+    }
+}
+
+#[tauri::command]
+pub async fn get_explorer_target(state: State<'_, AppState>) -> Res<Option<String>> {
+    Ok(state.explorer_target_dir.lock().clone())
+}
+
+#[tauri::command]
+pub async fn clear_explorer_target(state: State<'_, AppState>) -> Res<()> {
+    *state.explorer_target_dir.lock() = None;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn paste_files_to_folder(app: AppHandle, ids: Vec<i64>, folder: String) -> Res<usize> {
+    let dest = Path::new(folder.trim());
+    crate::queue::paste_clips_to_dir(&app, &ids, dest)
 }
 
 // ───────────── rich display, icons, ordering ─────────────

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { VList, VListHandle } from 'virtua';
 import { api, ClipRow, errText, ListResult, on, PasteMode, Pinboard, Status } from '../lib/api';
+import { basename } from '../lib/format';
 import { SearchMode } from '../lib/highlightMatch';
 import { isRtl, num, t, useLang } from '../lib/i18n';
 import { Icon } from '../lib/icons';
@@ -38,6 +39,7 @@ export default function Popup() {
     const [dragLabel, setDragLabel] = useState('');
     const [dragOverTabId, setDragOverTabId] = useState<number | null>(null);
     const [dropMark, setDropMark] = useState<{ id: number; mark: DropMark } | null>(null);
+    const [explorerTarget, setExplorerTarget] = useState<string | null>(null);
 
     const anchor = useRef(0);
     const seq = useRef(0);
@@ -102,10 +104,16 @@ export default function Popup() {
         setPrompt({
             title: t('Erase all history?'),
             confirm: true,
+            checkLabel: t('Also erase pinned items and pinboards'),
+            defaultChecked: false,
             okLabel: t('Erase'),
-            onSubmit: () => {
-                api.eraseHistory()
-                    .then(() => showToast(t('History erased')))
+            danger: true,
+            onSubmit: (_val, includePinned) => {
+                api.eraseHistory(includePinned)
+                    .then(() => {
+                        reloadRef.current();
+                        showToast(t('History erased'));
+                    })
                     .catch(fail);
             },
         });
@@ -113,13 +121,27 @@ export default function Popup() {
     const askEraseRef = useRef(askErase);
     askEraseRef.current = askErase;
 
+    const syncExplorerTarget = useCallback(() => {
+        api.getExplorerTarget()
+            .then((dir) => {
+                setExplorerTarget(dir);
+                if (dir) {
+                    setTab(null);
+                    setQuery('file');
+                }
+            })
+            .catch(() => {});
+    }, []);
+
     useEffect(() => {
         loadStatus();
+        syncExplorerTarget();
         const subs = [
             on('items-changed', () => reloadRef.current()),
             on('icon-changed', () => setIconRev((v) => v + 1)),
             on('status-changed', loadStatus),
             on('erase-request', () => askEraseRef.current()),
+            on('explorer-files-mode', () => syncExplorerTarget()),
             on('popup-hidden', () => {
                 hiddenAt.current = Date.now();
             }),
@@ -135,8 +157,8 @@ export default function Popup() {
                 setMulti([]);
                 setPreview(null);
                 setMenu(null);
-                setPrompt(null);
                 setBoardDlg(null);
+                syncExplorerTarget();
                 reloadRef.current();
                 loadStatus();
                 listRef.current?.scrollTo(0, 0);
@@ -163,7 +185,7 @@ export default function Popup() {
             window.removeEventListener('blur', clearCtrl);
             window.removeEventListener('clipnest-focus-search', onFocusSearch);
         };
-    }, [loadStatus]);
+    }, [loadStatus, syncExplorerTarget]);
 
     useEffect(() => {
         setPreview((p) => {
@@ -254,6 +276,17 @@ export default function Popup() {
     const doPaste = async (mode: PasteMode, id?: number) => {
         try {
             const ts = targets();
+            if (explorerTarget && mode === 'auto') {
+                const fileTargets = id !== undefined ? items.filter((x) => x.id === id) : ts;
+                const fileIds = fileTargets
+                    .filter((x) => x.kind === 'file' || x.kind === 'image')
+                    .map((x) => x.id);
+                if (fileIds.length > 0) {
+                    const n = await api.pasteFilesToFolder(fileIds, explorerTarget);
+                    showToast(t('Transferred {n} item(s) to folder', { n }));
+                    return;
+                }
+            }
             if (id === undefined && ts.length > 1) {
                 const nid = await api.mergeItems(
                     ts.map((x) => x.id),
@@ -451,7 +484,19 @@ export default function Popup() {
         const ids = multi.length > 1 && multi.includes(it.id) ? multi : [it.id];
         const textual = it.kind !== 'image' && it.kind !== 'file';
         const plainLabel = it.kind === 'file' ? t('Paste file path') : t('Paste as plain text');
-        const e: MenuEntry[] = [
+        const e: MenuEntry[] = [];
+        if (explorerTarget && (it.kind === 'file' || it.kind === 'image')) {
+            e.push({
+                label: `${t('Paste into folder')} (${basename(explorerTarget)})`,
+                onClick: () => {
+                    api.pasteFilesToFolder(ids, explorerTarget)
+                        .then((n) => showToast(t('Transferred {n} item(s) to folder', { n })))
+                        .catch(fail);
+                },
+            });
+            e.push({ sep: true });
+        }
+        e.push(
             {
                 label: ids.length > 1 ? t('Paste {n} items merged', { n: ids.length }) : t('Paste'),
                 hint: '↵',
@@ -461,8 +506,8 @@ export default function Popup() {
                 ? { label: t('Paste with formatting'), hint: 'Ctrl+↵', onClick: () => doPaste('rich', it.id) }
                 : { label: plainLabel, hint: '⇧↵', onClick: () => doPaste('plain', it.id) },
             { label: t('Copy'), hint: 'Ctrl+C', onClick: () => doCopy(it) },
-            { sep: true },
-        ];
+            { sep: true }
+        );
         if (it.kind === 'link') {
             e.push({ label: t('Open link'), hint: 'Ctrl+O', onClick: () => api.openItem(it.id) });
         }
@@ -587,6 +632,7 @@ export default function Popup() {
                             title: t('Delete "{name}" and its {n} item(s)?', { name: b.name, n: b.count }),
                             confirm: true,
                             okLabel: t('Delete'),
+                            danger: true,
                             onSubmit: () => {
                                 api.deletePinboard(b.id)
                                     .then(() => {
@@ -946,7 +992,7 @@ export default function Popup() {
                 }
             }}
         >
-            {/* Offscreen custom drag preview pill (Requirement 8) */}
+            {/* Offscreen custom drag preview pill */}
             <div ref={dragPillRef} className="drag-ghost-pill" aria-hidden>
                 <Icon name="copy" size={13} />
                 <span className="drag-pill-text">{dragLabel || t('Move item')}</span>
@@ -965,12 +1011,13 @@ export default function Popup() {
                 <img className="logo-img" src="/icon.png" alt="ClipNest" draggable={false} />
                 <span className="brand">ClipNest</span>
                 {status && status.paused_until > 0 && (
-                    <button className="chipbtn warn" onClick={() => api.resume()}>
+                    <button type="button" className="chipbtn warn" onClick={() => api.resume()}>
                         {t('Paused · resume')}
                     </button>
                 )}
                 {status?.plain_default && (
                     <button
+                        type="button"
                         className="chipbtn"
                         data-tip={t('Plain-text mode (click to turn off)')}
                         onClick={() => api.togglePlain()}
@@ -979,13 +1026,14 @@ export default function Popup() {
                     </button>
                 )}
                 {status?.queue_active && (
-                    <button className="chipbtn accent" onClick={() => api.queueToggle()}>
+                    <button type="button" className="chipbtn accent" onClick={() => api.queueToggle()}>
                         {status.queue_mode === 'basket' ? t('Drop Basket') : t('Queue')}{' '}
                         {num(status.queue_len)}
                     </button>
                 )}
                 <span className="spacer" />
                 <button
+                    type="button"
                     className={`iconbtn${status?.popup_pinned ? ' on' : ''}`}
                     data-tip={status?.popup_pinned ? t('Unpin window') : t('Pin window on top')}
                     onClick={() => {
@@ -995,6 +1043,19 @@ export default function Popup() {
                     <Icon name="pin" />
                 </button>
                 <button
+                    type="button"
+                    className={`iconbtn${settings?.show_toolbar ? ' on' : ''}`}
+                    data-tip={t('Toggle side toolbar')}
+                    onClick={() => {
+                        if (settings) {
+                            saveSettings({ ...settings, show_toolbar: !settings.show_toolbar });
+                        }
+                    }}
+                >
+                    <Icon name="sidebar" />
+                </button>
+                <button
+                    type="button"
                     className="iconbtn"
                     data-tip={t('Paste queue / Drop Basket')}
                     onClick={() => api.queueToggle()}
@@ -1002,13 +1063,19 @@ export default function Popup() {
                     <Icon name="list" />
                 </button>
                 <button
+                    type="button"
                     className="iconbtn"
                     data-tip={t('Settings (Ctrl+,)')}
                     onClick={() => api.openSettings()}
                 >
                     <Icon name="gear" />
                 </button>
-                <button className="iconbtn" data-tip={t('Close (Esc)')} onClick={() => api.hidePopup()}>
+                <button
+                    type="button"
+                    className="iconbtn"
+                    data-tip={t('Close (Esc)')}
+                    onClick={() => api.hidePopup()}
+                >
                     <Icon name="close" />
                 </button>
             </header>
@@ -1017,6 +1084,7 @@ export default function Popup() {
                 <Icon name="search" size={13} />
                 <input
                     ref={inputRef}
+                    className="search-bare"
                     value={query}
                     spellCheck={false}
                     dir="auto"
@@ -1030,6 +1098,7 @@ export default function Popup() {
                 />
                 {query && (
                     <button
+                        type="button"
                         className="iconbtn"
                         data-tip={t('Clear')}
                         onClick={() => {
@@ -1041,6 +1110,7 @@ export default function Popup() {
                     </button>
                 )}
                 <button
+                    type="button"
                     className={`mini${richOn ? ' on' : ''}`}
                     data-tip={t('Switch between original style and plain text')}
                     onClick={toggleDisplayStyle}
@@ -1048,6 +1118,7 @@ export default function Popup() {
                     Aa
                 </button>
                 <button
+                    type="button"
                     className={`mini${smode === 'regex' ? ' on' : ''}`}
                     data-tip={t('Regular expression')}
                     onClick={() => setSmode(smode === 'regex' ? 'smart' : 'regex')}
@@ -1055,6 +1126,7 @@ export default function Popup() {
                     .*
                 </button>
                 <button
+                    type="button"
                     className={`mini${smode === 'fuzzy' ? ' on' : ''}`}
                     data-tip={t('Strict fuzzy: letters in order')}
                     onClick={() => setSmode(smode === 'fuzzy' ? 'smart' : 'fuzzy')}
@@ -1065,6 +1137,7 @@ export default function Popup() {
 
             <div className="tabs">
                 <button
+                    type="button"
                     className={`tab${tab === null ? ' active' : ''}`}
                     onClick={() => {
                         setTab(null);
@@ -1075,7 +1148,7 @@ export default function Popup() {
                         openTabMenu(null, e.clientX, e.clientY);
                     }}
                 >
-                    {t('Clipboard')}
+                    <span>{t('Clipboard')}</span>
                 </button>
                 {boards.map((b) => {
                     const isDropTarget = dragOverTabId === b.id;
@@ -1083,6 +1156,7 @@ export default function Popup() {
                     return (
                         <button
                             key={b.id}
+                            type="button"
                             className={`tab${tab === b.id ? ' active' : ''}${isDropTarget ? ' drop-target' : ''}${
                                 isActiveTarget ? ' active-board' : ''
                             }`}
@@ -1134,14 +1208,60 @@ export default function Popup() {
                                 className={`dot${isActiveTarget ? ' pulse' : ''}`}
                                 style={{ background: b.color }}
                             />
-                            {isDropTarget ? t('Move to {name}', { name: b.name }) : b.name}
+                            <span>{isDropTarget ? t('Move to {name}', { name: b.name }) : b.name}</span>
                         </button>
                     );
                 })}
-                <button className="tab plus" data-tip={t('New pinboard (Ctrl+N)')} onClick={() => newBoard()}>
+                <button
+                    type="button"
+                    className="tab plus"
+                    data-tip={t('New pinboard (Ctrl+N)')}
+                    onClick={() => newBoard()}
+                >
                     <Icon name="plus" size={12} />
                 </button>
             </div>
+
+            {explorerTarget && (
+                <div className="explorer-bar">
+                    <Icon name="folder" size={14} />
+                    <span className="explorer-path" dir="ltr" data-tip={explorerTarget}>
+                        {basename(explorerTarget)}
+                    </span>
+                    <span className="spacer" />
+                    <button
+                        type="button"
+                        className="btn primary small-btn"
+                        disabled={!cur || (cur.kind !== 'file' && cur.kind !== 'image')}
+                        onClick={() => {
+                            const ids = targets()
+                                .filter((x) => x.kind === 'file' || x.kind === 'image')
+                                .map((x) => x.id);
+                            if (ids.length > 0) {
+                                api.pasteFilesToFolder(ids, explorerTarget)
+                                    .then((n) => showToast(t('Transferred {n} item(s) to folder', { n })))
+                                    .catch(fail);
+                            }
+                        }}
+                    >
+                        {t('Paste into folder')}
+                    </button>
+                    <button
+                        type="button"
+                        className="iconbtn"
+                        data-tip={t('Clear')}
+                        onClick={() => {
+                            setExplorerTarget(null);
+                            api.clearExplorerTarget().catch(() => {});
+                            if (query === 'file') {
+                                setQuery('');
+                            }
+                        }}
+                    >
+                        <Icon name="close" size={12} />
+                    </button>
+                </div>
+            )}
 
             <div className="mainrow">
                 {res.error || items.length === 0 || !useVirtual ? (
@@ -1172,39 +1292,50 @@ export default function Popup() {
 
                 {toolbar && cur && (
                     <div className="toolbar">
-                        <button data-tip={t('Preview')} onClick={() => openPreview()}>
+                        <button type="button" data-tip={t('Preview')} onClick={() => openPreview()}>
                             <Icon name="eye" size={16} />
                         </button>
-                        <button data-tip={t('Pin on top')} onClick={() => togglePin()}>
+                        <button type="button" data-tip={t('Pin on top')} onClick={() => togglePin()}>
                             <Icon name="pin" size={16} />
                         </button>
-                        <button data-tip={t('Tags…')} onClick={() => tagItem()}>
+                        <button type="button" data-tip={t('Tags…')} onClick={() => tagItem()}>
                             <Icon name="tag" size={16} />
                         </button>
-                        <button data-tip={t('Copy')} onClick={() => doCopy()}>
+                        <button type="button" data-tip={t('Copy')} onClick={() => doCopy()}>
                             <Icon name="copy" size={16} />
                         </button>
                         <button
+                            type="button"
                             data-tip={t('Formats (MIME inspector)')}
                             onClick={() => openPreview(cur, false, true)}
                         >
                             <Icon name="info" size={16} />
                         </button>
                         {cur.kind !== 'image' && cur.kind !== 'file' && (
-                            <button data-tip={t('Edit…')} onClick={() => openPreview(cur, true)}>
+                            <button
+                                type="button"
+                                data-tip={t('Edit…')}
+                                onClick={() => openPreview(cur, true)}
+                            >
                                 <Icon name="edit" size={16} />
                             </button>
                         )}
-                        <button data-tip={t('Merge selected')} onClick={mergePrompt}>
+                        <button type="button" data-tip={t('Merge selected')} onClick={mergePrompt}>
                             <Icon name="merge" size={16} />
                         </button>
                         <button
+                            type="button"
                             data-tip={t('Actions ▸')}
-                            onClick={(e) => openMenu(cur, e.clientX - 160, e.clientY)}
+                            onClick={(e) => openMenu(cur, e.clientX, e.clientY)}
                         >
                             <Icon name="bolt" size={16} />
                         </button>
-                        <button data-tip={t('Delete')} className="danger" onClick={() => doDelete(false)}>
+                        <button
+                            type="button"
+                            data-tip={t('Delete')}
+                            className="danger"
+                            onClick={() => doDelete(false)}
+                        >
                             <Icon name="trash" size={16} />
                         </button>
                     </div>
@@ -1216,7 +1347,12 @@ export default function Popup() {
                     {t(res.total === 1 ? '{n} item' : '{n} items', { n: num(res.total) })}
                     {multi.length > 1 ? ` · ${t('{n} selected', { n: num(multi.length) })}` : ''}
                 </span>
-                <button className="iconbtn erase" data-tip={t('Erase history…')} onClick={askErase}>
+                <button
+                    type="button"
+                    className="iconbtn erase"
+                    data-tip={t('Erase history…')}
+                    onClick={askErase}
+                >
                     <Icon name="trash" size={13} />
                 </button>
                 <span className="spacer" />

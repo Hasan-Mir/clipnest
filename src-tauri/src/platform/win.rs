@@ -493,11 +493,21 @@ pub fn set_capture_protection(hwnd: isize, mode: &str) -> bool {
     unsafe { SetWindowDisplayAffinity(hwnd, affinity) != 0 }
 }
 
-/// Window that never steals focus (used for the paste-queue overlay).
+/// Window that never steals focus and has no native OS titlebar/close button (used for the paste-queue overlay).
 pub fn make_no_activate(hwnd: isize) {
     unsafe {
+        let style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+        let strip = (WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU) as isize;
+        SetWindowLongPtrW(hwnd, GWL_STYLE, (style & !strip) | (WS_POPUP as isize));
+
         let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex | (WS_EX_NOACTIVATE as isize) | (WS_EX_TOOLWINDOW as isize));
+        let strip_ex = (WS_EX_APPWINDOW | WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE) as isize;
+        SetWindowLongPtrW(
+            hwnd,
+            GWL_EXSTYLE,
+            (ex & !strip_ex) | (WS_EX_NOACTIVATE as isize) | (WS_EX_TOOLWINDOW as isize),
+        );
+        SetWindowPos(hwnd, 0, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
     }
 }
 
@@ -515,6 +525,191 @@ pub fn hide_window(hwnd: isize) {
 
 #[allow(dead_code)]
 pub fn _unused(_: *const c_void) {}
+
+// ───────────────────────────── system fonts enumeration ─────────────────────────────
+
+unsafe extern "system" fn enum_font_proc(
+    lpelfe: *const LOGFONTW,
+    _lpntme: *const TEXTMETRICW,
+    _font_type: u32,
+    lparam: LPARAM,
+) -> i32 {
+    if !lpelfe.is_null() && lparam != 0 {
+        let lf = &*lpelfe;
+        let end = lf.lfFaceName.iter().position(|&c| c == 0).unwrap_or(lf.lfFaceName.len());
+        if end > 0 {
+            let name = String::from_utf16_lossy(&lf.lfFaceName[..end]).trim().to_string();
+            if !name.is_empty() && !name.starts_with('@') {
+                let out = &mut *(lparam as *mut Vec<String>);
+                out.push(name);
+            }
+        }
+    }
+    1
+}
+
+/// Enumerates all installed font families on Windows via GDI EnumFontFamiliesExW.
+pub fn list_system_fonts() -> Vec<String> {
+    unsafe {
+        let hdc = GetDC(0);
+        if hdc == 0 {
+            return vec![];
+        }
+        let mut lf: LOGFONTW = std::mem::zeroed();
+        lf.lfCharSet = DEFAULT_CHARSET as u8;
+        let mut names: Vec<String> = Vec::with_capacity(256);
+        EnumFontFamiliesExW(hdc, &lf, Some(enum_font_proc), &mut names as *mut Vec<String> as LPARAM, 0);
+        ReleaseDC(0, hdc);
+        names.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+        names.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+        names
+    }
+}
+
+// ───────────────────────────── Windows File Explorer context menu ─────────────────────────────
+
+#[link(name = "advapi32")]
+extern "system" {
+    fn RegCreateKeyExW(
+        hkey: isize,
+        lp_sub_key: *const u16,
+        reserved: u32,
+        lp_class: *const u16,
+        dw_options: u32,
+        sam_desired: u32,
+        lp_security_attributes: *const c_void,
+        phk_result: *mut isize,
+        lpdw_disposition: *mut u32,
+    ) -> i32;
+    fn RegSetValueExW(
+        hkey: isize,
+        lp_value_name: *const u16,
+        reserved: u32,
+        dw_type: u32,
+        lp_data: *const u8,
+        cb_data: u32,
+    ) -> i32;
+    fn RegDeleteTreeW(hkey: isize, lp_sub_key: *const u16) -> i32;
+    fn RegCloseKey(hkey: isize) -> i32;
+}
+
+const HKEY_CURRENT_USER_HANDLE: isize = 0x80000001u32 as i32 as isize;
+const KEY_WRITE_ACCESS: u32 = 0x20006;
+const REG_SZ_TYPE: u32 = 1;
+
+fn set_hkcu_string(subkey: &str, value_name: Option<&str>, data: &str) -> Result<(), String> {
+    unsafe {
+        let wsub = wide(subkey);
+        let mut hkey: isize = 0;
+        let mut disp: u32 = 0;
+        let rc = RegCreateKeyExW(
+            HKEY_CURRENT_USER_HANDLE,
+            wsub.as_ptr(),
+            0,
+            std::ptr::null(),
+            0,
+            KEY_WRITE_ACCESS,
+            std::ptr::null(),
+            &mut hkey,
+            &mut disp,
+        );
+        if rc != 0 || hkey == 0 {
+            return Err(format!("RegCreateKeyExW failed for {subkey}: code {rc}"));
+        }
+        let wname = value_name.map(wide);
+        let name_ptr = wname.as_ref().map(|v| v.as_ptr()).unwrap_or(std::ptr::null());
+        let wdata = wide(data);
+        let byte_len = (wdata.len() * 2) as u32;
+        let rc_set = RegSetValueExW(hkey, name_ptr, 0, REG_SZ_TYPE, wdata.as_ptr() as *const u8, byte_len);
+        RegCloseKey(hkey);
+        if rc_set != 0 {
+            return Err(format!("RegSetValueExW failed for {subkey}: code {rc_set}"));
+        }
+        Ok(())
+    }
+}
+
+fn delete_hkcu_tree(subkey: &str) {
+    unsafe {
+        let wsub = wide(subkey);
+        let _ = RegDeleteTreeW(HKEY_CURRENT_USER_HANDLE, wsub.as_ptr());
+    }
+}
+
+/// Registers or removes ClipNest entries in the per-user Windows File Explorer context menu (`HKCU\Software\Classes`).
+/// Works without Administrator privileges on both per-user and system-wide installations.
+pub fn sync_explorer_context_menu(enabled: bool, lang: &str) -> Result<(), String> {
+    let keys = [
+        r"Software\Classes\Directory\Background\shell\ClipNest",
+        r"Software\Classes\Directory\Background\shell\ClipNestBasket",
+        r"Software\Classes\Directory\shell\ClipNest",
+        r"Software\Classes\*\shell\ClipNestCollect",
+    ];
+    if !enabled {
+        for k in keys {
+            delete_hkcu_tree(k);
+        }
+        return Ok(());
+    }
+
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let exe_str = exe.to_string_lossy().to_string();
+    let icon_val = format!("\"{exe_str}\",0");
+
+    let (lbl_view_bg, lbl_basket_bg, lbl_view_dir, lbl_collect_file) = if lang == "fa" {
+        (
+            "ClipNest — مشاهده و پیست فایل‌های کپی‌شده در اینجا",
+            "ClipNest — پیست سبد فایل‌ها (Drop Basket) در اینجا",
+            "ClipNest — مشاهده و پیست فایل‌های کپی‌شده در این پوشه",
+            "ClipNest — افزودن فایل به سبد (Drop Basket)",
+        )
+    } else {
+        (
+            "ClipNest — View & Paste Copied Files Here",
+            "ClipNest — Paste Drop Basket Here",
+            "ClipNest — View & Paste Copied Files in Folder",
+            "ClipNest — Add File to Drop Basket",
+        )
+    };
+
+    // 1. Folder background right-click: View & Paste Copied Files Here
+    set_hkcu_string(r"Software\Classes\Directory\Background\shell\ClipNest", None, lbl_view_bg)?;
+    set_hkcu_string(r"Software\Classes\Directory\Background\shell\ClipNest", Some("Icon"), &icon_val)?;
+    set_hkcu_string(
+        r"Software\Classes\Directory\Background\shell\ClipNest\command",
+        None,
+        &format!("\"{exe_str}\" --explorer-files \"%V\""),
+    )?;
+
+    // 2. Folder background right-click: Paste Drop Basket Here
+    set_hkcu_string(r"Software\Classes\Directory\Background\shell\ClipNestBasket", None, lbl_basket_bg)?;
+    set_hkcu_string(r"Software\Classes\Directory\Background\shell\ClipNestBasket", Some("Icon"), &icon_val)?;
+    set_hkcu_string(
+        r"Software\Classes\Directory\Background\shell\ClipNestBasket\command",
+        None,
+        &format!("\"{exe_str}\" --paste-basket \"%V\""),
+    )?;
+
+    // 3. Folder item right-click: View & Paste Copied Files in Folder
+    set_hkcu_string(r"Software\Classes\Directory\shell\ClipNest", None, lbl_view_dir)?;
+    set_hkcu_string(r"Software\Classes\Directory\shell\ClipNest", Some("Icon"), &icon_val)?;
+    set_hkcu_string(
+        r"Software\Classes\Directory\shell\ClipNest\command",
+        None,
+        &format!("\"{exe_str}\" --explorer-files \"%1\""),
+    )?;
+
+    // 4. Individual file right-click: Add File to Drop Basket
+    set_hkcu_string(r"Software\Classes\*\shell\ClipNestCollect", None, lbl_collect_file)?;
+    set_hkcu_string(r"Software\Classes\*\shell\ClipNestCollect", Some("Icon"), &icon_val)?;
+    set_hkcu_string(
+        r"Software\Classes\*\shell\ClipNestCollect\command",
+        None,
+        &format!("\"{exe_str}\" --collect-file \"%1\""),
+    )?;
+
+    Ok(())
+}
 
 // ───────────────────────────── application & shell thumbnails ─────────────────────────────
 
@@ -811,6 +1006,35 @@ pub fn parse_shortcut(s: &str) -> Option<(u8, u32)> {
         }
     }
     vk.map(|v| (mods, v))
+}
+
+/// Probes whether a global hotkey is currently available in Windows via RegisterHotKey.
+/// Returns `Ok(true)` if free, `Ok(false)` if claimed by another process or the OS.
+pub fn probe_hotkey_available(shortcut: &str) -> Result<bool, String> {
+    let (mods, vk) = parse_shortcut(shortcut).ok_or_else(|| String::from("Invalid shortcut"))?;
+    let mut win_mods: u32 = 0x4000; // MOD_NOREPEAT
+    if (mods & MOD_ALT) != 0 {
+        win_mods |= 0x0001; // MOD_ALT
+    }
+    if (mods & MOD_CTRL) != 0 {
+        win_mods |= 0x0002; // MOD_CONTROL
+    }
+    if (mods & MOD_SHIFT) != 0 {
+        win_mods |= 0x0004; // MOD_SHIFT
+    }
+    if (mods & MOD_WIN) != 0 {
+        win_mods |= 0x0008; // MOD_WIN
+    }
+    const PROBE_ID: i32 = 0x6F7E;
+    unsafe {
+        let ok = RegisterHotKey(0, PROBE_ID, win_mods, vk);
+        if ok != 0 {
+            UnregisterHotKey(0, PROBE_ID);
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
 }
 
 pub fn set_hook_bindings(v: Vec<(u8, u32, u32)>) {

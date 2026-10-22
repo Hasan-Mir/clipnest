@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { eventToShortcut } from '../lib/shortcut';
+import { eventToShortcut, formatHeldModifiers } from '../lib/shortcut';
 
 function makeKeyEvent(
     overrides: Partial<{
@@ -21,7 +21,37 @@ function makeKeyEvent(
     } as Parameters<typeof eventToShortcut>[0];
 }
 
-describe('eventToShortcut keyboard shortcut recorder', () => {
+describe('eventToShortcut & formatHeldModifiers keyboard shortcut recorder', () => {
+    it("formats live held modifier keys while recording (e.g. 'Ctrl + ', 'Ctrl + Alt + ')", () => {
+        expect(
+            formatHeldModifiers({
+                ctrlKey: true,
+                altKey: false,
+                shiftKey: false,
+                metaKey: false,
+            })
+        ).toBe('Ctrl + ');
+        expect(
+            formatHeldModifiers({
+                ctrlKey: true,
+                altKey: true,
+                shiftKey: false,
+                metaKey: false,
+            })
+        ).toBe('Ctrl + Alt + ');
+        expect(
+            formatHeldModifiers(
+                {
+                    ctrlKey: true,
+                    altKey: false,
+                    shiftKey: true,
+                    metaKey: false,
+                },
+                true
+            )
+        ).toBe('Win + Ctrl + Shift + ');
+    });
+
     it('ignores standalone modifier key presses', () => {
         expect(eventToShortcut(makeKeyEvent({ key: 'Control', ctrlKey: true }))).toBeNull();
         expect(eventToShortcut(makeKeyEvent({ key: 'Shift', shiftKey: true }))).toBeNull();

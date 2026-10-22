@@ -1,8 +1,8 @@
 export function relTime(ts: number, now = Date.now(), lang: string = 'en'): string {
     const s = Math.max(0, Math.floor((now - ts) / 1000));
-    if (s < 45) {
+    if (s < 5) {
         if (lang === 'fa') {
-            return 'همین الان';
+            return 'الان';
         }
         if (lang === 'ar') {
             return 'الآن';
@@ -25,42 +25,53 @@ export function relTime(ts: number, now = Date.now(), lang: string = 'en'): stri
         if (lang === 'tr') {
             return 'Az önce';
         }
-        return 'Just now';
+        return 'now';
     }
-    const locale = lang === 'fa' ? 'fa-IR' : lang;
-    let rtf: Intl.RelativeTimeFormat;
-    try {
-        rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
-    } catch {
-        rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+    if (s < 60) {
+        if (lang === 'fa') {
+            return `${s} ثانیه`;
+        }
+        return `${s}s`;
     }
     const m = Math.floor(s / 60);
     if (m < 60) {
-        return rtf.format(-Math.max(1, m), 'minute');
+        if (lang === 'fa') {
+            return `${m} دقیقه`;
+        }
+        return `${m}m`;
     }
     const h = Math.floor(m / 60);
     if (h < 24) {
-        return rtf.format(-h, 'hour');
+        if (lang === 'fa') {
+            return `${h} ساعت`;
+        }
+        return `${h}h`;
     }
     const d = Math.floor(h / 24);
-    if (d < 7) {
-        return rtf.format(-d, 'day');
+    if (d < 30) {
+        if (lang === 'fa') {
+            return `${d} روز`;
+        }
+        return `${d}d`;
     }
-    try {
-        return new Date(ts).toLocaleDateString(locale, { month: 'short', day: 'numeric' });
-    } catch {
-        return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const mo = Math.max(1, Math.floor(d / 30));
+    if (lang === 'fa') {
+        return `${mo} ماه`;
     }
+    return `${mo}mo`;
 }
 
 export function hostOf(url: string): string {
     try {
         const u = new URL(url.trim());
-        return u.protocol === 'mailto:' ? u.pathname : u.host || url;
+        const host = u.protocol === 'mailto:' ? u.pathname : u.host || url;
+        return host.replace(/^www\./i, '');
     } catch {
         return url;
     }
 }
+
+export const urlHost = hostOf;
 
 export function basename(p: string): string {
     const parts = p.split(/[\\/]/);
@@ -82,6 +93,29 @@ export function humanSize(n: number): string {
     return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
+export const fmtBytes = humanSize;
+
+export function detectDir(text: string): 'rtl' | 'ltr' {
+    for (const ch of text) {
+        const code = ch.codePointAt(0) ?? 0;
+        if (
+            (code >= 0x0590 && code <= 0x08ff) ||
+            (code >= 0xfb1d && code <= 0xfdff) ||
+            (code >= 0xfe70 && code <= 0xfeff)
+        ) {
+            return 'rtl';
+        }
+        if (
+            (code >= 0x0041 && code <= 0x005a) ||
+            (code >= 0x0061 && code <= 0x007a) ||
+            (code >= 0x00c0 && code <= 0x02af)
+        ) {
+            return 'ltr';
+        }
+    }
+    return 'ltr';
+}
+
 export function appColor(exe: string): string {
     let h = 0;
     for (const c of exe.toLowerCase()) {
@@ -90,10 +124,37 @@ export function appColor(exe: string): string {
     return `hsl(${h} 55% 48%)`;
 }
 
-// ── colour conversions (HEX / RGB / HSL) ──
+// ── colour conversions (HEX / RGB / HSL) & dynamic WCAG contrast ──
 export function parseCssColor(input: string): [number, number, number, number] | null {
     const trimmed = input.trim().toLowerCase();
     if (!trimmed || /^(transparent|none|inherit|initial|unset|currentcolor)$/.test(trimmed)) {
+        return null;
+    }
+    const hexMatch = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(trimmed);
+    if (hexMatch) {
+        const h = hexMatch[1];
+        if (h.length === 3) {
+            return [parseInt(h[0] + h[0], 16), parseInt(h[1] + h[1], 16), parseInt(h[2] + h[2], 16), 1];
+        }
+        const r = parseInt(h.slice(0, 2), 16);
+        const g = parseInt(h.slice(2, 4), 16);
+        const b = parseInt(h.slice(4, 6), 16);
+        const a = h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1;
+        return [r, g, b, a];
+    }
+    const rgbMatch =
+        /^rgba?\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)(?:\s*,\s*(\d+(?:\.\d+)?))?\s*\)$/i.exec(
+            trimmed
+        );
+    if (rgbMatch) {
+        return [
+            Number(rgbMatch[1]),
+            Number(rgbMatch[2]),
+            Number(rgbMatch[3]),
+            rgbMatch[4] !== undefined ? Number(rgbMatch[4]) : 1,
+        ];
+    }
+    if (typeof document === 'undefined') {
         return null;
     }
     const c = document.createElement('canvas').getContext('2d');
@@ -102,7 +163,7 @@ export function parseCssColor(input: string): [number, number, number, number] |
     }
     c.fillStyle = 'rgba(1, 2, 3, 0.5)';
     c.fillStyle = trimmed;
-    const v = c.fillStyle as string; // normalised: #rrggbb or rgba(r, g, b, a)
+    const v = c.fillStyle as string;
     if (v === 'rgba(1, 2, 3, 0.5)' && !trimmed.includes('1, 2, 3')) {
         return null;
     }
@@ -115,6 +176,31 @@ export function parseCssColor(input: string): [number, number, number, number] |
     }
     const p = m[1].split(',').map((x) => parseFloat(x));
     return [p[0], p[1], p[2], p[3] ?? 1];
+}
+
+/**
+ * Computes WCAG 2.1 relative luminance of a background colour and returns `#000` (dark text)
+ * for bright backgrounds (such as neon green, yellow, cyan, or white) and `#fff` (light text)
+ * for darker backgrounds.
+ */
+export function contrastOn(bgColor: string): '#000' | '#fff' {
+    const rgba = parseCssColor(bgColor);
+    if (!rgba) {
+        return '#fff';
+    }
+    const [r, g, b] = rgba;
+    const toLinear = (c: number) => {
+        const s = c / 255;
+        if (s <= 0.03928) {
+            return s / 12.92;
+        }
+        return Math.pow((s + 0.055) / 1.055, 2.4);
+    };
+    const lum = 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+    if (lum > 0.36) {
+        return '#000';
+    }
+    return '#fff';
 }
 
 export function colorFormats(input: string): { label: string; value: string }[] {

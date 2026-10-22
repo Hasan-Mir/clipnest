@@ -1,19 +1,46 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { api, AppInfo, AppRule, AutoRule, CustomAction, Pinboard, Settings, errText } from '../lib/api';
+import {
+    api,
+    AppInfo,
+    AppRule,
+    AutoRule,
+    CustomAction,
+    Pinboard,
+    Settings,
+    ShortcutConflict,
+    errText,
+} from '../lib/api';
 import { CustomSelect } from '../lib/CustomSelect';
 import { LOCALES, t, useLang } from '../lib/i18n';
 import { Icon } from '../lib/icons';
-import { eventToShortcut } from '../lib/shortcut';
+import { eventToShortcut, formatHeldModifiers } from '../lib/shortcut';
 import { DEFAULT_SETTINGS, useSettings } from '../lib/useSettings';
 import { ContextMenu, MenuEntry, Prompt, PromptState } from '../popup/Overlays';
 
 type TabId =
-    'general' | 'clipboard' | 'appearance' | 'privacy' | 'shortcuts' | 'rules' | 'actions' | 'backup';
+    | 'general'
+    | 'clipboard'
+    | 'appearance'
+    | 'privacy'
+    | 'shortcuts'
+    | 'rules'
+    | 'actions'
+    | 'backup'
+    | 'help'
+    | 'about';
+
 const TABS: { id: TabId; label: string; keys: (keyof Settings)[] }[] = [
     {
         id: 'general',
         label: 'General',
-        keys: ['language', 'autostart', 'max_items', 'retention_days', 'max_image_mb'],
+        keys: [
+            'language',
+            'autostart',
+            'explorer_context_menu',
+            'max_items',
+            'retention_days',
+            'max_image_mb',
+        ],
     },
     {
         id: 'clipboard',
@@ -43,7 +70,9 @@ const TABS: { id: TabId; label: string; keys: (keyof Settings)[] }[] = [
             'animations',
             'density',
             'font_size',
+            'font_family',
             'card_lines',
+            'card_max_height',
             'show_thumbnails',
             'thumbnail_size',
             'virtual_scroll',
@@ -88,6 +117,16 @@ const TABS: { id: TabId; label: string; keys: (keyof Settings)[] }[] = [
         id: 'backup',
         label: 'Backup & Data',
         keys: ['auto_backup', 'backup_keep'],
+    },
+    {
+        id: 'help',
+        label: 'Help & Guide',
+        keys: [],
+    },
+    {
+        id: 'about',
+        label: 'About',
+        keys: [],
     },
 ];
 
@@ -201,10 +240,23 @@ function Num({
     );
 }
 
-/** Shortcut recorder. The Windows key is toggled with a checkbox because Windows itself consumes Win+key
- *  before the page could ever see it. */
-function ShortcutInput({ v, on }: { v: string; on: (s: string) => void }) {
+/**
+ * Shortcut recorder with live modifier display (e.g. "Ctrl + Alt + ") while recording
+ * and real-time OS / app conflict checking via `api.checkShortcutConflict`.
+ */
+function ShortcutInput({
+    v,
+    role,
+    on,
+}: {
+    v: string;
+    role: 'open' | 'queue' | 'plain' | 'pause';
+    on: (s: string) => void;
+}) {
     const [rec, setRec] = useState(false);
+    const [liveMods, setLiveMods] = useState('');
+    const [conflict, setConflict] = useState<ShortcutConflict | null>(null);
+
     const hasWin = /(^|\+)(super|win|meta)(\+|$)/i.test(v);
     const withoutWin = v
         .split('+')
@@ -212,60 +264,123 @@ function ShortcutInput({ v, on }: { v: string; on: (s: string) => void }) {
         .join('+');
     const isFKey = /^F([1-9]|1\d|2[0-4])$/i.test(withoutWin);
 
+    useEffect(() => {
+        const trimmed = v.trim();
+        if (!trimmed) {
+            setConflict(null);
+            return;
+        }
+        let alive = true;
+        api.checkShortcutConflict(trimmed, role)
+            .then((res) => {
+                if (alive) {
+                    setConflict(res);
+                }
+            })
+            .catch(() => {
+                if (alive) {
+                    setConflict(null);
+                }
+            });
+        return () => {
+            alive = false;
+        };
+    }, [v, role]);
+
+    const recordingText = liveMods || (hasWin ? 'Win + ' : t('Press keys…'));
+
     return (
-        <div className="shortcut">
-            <button
-                type="button"
-                className={`btn${rec ? ' primary' : ''}`}
-                dir="ltr"
-                onClick={() => setRec(true)}
-                onBlur={() => setRec(false)}
-                onKeyDown={(e) => {
-                    if (!rec) {
-                        return;
-                    }
-                    e.preventDefault();
-                    if (e.key === 'Escape') {
+        <div className="shortcut-wrap">
+            <div className="shortcut">
+                <button
+                    type="button"
+                    className={`btn shortcut-btn${rec ? ' primary' : ''}`}
+                    dir="ltr"
+                    onClick={() => {
+                        setRec(true);
+                        setLiveMods(hasWin ? 'Win + ' : '');
+                    }}
+                    onBlur={() => {
                         setRec(false);
-                        return;
-                    }
-                    if (e.key === 'Backspace' || e.key === 'Delete') {
-                        on('');
-                        setRec(false);
-                        return;
-                    }
-                    const s = eventToShortcut(e, hasWin);
-                    if (s) {
-                        on(hasWin && !/super/i.test(s) ? `Super+${s}` : s);
-                        setRec(false);
-                    }
-                }}
-            >
-                {rec ? t('Press keys…') : v || t('— none —')}
-            </button>
-            <label className="winbox" data-tip={t('Include the Windows key')}>
-                <input
-                    type="checkbox"
-                    checked={hasWin}
-                    disabled={!v && !rec}
-                    onChange={(e) => {
-                        if (e.target.checked) {
-                            on(withoutWin ? `Super+${withoutWin}` : 'Super+V');
-                        } else {
-                            if (!withoutWin.includes('+') && !isFKey) {
-                                on('');
-                            } else {
-                                on(withoutWin);
-                            }
+                        setLiveMods('');
+                    }}
+                    onKeyDown={(e) => {
+                        if (!rec) {
+                            return;
+                        }
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (e.key === 'Escape') {
+                            setRec(false);
+                            setLiveMods('');
+                            return;
+                        }
+                        if (
+                            (e.key === 'Backspace' || e.key === 'Delete') &&
+                            !e.ctrlKey &&
+                            !e.altKey &&
+                            !e.shiftKey
+                        ) {
+                            on('');
+                            setRec(false);
+                            setLiveMods('');
+                            return;
+                        }
+                        setLiveMods(formatHeldModifiers(e.nativeEvent, hasWin));
+                        const s = eventToShortcut(e, hasWin);
+                        if (s) {
+                            on(hasWin && !/super/i.test(s) ? `Super+${s}` : s);
+                            setRec(false);
+                            setLiveMods('');
                         }
                     }}
-                />{' '}
-                Win
-            </label>
-            {v && !rec && (
-                <button type="button" className="btn" onClick={() => on('')}>
-                    {t('Clear')}
+                    onKeyUp={(e) => {
+                        if (!rec) {
+                            return;
+                        }
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setLiveMods(formatHeldModifiers(e.nativeEvent, hasWin));
+                    }}
+                >
+                    <span>{rec ? recordingText : v || t('— none —')}</span>
                 </button>
+                <label className="winbox" data-tip={t('Include the Windows key')}>
+                    <input
+                        type="checkbox"
+                        checked={hasWin}
+                        disabled={!v && !rec}
+                        onChange={(e) => {
+                            if (e.target.checked) {
+                                on(withoutWin ? `Super+${withoutWin}` : 'Super+V');
+                            } else {
+                                if (!withoutWin.includes('+') && !isFKey) {
+                                    on('');
+                                } else {
+                                    on(withoutWin);
+                                }
+                            }
+                        }}
+                    />
+                    <span>Win</span>
+                </label>
+                {v && !rec && (
+                    <button type="button" className="btn" onClick={() => on('')}>
+                        <span>{t('Clear')}</span>
+                    </button>
+                )}
+            </div>
+            {v && conflict && conflict.status !== 'ok' && (
+                <div className={`sc-status ${conflict.status === 'hook_override' ? 'info' : 'warn'}`}>
+                    <Icon name={conflict.status === 'hook_override' ? 'info' : 'warning'} size={12} />
+                    <span>{t(conflict.message)}</span>
+                </div>
+            )}
+            {v && conflict && conflict.status === 'ok' && (
+                <div className="sc-status ok">
+                    <Icon name="check" size={12} />
+                    <span>{t('No conflict detected')}</span>
+                </div>
             )}
         </div>
     );
@@ -295,7 +410,7 @@ function TagList({
             <div className="pills">
                 {items.map((a) => (
                     <span key={a} className="pill">
-                        {a}
+                        <span>{a}</span>
                         <button type="button" onClick={() => onChange(items.filter((y) => y !== a))}>
                             ×
                         </button>
@@ -315,7 +430,7 @@ function TagList({
                     }}
                 />
                 <button type="button" className="btn" onClick={() => add(x)}>
-                    {t('Add')}
+                    <span>{t('Add')}</span>
                 </button>
             </div>
             {suggestions && suggestions.filter((s) => !items.includes(s.exe)).length > 0 && (
@@ -326,7 +441,7 @@ function TagList({
                         .slice(0, 10)
                         .map((s) => (
                             <button key={s.exe} type="button" className="chip" onClick={() => add(s.exe)}>
-                                {s.name}
+                                <span>{s.name}</span>
                             </button>
                         ))}
                 </div>
@@ -354,6 +469,7 @@ export default function SettingsView() {
     const [searchQuery, setSearchQuery] = useState('');
     const [apps, setApps] = useState<AppInfo[]>([]);
     const [boards, setBoards] = useState<Pinboard[]>([]);
+    const [systemFonts, setSystemFonts] = useState<string[]>([]);
     const [msg, setMsg] = useState('');
     const [menu, setMenu] = useState<{ x: number; y: number; entries: MenuEntry[] } | null>(null);
     const [prompt, setPrompt] = useState<PromptState | null>(null);
@@ -367,6 +483,12 @@ export default function SettingsView() {
             .then(setBoards)
             .catch(() => {});
     }, [tab]);
+
+    useEffect(() => {
+        api.listSystemFonts()
+            .then(setSystemFonts)
+            .catch(() => {});
+    }, []);
 
     useEffect(() => {
         const onFocusSearch = () => {
@@ -454,6 +576,7 @@ export default function SettingsView() {
             title: t('Reset all settings to their default values?'),
             confirm: true,
             okLabel: t('Reset'),
+            danger: true,
             onSubmit: () => {
                 save({ ...DEFAULT_SETTINGS });
                 flash(t('Settings reset to defaults'));
@@ -463,11 +586,14 @@ export default function SettingsView() {
 
     const askEraseHistory = () => {
         setPrompt({
-            title: t('Erase all unpinned history?'),
+            title: t('Erase all history?'),
             confirm: true,
+            checkLabel: t('Also erase pinned items and pinboards'),
+            defaultChecked: false,
             okLabel: t('Erase'),
-            onSubmit: () => {
-                api.eraseHistory()
+            danger: true,
+            onSubmit: (_val, includePinned) => {
+                api.eraseHistory(includePinned)
                     .then(() => flash(t('History erased')))
                     .catch((e) => flash(errText(e)));
             },
@@ -487,7 +613,7 @@ export default function SettingsView() {
             <h2>{t(title)}</h2>
             {sectionModified(tabId) && (
                 <button type="button" className="btn small-btn" onClick={() => resetSection(tabId)}>
-                    <Icon name="reset" size={12} /> {t('Reset section')}
+                    <Icon name="reset" size={12} /> <span>{t('Reset section')}</span>
                 </button>
             )}
         </div>
@@ -519,17 +645,29 @@ export default function SettingsView() {
     };
 
     const localeOpts: [string, string][] = LOCALES.map((l) => [l.code, l.name]);
+    const fontOptions = [
+        { value: '', label: t('Default (Vazirmatn / System)') },
+        ...systemFonts.map((f) => ({ value: f, label: f, fontFamily: f })),
+    ];
+    const resolvedHlHex =
+        !s.highlight_color || s.highlight_color.toLowerCase() === 'accent'
+            ? s.accent
+            : /^#[0-9a-fA-F]{6}$/.test(s.highlight_color)
+              ? s.highlight_color
+              : s.accent;
 
     return (
         <div className="settings">
             <nav className="snav">
                 <div className="sbrand">
-                    <img className="logo-img" src="/icon.png" alt="ClipNest" draggable={false} /> ClipNest
+                    <img className="logo-img" src="/icon.png" alt="ClipNest" draggable={false} />
+                    <span>ClipNest</span>
                 </div>
                 <div className="snav-search">
                     <Icon name="search" size={13} />
                     <input
                         ref={searchInputRef}
+                        className="search-bare"
                         value={searchQuery}
                         placeholder={t('Search settings…')}
                         onChange={(e) => setSearchQuery(e.target.value)}
@@ -561,7 +699,7 @@ export default function SettingsView() {
                             setTab(x.id);
                         }}
                     >
-                        {t(x.label)}
+                        <span>{t(x.label)}</span>
                     </button>
                 ))}
             </nav>
@@ -570,6 +708,7 @@ export default function SettingsView() {
                     'General',
                     'Language / زبان',
                     'Start with Windows',
+                    'Windows File Explorer context menu',
                     'Maximum history items',
                     'Keep history for (days)',
                     'Largest image to store (MB)',
@@ -601,6 +740,16 @@ export default function SettingsView() {
                             hint="Launch ClipNest automatically in the system tray when you sign in to Windows."
                         >
                             <Toggle v={s.autostart} on={(b) => set('autostart', b)} />
+                        </Row>
+                        <Row
+                            k="explorer_context_menu"
+                            s={s}
+                            searchQuery={q}
+                            onGearMenu={openGearMenu}
+                            label="Windows File Explorer context menu"
+                            hint="Adds ClipNest to the right-click context menu of folders and files in Windows Explorer to view and paste copied files or collect files into the Drop Basket."
+                        >
+                            <Toggle v={s.explorer_context_menu} on={(b) => set('explorer_context_menu', b)} />
                         </Row>
                         <Row
                             k="max_items"
@@ -637,10 +786,10 @@ export default function SettingsView() {
                             searchQuery={q}
                             onGearMenu={openGearMenu}
                             label="Erase history"
-                            hint="Removes everything except pinned items and pinboards."
+                            hint="Removes unpinned history, with an option in the confirmation dialog to also delete pinned items and pinboards."
                         >
                             <button type="button" className="btn danger" onClick={askEraseHistory}>
-                                {t('Erase history…')}
+                                <span>{t('Erase history…')}</span>
                             </button>
                         </Row>
                         <Row
@@ -651,7 +800,7 @@ export default function SettingsView() {
                             hint="Restores all preferences, shortcuts, and appearance options to factory defaults without deleting your clips."
                         >
                             <button type="button" className="btn" onClick={askResetAll}>
-                                {t('Reset all settings…')}
+                                <span>{t('Reset all settings…')}</span>
                             </button>
                         </Row>
                     </section>
@@ -903,7 +1052,7 @@ export default function SettingsView() {
                                                             )
                                                         }
                                                     >
-                                                        {t('Remove')}
+                                                        <span>{t('Remove')}</span>
                                                     </button>
                                                 </td>
                                             </tr>
@@ -920,7 +1069,7 @@ export default function SettingsView() {
                                         ])
                                     }
                                 >
-                                    {t('+ Add rule')}
+                                    <span>{t('+ Add rule')}</span>
                                 </button>
                             </>
                         )}
@@ -930,11 +1079,14 @@ export default function SettingsView() {
                 {showTab('appearance', [
                     'Appearance',
                     'Theme',
+                    'System (Auto)',
                     'Accent colour',
                     'Smooth animations',
                     'Card density',
                     'Font size (px)',
+                    'Clip items font family',
                     'Text lines per card',
+                    'Maximum card height (px)',
                     'Show image and media thumbnails in cards',
                     'Thumbnail size',
                     'Virtual list rendering',
@@ -956,12 +1108,13 @@ export default function SettingsView() {
                             searchQuery={q}
                             onGearMenu={openGearMenu}
                             label="Theme"
-                            hint="Choose the colour scheme for the popup, queue, and settings windows."
+                            hint="Choose the colour scheme for the popup, queue, and settings windows (System follows Windows Dark/Light mode automatically)."
                         >
                             <Select
                                 v={s.theme}
                                 on={(v) => set('theme', v)}
                                 opts={[
+                                    ['system', 'System (Auto)'],
                                     ['dark', 'Dark'],
                                     ['oled', 'OLED black'],
                                     ['light', 'Light'],
@@ -974,12 +1127,23 @@ export default function SettingsView() {
                             searchQuery={q}
                             onGearMenu={openGearMenu}
                             label="Accent colour"
-                            hint="Choose the primary highlight colour for borders, badges, and active controls."
+                            hint="Choose the primary highlight colour for borders, badges, active controls, and default search highlights."
                         >
                             <input
                                 type="color"
                                 value={s.accent}
-                                onChange={(e) => set('accent', e.target.value)}
+                                onChange={(e) => {
+                                    const nextAccent = e.target.value;
+                                    const syncHl =
+                                        !s.highlight_color ||
+                                        s.highlight_color === 'accent' ||
+                                        s.highlight_color.toLowerCase() === s.accent.toLowerCase();
+                                    save({
+                                        ...s,
+                                        accent: nextAccent,
+                                        highlight_color: syncHl ? 'accent' : s.highlight_color,
+                                    });
+                                }}
                             />
                         </Row>
                         <Row
@@ -1020,6 +1184,21 @@ export default function SettingsView() {
                             <Num v={s.font_size} on={(n) => set('font_size', n)} min={10} max={20} />
                         </Row>
                         <Row
+                            k="font_family"
+                            s={s}
+                            searchQuery={q}
+                            onGearMenu={openGearMenu}
+                            label="Clip items font family"
+                            hint="Choose any installed system font on your computer for rendering clipboard cards and previews."
+                        >
+                            <CustomSelect
+                                value={s.font_family}
+                                onChange={(v) => set('font_family', String(v))}
+                                options={fontOptions}
+                                searchable
+                            />
+                        </Row>
+                        <Row
                             k="card_lines"
                             s={s}
                             searchQuery={q}
@@ -1028,6 +1207,22 @@ export default function SettingsView() {
                             hint="How many lines of text are previewed on each card before truncating."
                         >
                             <Num v={s.card_lines} on={(n) => set('card_lines', n)} min={1} max={12} />
+                        </Row>
+                        <Row
+                            k="card_max_height"
+                            s={s}
+                            searchQuery={q}
+                            onGearMenu={openGearMenu}
+                            label="Maximum card height (px)"
+                            hint="Maximum vertical height of each card body in the list (60 to 600 px)."
+                        >
+                            <Num
+                                v={s.card_max_height}
+                                on={(n) => set('card_max_height', n)}
+                                min={60}
+                                max={600}
+                                step={10}
+                            />
                         </Row>
                         <Row
                             k="show_thumbnails"
@@ -1083,22 +1278,18 @@ export default function SettingsView() {
                             searchQuery={q}
                             onGearMenu={openGearMenu}
                             label="Highlight text color (transparent = keep text color)"
-                            hint="Text colour applied to matched characters when searching (e.g. #2ea8ff for VS Code blue)."
+                            hint="Use “accent” to automatically follow your Accent colour, or pick any custom colour."
                         >
                             <div className="color-input-group">
                                 <input
                                     dir="ltr"
                                     value={s.highlight_color}
-                                    placeholder="#2ea8ff"
+                                    placeholder="accent"
                                     onChange={(e) => set('highlight_color', e.target.value)}
                                 />
                                 <input
                                     type="color"
-                                    value={
-                                        /^#[0-9a-fA-F]{6}$/.test(s.highlight_color)
-                                            ? s.highlight_color
-                                            : '#2ea8ff'
-                                    }
+                                    value={resolvedHlHex}
                                     onChange={(e) => set('highlight_color', e.target.value)}
                                 />
                             </div>
@@ -1132,9 +1323,23 @@ export default function SettingsView() {
                             searchQuery={q}
                             onGearMenu={openGearMenu}
                             label="Highlight presets"
-                            hint="Quickly switch between VS Code text highlight, yellow marker background, or high contrast."
+                            hint="Quickly switch between Accent color match, VS Code blue, yellow marker background, or high contrast."
                         >
                             <div className="presets">
+                                <button
+                                    type="button"
+                                    className="chip"
+                                    onClick={() =>
+                                        save({
+                                            ...s,
+                                            highlight_matches: true,
+                                            highlight_color: 'accent',
+                                            highlight_bg: 'transparent',
+                                        })
+                                    }
+                                >
+                                    <span>{t('Match Accent')}</span>
+                                </button>
                                 <button
                                     type="button"
                                     className="chip"
@@ -1147,7 +1352,7 @@ export default function SettingsView() {
                                         })
                                     }
                                 >
-                                    {t('VS Code Blue')}
+                                    <span>{t('VS Code Blue')}</span>
                                 </button>
                                 <button
                                     type="button"
@@ -1161,7 +1366,7 @@ export default function SettingsView() {
                                         })
                                     }
                                 >
-                                    {t('Yellow Marker')}
+                                    <span>{t('Yellow Marker')}</span>
                                 </button>
                                 <button
                                     type="button"
@@ -1175,7 +1380,7 @@ export default function SettingsView() {
                                         })
                                     }
                                 >
-                                    {t('High Contrast')}
+                                    <span>{t('High Contrast')}</span>
                                 </button>
                             </div>
                         </Row>
@@ -1204,13 +1409,13 @@ export default function SettingsView() {
                             searchQuery={q}
                             onGearMenu={openGearMenu}
                             label="Popup width (px)"
-                            hint="Default width of the popup window in logical pixels."
+                            hint="Default width of the popup window in logical pixels (minimum 340 px)."
                         >
                             <Num
                                 v={s.popup_width}
                                 on={(n) => set('popup_width', n)}
-                                min={320}
-                                max={1200}
+                                min={340}
+                                max={1400}
                                 step={10}
                             />
                         </Row>
@@ -1220,13 +1425,13 @@ export default function SettingsView() {
                             searchQuery={q}
                             onGearMenu={openGearMenu}
                             label="Popup height (px)"
-                            hint="Default height of the popup window in logical pixels."
+                            hint="Default height of the popup window in logical pixels (minimum 380 px)."
                         >
                             <Num
                                 v={s.popup_height}
                                 on={(n) => set('popup_height', n)}
-                                min={360}
-                                max={1200}
+                                min={380}
+                                max={1400}
                                 step={10}
                             />
                         </Row>
@@ -1246,7 +1451,7 @@ export default function SettingsView() {
                             searchQuery={q}
                             onGearMenu={openGearMenu}
                             label="Side toolbar (CopyQ style)"
-                            hint="Quick buttons next to the list: preview, pin, tags, copy, formats, edit, merge, actions, delete."
+                            hint="Quick buttons next to the list: preview, pin, tags, copy, formats, edit, merge, actions, delete (can also be toggled from the popup header)."
                         >
                             <Toggle v={s.show_toolbar} on={(b) => set('show_toolbar', b)} />
                         </Row>
@@ -1392,21 +1597,25 @@ export default function SettingsView() {
                             hint="Global hotkey to show or hide the main ClipNest popup."
                         >
                             <div className="stack">
-                                <ShortcutInput v={s.shortcut_open} on={(v) => set('shortcut_open', v)} />
+                                <ShortcutInput
+                                    role="open"
+                                    v={s.shortcut_open}
+                                    on={(v) => set('shortcut_open', v)}
+                                />
                                 <div className="presets">
                                     <button
                                         type="button"
                                         className="chip"
                                         onClick={() => set('shortcut_open', 'Super+V')}
                                     >
-                                        {t('Use Win+V')}
+                                        <span>{t('Use Win+V')}</span>
                                     </button>
                                     <button
                                         type="button"
                                         className="chip"
                                         onClick={() => set('shortcut_open', 'Alt+V')}
                                     >
-                                        Alt+V
+                                        <span>Alt+V</span>
                                     </button>
                                 </div>
                             </div>
@@ -1419,7 +1628,11 @@ export default function SettingsView() {
                             label="Paste queue on/off"
                             hint="Global hotkey to open or close the Paste Queue / Drop Basket window."
                         >
-                            <ShortcutInput v={s.shortcut_queue} on={(v) => set('shortcut_queue', v)} />
+                            <ShortcutInput
+                                role="queue"
+                                v={s.shortcut_queue}
+                                on={(v) => set('shortcut_queue', v)}
+                            />
                         </Row>
                         <Row
                             k="shortcut_plain_toggle"
@@ -1430,6 +1643,7 @@ export default function SettingsView() {
                             hint="Global hotkey to toggle between rich formatting and plain-text paste mode."
                         >
                             <ShortcutInput
+                                role="plain"
                                 v={s.shortcut_plain_toggle}
                                 on={(v) => set('shortcut_plain_toggle', v)}
                             />
@@ -1440,9 +1654,13 @@ export default function SettingsView() {
                             searchQuery={q}
                             onGearMenu={openGearMenu}
                             label="Pause / resume capture"
-                            hint="Globalhotkey to pause or resume clipboard capturing."
+                            hint="Global hotkey to pause or resume clipboard capturing."
                         >
-                            <ShortcutInput v={s.shortcut_pause} on={(v) => set('shortcut_pause', v)} />
+                            <ShortcutInput
+                                role="pause"
+                                v={s.shortcut_pause}
+                                on={(v) => set('shortcut_pause', v)}
+                            />
                         </Row>
                         {!isSearching && (
                             <>
@@ -1523,7 +1741,7 @@ export default function SettingsView() {
                                             set('rules', a);
                                         }}
                                     >
-                                        ↑
+                                        <span>↑</span>
                                     </button>
                                     <button
                                         type="button"
@@ -1535,7 +1753,7 @@ export default function SettingsView() {
                                             set('rules', a);
                                         }}
                                     >
-                                        ↓
+                                        <span>↓</span>
                                     </button>
                                     <button
                                         type="button"
@@ -1547,7 +1765,7 @@ export default function SettingsView() {
                                             )
                                         }
                                     >
-                                        {t('Remove')}
+                                        <span>{t('Remove')}</span>
                                     </button>
                                 </div>
                                 <div className="rulegrid">
@@ -1585,7 +1803,7 @@ export default function SettingsView() {
                                                     })
                                                 }
                                             />
-                                            {t(k)}
+                                            <span>{t(k)}</span>
                                         </label>
                                     ))}
                                     <span className="muted small">
@@ -1671,7 +1889,7 @@ export default function SettingsView() {
                                 ])
                             }
                         >
-                            {t('+ Add rule')}
+                            <span>{t('+ Add rule')}</span>
                         </button>
                     </section>
                 )}
@@ -1720,7 +1938,7 @@ export default function SettingsView() {
                                         )
                                     }
                                 >
-                                    {t('Remove')}
+                                    <span>{t('Remove')}</span>
                                 </button>
                             </div>
                         ))}
@@ -1739,7 +1957,7 @@ export default function SettingsView() {
                                 ])
                             }
                         >
-                            {t('+ Add action')}
+                            <span>{t('+ Add action')}</span>
                         </button>
                     </section>
                 )}
@@ -1801,7 +2019,7 @@ export default function SettingsView() {
                                     })
                                 }
                             >
-                                {t('Export…')}
+                                <span>{t('Export…')}</span>
                             </button>
                         </Row>
                         <Row
@@ -1821,7 +2039,7 @@ export default function SettingsView() {
                                     })
                                 }
                             >
-                                {t('Import…')}
+                                <span>{t('Import…')}</span>
                             </button>
                         </Row>
                         <Row
@@ -1842,7 +2060,7 @@ export default function SettingsView() {
                                         })
                                     }
                                 >
-                                    {t('Export…')}
+                                    <span>{t('Export…')}</span>
                                 </button>
                                 <button
                                     type="button"
@@ -1853,7 +2071,7 @@ export default function SettingsView() {
                                         )
                                     }
                                 >
-                                    {t('Import…')}
+                                    <span>{t('Import…')}</span>
                                 </button>
                             </div>
                         </Row>
@@ -1869,7 +2087,7 @@ export default function SettingsView() {
                                 className="btn"
                                 onClick={() => run(async () => t('Saved: {p}', { p: await api.backupNow() }))}
                             >
-                                {t('Create backup')}
+                                <span>{t('Create backup')}</span>
                             </button>
                         </Row>
                         <Row
@@ -1880,7 +2098,7 @@ export default function SettingsView() {
                             hint="Database, settings.json and backups."
                         >
                             <button type="button" className="btn" onClick={() => api.openDataDir()}>
-                                {t('Open in Explorer')}
+                                <span>{t('Open in Explorer')}</span>
                             </button>
                         </Row>
                         <Row
@@ -1888,10 +2106,10 @@ export default function SettingsView() {
                             searchQuery={q}
                             onGearMenu={openGearMenu}
                             label="Erase history"
-                            hint="Removes everything except pinned items and pinboards."
+                            hint="Removes unpinned history, with an option in the confirmation dialog to also delete pinned items and pinboards."
                         >
                             <button type="button" className="btn danger" onClick={askEraseHistory}>
-                                {t('Erase history…')}
+                                <span>{t('Erase history…')}</span>
                             </button>
                         </Row>
                         <Row
@@ -1902,7 +2120,7 @@ export default function SettingsView() {
                             hint="Restores all preferences, shortcuts, and appearance options to factory defaults without deleting your clips."
                         >
                             <button type="button" className="btn" onClick={askResetAll}>
-                                {t('Reset all settings…')}
+                                <span>{t('Reset all settings…')}</span>
                             </button>
                         </Row>
                         <Row
@@ -1913,9 +2131,163 @@ export default function SettingsView() {
                             hint="Exit ClipNest completely and stop background clipboard monitoring."
                         >
                             <button type="button" className="btn danger" onClick={() => api.quit()}>
-                                {t('Quit')}
+                                <span>{t('Quit')}</span>
                             </button>
                         </Row>
+                    </section>
+                )}
+
+                {showTab('help', [
+                    'Help & Guide',
+                    'Getting started',
+                    'Smart search & filters',
+                    'Pinboards & active tab',
+                    'Paste Queue & Drop Basket',
+                    'Windows File Explorer context menu',
+                    'Text transforms & Persian tools',
+                ]) && (
+                    <section className="ssection">
+                        <div className="spane-head">
+                            <h2>{t('Help & Guide')}</h2>
+                        </div>
+                        <div className="guide-grid">
+                            <div className="guide-card">
+                                <h3>{t('Getting started')}</h3>
+                                <p className="muted">
+                                    {t(
+                                        'Press Win+V (or your configured shortcut) anywhere in Windows to open ClipNest at your text cursor. Double-click a card or press Enter to paste it with original formatting, or press Shift+Enter to paste as plain text.'
+                                    )}
+                                </p>
+                            </div>
+                            <div className="guide-card">
+                                <h3>{t('Smart search & filters')}</h3>
+                                <p className="muted">
+                                    {t(
+                                        'Type any word to search text, titles, app names, and tags with typo tolerance. Type image, code, link, file, or color to filter by item type (or wrap in quotes like "image" for literal text). Toggle .* for Regex or ~ for strict fuzzy matching.'
+                                    )}
+                                </p>
+                            </div>
+                            <div className="guide-card">
+                                <h3>{t('Pinboards & active tab')}</h3>
+                                <p className="muted">
+                                    {t(
+                                        'Create colour-coded Pinboards with + or Ctrl+N and drag cards onto any tab. Right-click a Pinboard tab and enable Active pinboard so all new copies go straight into that tab automatically.'
+                                    )}
+                                </p>
+                            </div>
+                            <div className="guide-card">
+                                <h3>{t('Paste Queue & Drop Basket')}</h3>
+                                <p className="muted">
+                                    {t(
+                                        'Press Ctrl+Alt+Q to open the floating Queue / Drop Basket window. In Queue mode, copy multiple items and press Ctrl+V repeatedly to paste them in FIFO or LIFO order. In Drop Basket mode, collect files and images from different folders and paste or move them all at once.'
+                                    )}
+                                </p>
+                            </div>
+                            <div className="guide-card">
+                                <h3>{t('Windows File Explorer context menu')}</h3>
+                                <p className="muted">
+                                    {t(
+                                        'Right-click inside any folder in Windows File Explorer and select ClipNest to view your copied files and paste them directly into that folder, or right-click any file to add it to the Drop Basket.'
+                                    )}
+                                </p>
+                            </div>
+                            <div className="guide-card">
+                                <h3>{t('Text transforms & Persian tools')}</h3>
+                                <p className="muted">
+                                    {t(
+                                        'Right-click any text card and choose Transform to convert case, format JSON, encode Base64/URL, normalize Arabic characters and digits to standard Persian/English, or convert all numbers to Persian digits.'
+                                    )}
+                                </p>
+                            </div>
+                        </div>
+
+                        <h3>{t('Inside the popup')}</h3>
+                        <table className="keys" dir="ltr">
+                            <tbody>
+                                {[
+                                    [
+                                        '↑ ↓ · Shift+↑↓ · PgUp/PgDn · Ctrl+↑↓',
+                                        'Select / extend selection / jump',
+                                    ],
+                                    ['← → · Tab · Ctrl+[ ]', 'Switch Clipboard ↔ pinboards'],
+                                    [
+                                        'Enter · Shift+Enter · Ctrl+Enter',
+                                        'Paste · plain text · keep formatting',
+                                    ],
+                                    ['Ctrl+1 … Ctrl+9', 'Quick-paste a visible card'],
+                                    ['Alt+↑ / Alt+↓ (or drag a card)', 'Move the card up / down'],
+                                    ['Space (or F3)', 'Preview (empty search)'],
+                                    ['Ctrl+C', 'Copy only'],
+                                    ['Delete / Ctrl+Delete', 'Delete (or unpin inside a pinboard)'],
+                                    ['F2 · Ctrl+T · Ctrl+P', 'Rename · tags · pin on top'],
+                                    ['Ctrl+E · Ctrl+I · Ctrl+M', 'Edit · formats inspector · merge selected'],
+                                    ['Ctrl+O · Ctrl+N · Ctrl+,', 'Open link/file · new pinboard · settings'],
+                                    ['Esc', 'Clear search, then close'],
+                                ].map(([k, d]) => (
+                                    <tr key={k}>
+                                        <td>
+                                            <kbd>{k}</kbd>
+                                        </td>
+                                        <td className="muted" dir="auto">
+                                            {t(d)}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </section>
+                )}
+
+                {showTab('about', ['About', 'ClipNest', 'Version', 'Architecture', 'Privacy']) && (
+                    <section className="ssection">
+                        <div className="spane-head">
+                            <h2>{t('About')}</h2>
+                        </div>
+                        <div className="about-hero">
+                            <img className="about-logo" src="/icon.png" alt="ClipNest" draggable={false} />
+                            <div className="about-meta">
+                                <div className="about-title-row">
+                                    <h3>ClipNest</h3>
+                                    <span className="badge">v0.2.0</span>
+                                </div>
+                                <p className="muted">
+                                    {t(
+                                        'Fast, private clipboard manager & file collector for Windows 10 and 11.'
+                                    )}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="guide-grid">
+                            <div className="guide-card">
+                                <h3>{t('Engine & Architecture')}</h3>
+                                <p className="muted" dir="ltr">
+                                    Tauri v2 · Rust · Win32 API · SQLite (WAL + FTS5) · React 18 · TypeScript
+                                </p>
+                            </div>
+                            <div className="guide-card">
+                                <h3>{t('100% Local & Private')}</h3>
+                                <p className="muted">
+                                    {t(
+                                        'All clipboard data, icons, and backups are stored strictly on your device with zero cloud sync or telemetry.'
+                                    )}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="srow">
+                            <div className="slabel">
+                                <span>{t('Data folder')}</span>
+                                <div className="muted small" dir="ltr">
+                                    %APPDATA%\com.clipnest.app
+                                </div>
+                            </div>
+                            <div className="sctl">
+                                <button type="button" className="btn" onClick={() => api.openDataDir()}>
+                                    <Icon name="folder" size={13} /> <span>{t('Open in Explorer')}</span>
+                                </button>
+                            </div>
+                        </div>
                     </section>
                 )}
 

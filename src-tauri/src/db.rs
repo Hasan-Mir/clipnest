@@ -634,8 +634,19 @@ pub fn delete_expired(conn: &Connection) -> usize {
     conn.execute("DELETE FROM clips WHERE expires_at IS NOT NULL AND expires_at<?1", params![now_ms()]).unwrap_or(0)
 }
 
-pub fn erase_history(conn: &Connection) -> Result<(), String> {
-    conn.execute("DELETE FROM clips WHERE pinned=0 AND pinboard_id IS NULL", []).map(|_| ()).map_err(|e| e.to_string())
+/// Erases clipboard history.
+/// - When `include_pinned` is `true`, deletes ALL clips (including `pinned = 1` and pinboard items).
+/// - When `include_pinned` is `false`, deletes all unpinned clips (`pinned = 0`) that are either in
+///   the main history (`pinboard_id IS NULL`) or in the currently active pinboard (`active_pinboard`).
+pub fn erase_history(conn: &Connection, include_pinned: bool, active_pinboard: Option<i64>) -> Result<usize, String> {
+    if include_pinned {
+        conn.execute("DELETE FROM clips", []).map_err(|e| e.to_string())
+    } else if let Some(board_id) = active_pinboard {
+        conn.execute("DELETE FROM clips WHERE pinned=0 AND (pinboard_id IS NULL OR pinboard_id=?1)", params![board_id])
+            .map_err(|e| e.to_string())
+    } else {
+        conn.execute("DELETE FROM clips WHERE pinned=0 AND pinboard_id IS NULL", []).map_err(|e| e.to_string())
+    }
 }
 
 pub fn recent_apps(conn: &Connection) -> Vec<AppInfo> {
@@ -828,6 +839,38 @@ mod tests {
         assert_eq!(row.lang.as_deref(), Some("rust"));
         assert_eq!(row.kind, "code");
         assert_eq!(get_formats(&conn, id1).len(), 2);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn erase_history_respects_include_pinned_and_active_pinboard() {
+        let dir = std::env::temp_dir().join(format!("clipnest_db_erase_{}", now_ms()));
+        let mut conn = open_with_recovery(&dir).unwrap();
+
+        let c_normal = build_text_clip("normal item", None, "App", "app.exe", false);
+        let (id_normal, _) = insert_clip(&mut conn, &c_normal, &[text_format("normal item")]).unwrap();
+
+        let c_pinned = build_text_clip("pinned item", None, "App", "app.exe", false);
+        let (id_pinned, _) = insert_clip(&mut conn, &c_pinned, &[text_format("pinned item")]).unwrap();
+        set_pinned(&conn, &[id_pinned], true).unwrap();
+
+        let bid = create_pinboard(&conn, "TestBoard", "#4f8cff").unwrap();
+        let c_board = build_text_clip("board item", None, "App", "app.exe", false);
+        let (id_board, _) = insert_clip(&mut conn, &c_board, &[text_format("board item")]).unwrap();
+        set_pinboard(&conn, &[id_board], Some(bid)).unwrap();
+
+        // 1. Erase with include_pinned=false and active_pinboard=Some(bid): deletes normal + unpinned active-board item, keeps pinned
+        let deleted = erase_history(&conn, false, Some(bid)).unwrap();
+        assert_eq!(deleted, 2);
+        assert!(get_row(&conn, id_normal).is_none());
+        assert!(get_row(&conn, id_board).is_none());
+        assert!(get_row(&conn, id_pinned).is_some());
+
+        // 2. Erase with include_pinned=true: deletes everything including pinned
+        let deleted_all = erase_history(&conn, true, None).unwrap();
+        assert_eq!(deleted_all, 1);
+        assert!(get_row(&conn, id_pinned).is_none());
 
         let _ = std::fs::remove_dir_all(&dir);
     }

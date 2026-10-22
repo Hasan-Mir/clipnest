@@ -89,12 +89,18 @@ export interface Status {
     popup_pinned: boolean;
 }
 
+export interface ShortcutConflict {
+    status: 'ok' | 'conflict_app' | 'conflict_os' | 'hook_override' | 'invalid';
+    message: string;
+}
+
 export interface Settings {
     language: string;
     store_rich: boolean;
     list_style: 'rich' | 'plain';
     rules: AutoRule[];
     autostart: boolean;
+    explorer_context_menu: boolean;
     max_items: number;
     retention_days: number;
     max_image_mb: number;
@@ -114,11 +120,13 @@ export interface Settings {
     sensitive_action: 'mask' | 'mask_delete' | 'skip';
     sensitive_ttl_min: number;
     capture_protection: 'off' | 'black' | 'hidden';
-    theme: 'dark' | 'light' | 'oled';
+    theme: 'system' | 'dark' | 'light' | 'oled';
     accent: string;
     density: 'compact' | 'comfortable';
     font_size: number;
+    font_family: string;
     card_lines: number;
+    card_max_height: number;
     popup_width: number;
     popup_height: number;
     popup_position: 'caret' | 'mouse' | 'center' | 'last';
@@ -203,13 +211,21 @@ export const api = {
     showPopup: () => invoke<void>('show_popup_cmd'),
     hidePopup: () => invoke<void>('hide_popup'),
     hideTray: () => invoke<void>('hide_tray'),
+    resizeTray: (height: number) => invoke<void>('resize_tray', { height }),
     requestEraseFromTray: () => invoke<void>('request_erase_from_tray'),
     openSettings: () => invoke<void>('open_settings'),
-    eraseHistory: () => invoke<void>('erase_history'),
+    eraseHistory: (includePinned = false) => invoke<number>('erase_history', { includePinned }),
     backupNow: () => invoke<string>('backup_now'),
     openDataDir: () => invoke<void>('open_data_dir'),
     recentApps: () => invoke<AppInfo[]>('recent_apps'),
     quit: () => invoke<void>('quit_app'),
+    listSystemFonts: () => invoke<string[]>('list_system_fonts'),
+    checkShortcutConflict: (shortcut: string, role: string) =>
+        invoke<ShortcutConflict>('check_shortcut_conflict', { shortcut, role }),
+    getExplorerTarget: () => invoke<string | null>('get_explorer_target'),
+    clearExplorerTarget: () => invoke<void>('clear_explorer_target'),
+    pasteFilesToFolder: (ids: number[], folder: string) =>
+        invoke<number>('paste_files_to_folder', { ids, folder }),
 };
 
 export function on(event: string, cb: () => void): Promise<UnlistenFn> {

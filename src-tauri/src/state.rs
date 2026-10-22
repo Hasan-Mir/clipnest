@@ -56,6 +56,7 @@ pub struct Settings {
     pub rules: Vec<AutoRule>,
     // General
     pub autostart: bool,
+    pub explorer_context_menu: bool,
     pub max_items: u32,
     pub retention_days: u32,
     pub max_image_mb: u32,
@@ -82,7 +83,9 @@ pub struct Settings {
     pub accent: String,
     pub density: String,
     pub font_size: u32,
+    pub font_family: String,
     pub card_lines: u32,
+    pub card_max_height: u32,
     pub popup_width: u32,
     pub popup_height: u32,
     pub popup_position: String,
@@ -120,6 +123,7 @@ impl Default for Settings {
             list_style: "rich".into(),
             rules: vec![],
             autostart: false,
+            explorer_context_menu: true,
             max_items: 5000,
             retention_days: 0,
             max_image_mb: 25,
@@ -157,7 +161,9 @@ impl Default for Settings {
             accent: "#4f8cff".into(),
             density: "compact".into(),
             font_size: 13,
+            font_family: String::new(),
             card_lines: 4,
+            card_max_height: 160,
             popup_width: 400,
             popup_height: 560,
             popup_position: "caret".into(),
@@ -168,7 +174,7 @@ impl Default for Settings {
             thumbnail_size: "medium".into(),
             virtual_scroll: true,
             highlight_matches: true,
-            highlight_color: "#2ea8ff".into(),
+            highlight_color: "accent".into(),
             highlight_bg: "transparent".into(),
             shortcut_open: "Super+V".into(),
             shortcut_queue: "Ctrl+Alt+Q".into(),
@@ -242,9 +248,12 @@ pub struct AppState {
     pub hook_actions: Mutex<Vec<(u32, HotAction)>>,
     pub queue_sc: Mutex<Option<Shortcut>>,
     pub popup_shown_at: AtomicI64,
+    pub tray_shown_at: AtomicI64,
     pub suppress_blur: AtomicBool,
     pub popup_pinned: AtomicBool,
     pub last_pos: Mutex<Option<(i32, i32)>>,
+    /// Folder path when opened from Windows File Explorer context menu.
+    pub explorer_target_dir: Mutex<Option<String>>,
 }
 
 impl AppState {
@@ -262,9 +271,11 @@ impl AppState {
             hook_actions: Mutex::new(vec![]),
             queue_sc: Mutex::new(None),
             popup_shown_at: AtomicI64::new(0),
+            tray_shown_at: AtomicI64::new(0),
             suppress_blur: AtomicBool::new(false),
             popup_pinned: AtomicBool::new(false),
             last_pos: Mutex::new(None),
+            explorer_target_dir: Mutex::new(None),
         }
     }
 

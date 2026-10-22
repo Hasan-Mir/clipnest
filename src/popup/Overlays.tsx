@@ -1,9 +1,10 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { autoUpdate, flip, offset, shift, size, useFloating } from '@floating-ui/react';
 import { Pinboard } from '../lib/api';
 import { CustomSelect } from '../lib/CustomSelect';
 import { t } from '../lib/i18n';
 
-// ───────────── context menu ─────────────
+// ───────────── context menu (powered by @floating-ui/react) ─────────────
 export interface MenuEntry {
     label?: string;
     hint?: string;
@@ -26,21 +27,50 @@ export function ContextMenu({
     entries: MenuEntry[];
     onClose: () => void;
 }) {
-    const ref = useRef<HTMLDivElement>(null);
-    const [pos, setPos] = useState({ x, y });
-    const [open, setOpen] = useState<number | null>(null);
-    const [rect, setRect] = useState<DOMRect | null>(null);
+    const [openSub, setOpenSub] = useState<number | null>(null);
+    const [subAnchor, setSubAnchor] = useState<DOMRect | null>(null);
+
+    const { refs, floatingStyles } = useFloating({
+        open: true,
+        placement: 'bottom-start',
+        strategy: 'fixed',
+        whileElementsMounted: autoUpdate,
+        middleware: [
+            offset(2),
+            flip({
+                fallbackPlacements: ['bottom-end', 'top-start', 'top-end'],
+                padding: 8,
+            }),
+            shift({ padding: 8 }),
+            size({
+                padding: 8,
+                apply({ availableHeight, availableWidth, elements }) {
+                    Object.assign(elements.floating.style, {
+                        maxHeight: `${Math.max(100, availableHeight)}px`,
+                        maxWidth: `${Math.max(180, availableWidth)}px`,
+                    });
+                },
+            }),
+        ],
+    });
+
     useLayoutEffect(() => {
-        const el = ref.current;
-        if (!el) {
-            return;
-        }
-        const r = el.getBoundingClientRect();
-        setPos({
-            x: Math.max(4, Math.min(x, window.innerWidth - r.width - 4)),
-            y: Math.max(4, Math.min(y, window.innerHeight - r.height - 4)),
+        refs.setPositionReference({
+            getBoundingClientRect() {
+                return {
+                    width: 0,
+                    height: 0,
+                    x,
+                    y,
+                    top: y,
+                    left: x,
+                    right: x,
+                    bottom: y,
+                };
+            },
         });
-    }, [x, y, entries]);
+    }, [x, y, refs]);
+
     return (
         <>
             <div
@@ -51,7 +81,16 @@ export function ContextMenu({
                     onClose();
                 }}
             />
-            <div className="menu" ref={ref} style={{ left: pos.x, top: pos.y }}>
+            <div
+                className="menu"
+                ref={refs.setFloating}
+                style={floatingStyles}
+                onScroll={() => {
+                    if (openSub !== null) {
+                        setOpenSub(null);
+                    }
+                }}
+            >
                 {entries.map((e, i) => {
                     if (e.sep) {
                         return <div key={i} className="menu-sep" />;
@@ -69,6 +108,7 @@ export function ContextMenu({
                                 {e.chips.map((c, j) => (
                                     <button
                                         key={j}
+                                        type="button"
                                         className="chip"
                                         onClick={() => {
                                             c.onClick();
@@ -76,7 +116,7 @@ export function ContextMenu({
                                         }}
                                     >
                                         {c.color && <span className="dot" style={{ background: c.color }} />}
-                                        {c.label}
+                                        <span>{c.label}</span>
                                     </button>
                                 ))}
                             </div>
@@ -88,14 +128,14 @@ export function ContextMenu({
                                 key={i}
                                 className="menu-item has-sub"
                                 onMouseEnter={(ev) => {
-                                    setOpen(i);
-                                    setRect(ev.currentTarget.getBoundingClientRect());
+                                    setOpenSub(i);
+                                    setSubAnchor(ev.currentTarget.getBoundingClientRect());
                                 }}
                             >
-                                <span>{e.label}</span>
+                                <span className="menu-item-label">{e.label}</span>
                                 <span className="hint">▸</span>
-                                {open === i && rect && (
-                                    <SubMenu anchor={rect} entries={e.submenu} onPick={onClose} />
+                                {openSub === i && subAnchor && (
+                                    <SubMenu anchor={subAnchor} entries={e.submenu} onPick={onClose} />
                                 )}
                             </div>
                         );
@@ -104,13 +144,13 @@ export function ContextMenu({
                         <div
                             key={i}
                             className={`menu-item${e.danger ? ' danger' : ''}`}
-                            onMouseEnter={() => setOpen(null)}
+                            onMouseEnter={() => setOpenSub(null)}
                             onClick={() => {
                                 e.onClick?.();
                                 onClose();
                             }}
                         >
-                            <span>{e.label}</span>
+                            <span className="menu-item-label">{e.label}</span>
                             {e.hint && <span className="hint">{e.hint}</span>}
                         </div>
                     );
@@ -120,49 +160,56 @@ export function ContextMenu({
     );
 }
 
-/** Fixed-position sub-menu: opens to the right if there is room, otherwise to the left, and is
- *  always clamped inside the window (the popup is only ~400px wide). */
+/**
+ * Collision-aware submenu powered by @floating-ui/react: opens to the right if there is room,
+ * otherwise flips to the left or top/bottom, and scrolls cleanly inside small popup windows.
+ */
 function SubMenu({ anchor, entries, onPick }: { anchor: DOMRect; entries: MenuEntry[]; onPick: () => void }) {
-    const ref = useRef<HTMLDivElement>(null);
-    const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+    const { refs, floatingStyles } = useFloating({
+        open: true,
+        placement: 'right-start',
+        strategy: 'fixed',
+        whileElementsMounted: autoUpdate,
+        middleware: [
+            offset(-4),
+            flip({
+                fallbackPlacements: ['left-start', 'right-end', 'left-end', 'bottom-start', 'top-start'],
+                padding: 8,
+            }),
+            shift({ padding: 8 }),
+            size({
+                padding: 8,
+                apply({ availableHeight, availableWidth, elements }) {
+                    Object.assign(elements.floating.style, {
+                        maxHeight: `${Math.max(100, availableHeight)}px`,
+                        maxWidth: `${Math.max(180, availableWidth)}px`,
+                    });
+                },
+            }),
+        ],
+    });
+
     useLayoutEffect(() => {
-        const el = ref.current;
-        if (!el) {
-            return;
-        }
-        const w = el.offsetWidth;
-        const h = el.offsetHeight;
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-        let left = anchor.right - 6;
-        if (left + w > vw - 4) {
-            left = anchor.left - w + 6;
-        }
-        left = Math.max(4, Math.min(left, vw - w - 4));
-        const top = Math.max(4, Math.min(anchor.top - 6, vh - h - 4));
-        setPos({ left, top });
-    }, [anchor]);
+        refs.setPositionReference({
+            getBoundingClientRect() {
+                return anchor;
+            },
+        });
+    }, [anchor, refs]);
+
     return (
-        <div
-            className="menu sub"
-            ref={ref}
-            style={{
-                position: 'fixed',
-                left: pos ? pos.left : -9999,
-                top: pos ? pos.top : 0,
-                maxHeight: window.innerHeight - 8,
-            }}
-        >
+        <div className="menu sub" ref={refs.setFloating} style={floatingStyles}>
             {entries.map((s, j) => (
                 <div
                     key={j}
                     className="menu-item"
-                    onClick={() => {
+                    onClick={(ev) => {
+                        ev.stopPropagation();
                         s.onClick?.();
                         onPick();
                     }}
                 >
-                    <span>{s.label}</span>
+                    <span className="menu-item-label">{s.label}</span>
                 </div>
             ))}
         </div>
@@ -175,12 +222,16 @@ export interface PromptState {
     initial?: string;
     placeholder?: string;
     confirm?: boolean; // confirm-only (no text field)
+    checkLabel?: string; // optional checkbox (e.g. "Also erase pinned items and pinboards")
+    defaultChecked?: boolean;
     okLabel?: string;
-    onSubmit: (value: string) => void;
+    danger?: boolean;
+    onSubmit: (value: string, checked: boolean) => void;
 }
 
 export function Prompt({ p, onClose }: { p: PromptState; onClose: () => void }) {
     const [v, setV] = useState(p.initial ?? '');
+    const [checked, setChecked] = useState(Boolean(p.defaultChecked));
     const ref = useRef<HTMLInputElement>(null);
     const dialogRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
@@ -192,7 +243,7 @@ export function Prompt({ p, onClose }: { p: PromptState; onClose: () => void }) 
         }
     }, [p.confirm]);
     const submit = () => {
-        p.onSubmit(v);
+        p.onSubmit(v, checked);
         onClose();
     };
     return (
@@ -223,11 +274,26 @@ export function Prompt({ p, onClose }: { p: PromptState; onClose: () => void }) 
                         onChange={(e) => setV(e.target.value)}
                     />
                 )}
+                {p.checkLabel && (
+                    <label className="dialog-check">
+                        <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => setChecked(e.target.checked)}
+                        />
+                        <span>{p.checkLabel}</span>
+                    </label>
+                )}
                 <div className="dialog-actions">
-                    <button className="btn" onClick={onClose}>
+                    <button type="button" className="btn" onClick={onClose}>
                         {t('Cancel')}
                     </button>
-                    <button className="btn primary" autoFocus={p.confirm} onClick={submit}>
+                    <button
+                        type="button"
+                        className={`btn ${p.danger ? 'danger-solid' : 'primary'}`}
+                        autoFocus={p.confirm}
+                        onClick={submit}
+                    >
                         {p.okLabel ?? t('OK')}
                     </button>
                 </div>
@@ -371,10 +437,10 @@ export function BoardDialog({
                     />
                 </label>
                 <div className="dialog-actions">
-                    <button className="btn" onClick={onClose}>
+                    <button type="button" className="btn" onClick={onClose}>
                         {t('Cancel')}
                     </button>
-                    <button className="btn primary" onClick={save}>
+                    <button type="button" className="btn primary" onClick={save}>
                         {t('Save')}
                     </button>
                 </div>

@@ -6,7 +6,8 @@
 //!    with verified safe move (Cut) support.
 
 use crate::capture::build_hdrop;
-use crate::db::{self, ClipRow};
+use crate::classify;
+use crate::db::{self, ClipRow, NewClip, StoredFormat};
 use crate::platform::win;
 use crate::state::{AppState, BasketEntry};
 use std::path::{Path, PathBuf};
@@ -69,23 +70,29 @@ pub fn push_captured(app: &AppHandle, id: i64, kind: &str, is_cut: bool) {
     sync_intercept(app);
 }
 
+pub fn close_queue(app: &AppHandle) {
+    {
+        let st = app.state::<AppState>();
+        let mut q = st.queue.lock();
+        q.active = false;
+        q.items.clear();
+        q.basket.clear();
+    }
+    crate::windowing::hide_queue(app);
+    changed(app);
+    sync_intercept(app);
+}
+
 pub fn toggle(app: &AppHandle) {
     let active = app.state::<AppState>().queue.lock().active;
     if active {
-        {
-            let st = app.state::<AppState>();
-            let mut q = st.queue.lock();
-            q.active = false;
-            q.items.clear();
-            q.basket.clear();
-        }
-        crate::windowing::hide_queue(app);
+        close_queue(app);
     } else {
         app.state::<AppState>().queue.lock().active = true;
         crate::windowing::show_queue(app);
+        changed(app);
+        sync_intercept(app);
     }
-    changed(app);
-    sync_intercept(app);
 }
 
 pub fn set_mode(app: &AppHandle, mode: &str) {
@@ -207,7 +214,6 @@ pub fn basket_paste_here(app: &AppHandle) -> Result<usize, String> {
         return Err("No valid files or images found in Drop Basket".into());
     }
     let hdrop_bytes = build_hdrop(&all_paths);
-    // DROPEFFECT_MOVE = 2, DROPEFFECT_COPY = 1. Use MOVE only when cut is requested and no temp images are mixed in, or when all items can be moved.
     let drop_effect: u32 = if any_cut && allow_cut && !has_temp_image { 2 } else { 1 };
     let pref_id = win::register_format("Preferred DropEffect");
     let mut clip_items = vec![(win::CF_HDROP_ID, "CF_HDROP".to_string(), hdrop_bytes)];
@@ -302,28 +308,16 @@ fn copy_dir_verified(src: &Path, dst: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Batch "Paste All to Folder…": opens a native folder picker dialog and copies/moves all
-/// collected files, directories, and browser images into that folder. Original files marked CUT
-/// are deleted ONLY after the destination copy completes and its exact byte size is verified on disk.
-pub fn basket_paste_to_folder(app: &AppHandle) -> Result<Option<usize>, String> {
-    use tauri_plugin_dialog::DialogExt;
+/// Transfers a list of BasketEntry items into `dest_dir` with verified copy/move semantics.
+pub fn transfer_entries_to_dir(app: &AppHandle, entries: &[BasketEntry], dest_dir: &Path) -> Result<usize, String> {
     let st = app.state::<AppState>();
     let allow_cut = st.settings.read().basket_allow_cut;
-    let basket = st.queue.lock().basket.clone();
-    if basket.is_empty() {
-        return Ok(Some(0));
-    }
-    let picked = app.dialog().file().blocking_pick_folder();
-    let Some(picked) = picked else {
-        return Ok(None);
-    };
-    let dest_dir = picked.into_path().map_err(|e| e.to_string())?;
-    std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(dest_dir).map_err(|e| e.to_string())?;
 
     let mut transferred = 0usize;
     let mut completed_cut_ids: Vec<i64> = Vec::new();
 
-    for entry in &basket {
+    for entry in entries {
         let item_data = {
             let conn = st.db.lock();
             db::get_plain(&conn, entry.id).map(|(k, p)| {
@@ -339,7 +333,7 @@ pub fn basket_paste_to_folder(app: &AppHandle) -> Result<Option<usize>, String> 
                 continue;
             };
             let fname = format!("clipnest-image-{}-{}.png", entry.id, db::now_ms());
-            let dst = unique_dest_path(&dest_dir, &fname, None);
+            let dst = unique_dest_path(dest_dir, &fname, None);
             {
                 use std::io::Write;
                 let mut f = std::fs::File::create(&dst).map_err(|e| e.to_string())?;
@@ -363,7 +357,7 @@ pub fn basket_paste_to_folder(app: &AppHandle) -> Result<Option<usize>, String> 
                     all_paths_ok = false;
                     continue;
                 };
-                let dst = unique_dest_path(&dest_dir, &fname, Some(&src));
+                let dst = unique_dest_path(dest_dir, &fname, Some(&src));
                 if same_canonical_path(&src, &dst) {
                     transferred += 1;
                     continue;
@@ -402,6 +396,105 @@ pub fn basket_paste_to_folder(app: &AppHandle) -> Result<Option<usize>, String> 
         changed(app);
     }
 
+    Ok(transferred)
+}
+
+/// Copies the specified clip IDs (files, folders, or images) directly into `dest_dir`.
+pub fn paste_clips_to_dir(app: &AppHandle, ids: &[i64], dest_dir: &Path) -> Result<usize, String> {
+    let entries: Vec<BasketEntry> = ids.iter().map(|&id| BasketEntry { id, cut: false }).collect();
+    transfer_entries_to_dir(app, &entries, dest_dir)
+}
+
+/// Pastes all items currently in the Drop Basket into `dest_dir` (or falls back to the most recent file/image clip).
+pub fn paste_basket_to_dir(app: &AppHandle, dest_dir: &Path) -> Result<usize, String> {
+    let st = app.state::<AppState>();
+    let basket = st.queue.lock().basket.clone();
+    if !basket.is_empty() {
+        return transfer_entries_to_dir(app, &basket, dest_dir);
+    }
+    let latest_id: Option<i64> = st
+        .db
+        .lock()
+        .query_row("SELECT id FROM clips WHERE kind IN ('file','image') ORDER BY sort_ts DESC LIMIT 1", [], |r| {
+            r.get(0)
+        })
+        .ok();
+    if let Some(id) = latest_id {
+        return paste_clips_to_dir(app, &[id], dest_dir);
+    }
+    Ok(0)
+}
+
+/// Adds a file/folder path selected from Windows File Explorer context menu into the Drop Basket.
+pub fn collect_file_from_explorer(app: &AppHandle, path_str: &str) -> Result<i64, String> {
+    let p = Path::new(path_str.trim());
+    if !p.exists() {
+        return Err(format!("Path does not exist: {path_str}"));
+    }
+    let clean_path = p.to_string_lossy().to_string();
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"f\0");
+    hasher.update(clean_path.as_bytes());
+    let hash = hasher.finalize().to_hex().to_string();
+    let preview: String = clean_path.chars().take(800).collect();
+    let hdrop = build_hdrop(&[clean_path.clone()]);
+    let clip = NewClip {
+        hash,
+        kind: "file".into(),
+        plain: clean_path.clone(),
+        preview,
+        search: classify::normalize(&clean_path),
+        app_name: "Explorer".into(),
+        app_exe: "explorer.exe".into(),
+        lang: None,
+        img_w: None,
+        img_h: None,
+        color: None,
+        chars: clean_path.chars().count() as i64,
+        file_count: Some(1),
+        sensitive: false,
+        has_rich: false,
+        expires_at: None,
+        thumb: None,
+    };
+    let fmts = vec![StoredFormat { fmt_id: win::CF_HDROP_ID, name: "CF_HDROP".into(), data: hdrop }];
+    let st = app.state::<AppState>();
+    let id = {
+        let mut conn = st.db.lock();
+        let (id, _) = db::insert_clip(&mut conn, &clip, &fmts)?;
+        id
+    };
+    {
+        let mut q = st.queue.lock();
+        q.active = true;
+        q.mode = "basket".into();
+        if !q.basket.iter().any(|e| e.id == id) {
+            q.basket.push(BasketEntry { id, cut: false });
+        }
+    }
+    crate::windowing::show_queue(app);
+    let _ = app.emit("items-changed", ());
+    changed(app);
+    sync_intercept(app);
+    Ok(id)
+}
+
+/// Batch "Paste All to Folder…": opens a native folder picker dialog and copies/moves all
+/// collected files, directories, and browser images into that folder. Original files marked CUT
+/// are deleted ONLY after the destination copy completes and its exact byte size is verified on disk.
+pub fn basket_paste_to_folder(app: &AppHandle) -> Result<Option<usize>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let st = app.state::<AppState>();
+    let basket = st.queue.lock().basket.clone();
+    if basket.is_empty() {
+        return Ok(Some(0));
+    }
+    let picked = app.dialog().file().blocking_pick_folder();
+    let Some(picked) = picked else {
+        return Ok(None);
+    };
+    let dest_dir = picked.into_path().map_err(|e| e.to_string())?;
+    let transferred = transfer_entries_to_dir(app, &basket, &dest_dir)?;
     Ok(Some(transferred))
 }
 

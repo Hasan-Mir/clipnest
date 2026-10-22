@@ -7,7 +7,7 @@ use tauri::{
     AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
 
-fn hwnd_of(w: &WebviewWindow) -> Option<isize> {
+pub fn hwnd_of(w: &WebviewWindow) -> Option<isize> {
     w.hwnd().ok().map(|h| h.0 as isize)
 }
 
@@ -80,7 +80,10 @@ pub fn show_popup(app: &AppHandle, mode: Option<&str>, from_tray: bool) {
         anchor(&mode)
     };
 
-    let _ = w.set_size(LogicalSize::new(s.popup_width as f64, s.popup_height as f64));
+    let pw = s.popup_width.max(340) as f64;
+    let ph = s.popup_height.max(380) as f64;
+    let _ = w.set_min_size(Some(LogicalSize::new(340.0, 380.0)));
+    let _ = w.set_size(LogicalSize::new(pw, ph));
     let size = w.outer_size().map(|s| (s.width as i32, s.height as i32)).unwrap_or((420, 600));
     let (l, t, r, b) = win::work_area_at(ax, atop);
     let place = |size: (i32, i32)| -> (i32, i32) {
@@ -123,6 +126,7 @@ pub fn show_popup(app: &AppHandle, mode: Option<&str>, from_tray: bool) {
         win::focus_window(h);
     }
     let _ = w.set_focus();
+    st.popup_shown_at.store(crate::db::now_ms(), Ordering::SeqCst);
     let _ = app.emit("popup-shown", ());
 }
 
@@ -132,22 +136,23 @@ fn ensure_window(app: &AppHandle, label: &str) -> Option<WebviewWindow> {
     }
     let base = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into()));
     let built = if label == "settings" {
-        base.title("ClipNest Settings").inner_size(880.0, 680.0).min_inner_size(720.0, 540.0).center().build()
+        base.title("ClipNest Settings").inner_size(900.0, 680.0).min_inner_size(740.0, 520.0).center().build()
     } else if label == "tray" {
         base.title("ClipNest Menu")
-            .inner_size(240.0, 340.0)
+            .inner_size(246.0, 276.0)
             .decorations(false)
             .resizable(false)
             .always_on_top(true)
             .skip_taskbar(true)
-            .focused(true)
+            .focused(false)
             .visible(false)
             .build()
     } else {
         base.title("Paste Queue")
             .inner_size(310.0, 380.0)
+            .min_inner_size(280.0, 280.0)
             .decorations(false)
-            .resizable(false)
+            .resizable(true)
             .always_on_top(true)
             .skip_taskbar(true)
             .focused(false)
@@ -156,6 +161,11 @@ fn ensure_window(app: &AppHandle, label: &str) -> Option<WebviewWindow> {
     };
     match built {
         Ok(w) => {
+            if label == "queue" {
+                if let Some(h) = hwnd_of(&w) {
+                    win::make_no_activate(h);
+                }
+            }
             apply_protection_to(app, &w);
             Some(w)
         }
@@ -164,6 +174,12 @@ fn ensure_window(app: &AppHandle, label: &str) -> Option<WebviewWindow> {
             None
         }
     }
+}
+
+/// Pre-creates the hidden tray window on startup so the first right-click on the tray icon is instant
+/// and never suffers from cold-start WebView focus loss.
+pub fn init_background_windows(app: &AppHandle) {
+    let _ = ensure_window(app, "tray");
 }
 
 pub fn open_settings(app: &AppHandle) {
@@ -203,9 +219,12 @@ pub fn hide_queue(app: &AppHandle) {
 
 pub fn show_tray(app: &AppHandle) {
     let Some(w) = ensure_window(app, "tray") else { return };
+    let st = app.state::<AppState>();
+    st.tray_shown_at.store(crate::db::now_ms(), Ordering::SeqCst);
+
     let (cx, cy) = win::cursor_pos();
     let (l, t, r, b) = win::work_area_at(cx, cy);
-    let size = w.outer_size().map(|s| (s.width as i32, s.height as i32)).unwrap_or((240, 340));
+    let size = w.outer_size().map(|s| (s.width as i32, s.height as i32)).unwrap_or((246, 276));
     let mut x = cx - size.0 / 2;
     let mut y = cy - size.1 - 8;
     if y < t + 8 {
@@ -219,7 +238,14 @@ pub fn show_tray(app: &AppHandle) {
         win::focus_window(h);
     }
     let _ = w.set_focus();
+    st.tray_shown_at.store(crate::db::now_ms(), Ordering::SeqCst);
     let _ = app.emit("tray-shown", ());
+}
+
+pub fn resize_tray(app: &AppHandle, height: u32) {
+    let Some(w) = app.get_webview_window("tray") else { return };
+    let clamped = height.clamp(180, 460) as f64;
+    let _ = w.set_size(LogicalSize::new(246.0, clamped));
 }
 
 pub fn hide_tray(app: &AppHandle) {

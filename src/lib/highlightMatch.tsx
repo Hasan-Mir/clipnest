@@ -260,6 +260,18 @@ export function findMatchSpans(text: string, query: string, mode: SearchMode): [
 }
 
 /**
+ * Strips FTS5 column prefixes (`content:`, `ocr:`, `notes:`, `app:`) and boolean syntax
+ * (`AND`, `OR`, `NOT`, `*`, `^`, quotes, parens) before highlighting search terms.
+ */
+export function cleanFtsQuery(query: string): string {
+    return query
+        .replace(/\b(?:content|ocr|notes|app|title|tags):/gi, ' ')
+        .replace(/\b(?:AND|OR|NOT)\b/g, ' ')
+        .replace(/["()*^]+/g, ' ')
+        .trim();
+}
+
+/**
  * Slices `text` into plain strings and `<mark className="shl">` nodes without breaking
  * Persian or Arabic cursive letter joining.
  */
@@ -294,6 +306,25 @@ export function highlightText(
         nodes.push(text.slice(cursor));
     }
     return nodes;
+}
+
+/**
+ * Convenience wrapper for smart search match highlighting with FTS5 syntax stripping.
+ */
+export function highlightMatch(
+    text: string,
+    query: string,
+    mode: SearchMode = 'smart',
+    enabled = true
+): React.ReactNode {
+    if (!enabled || !text || !query.trim()) {
+        return text;
+    }
+    const cleaned = mode === 'smart' ? cleanFtsQuery(query) : query;
+    if (!cleaned) {
+        return text;
+    }
+    return highlightText(text, cleaned, mode, enabled);
 }
 
 /**

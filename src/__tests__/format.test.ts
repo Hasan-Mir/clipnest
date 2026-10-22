@@ -52,9 +52,12 @@ describe('Formatting, localization, and layout utilities', () => {
     });
 
     describe('contrastOn', () => {
-        it('returns dark text (#000) for bright background colors and light text (#fff) for dark colors', () => {
+        it('returns dark text (#000) for bright background colors (including neon green #11ff00 and yellow) and light text (#fff) for darker colors', () => {
             expect(contrastOn('#FFFFFF')).toBe('#000');
+            expect(contrastOn('#11ff00')).toBe('#000');
+            expect(contrastOn('rgb(17, 255, 0)')).toBe('#000');
             expect(contrastOn('#FACC15')).toBe('#000');
+            expect(contrastOn('#4f8cff')).toBe('#fff');
             expect(contrastOn('#000000')).toBe('#fff');
             expect(contrastOn('#1E293B')).toBe('#fff');
         });

@@ -1,5 +1,7 @@
 import React from 'react';
 import {
+    AlertTriangle,
+    BookOpen,
     Check,
     ChevronDown,
     ChevronUp,
@@ -11,6 +13,7 @@ import {
     List,
     LucideProps,
     MoreHorizontal,
+    PanelRight,
     Pause,
     Pencil,
     Pin,
@@ -51,7 +54,10 @@ export type IconName =
     | 'richText'
     | 'folder'
     | 'basket'
-    | 'reset';
+    | 'reset'
+    | 'sidebar'
+    | 'help'
+    | 'warning';
 
 const ICON_MAP: Record<IconName, React.ComponentType<LucideProps>> = {
     search: Search,
@@ -78,6 +84,9 @@ const ICON_MAP: Record<IconName, React.ComponentType<LucideProps>> = {
     folder: Folder,
     basket: ShoppingBasket,
     reset: RotateCcw,
+    sidebar: PanelRight,
+    help: BookOpen,
+    warning: AlertTriangle,
 };
 
 export function Icon({ name, size = 14 }: { name: IconName | string; size?: number }) {

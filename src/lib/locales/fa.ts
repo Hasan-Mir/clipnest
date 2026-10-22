@@ -13,14 +13,26 @@ export const FA: Record<string, string> = {
     '0 = forever.': '۰ = برای همیشه.',
     '0 = unlimited. Pinned and pinboard items are never removed.':
         '۰ = نامحدود. آیتم‌های پین‌شده و داخل Pinboard ها هرگز حذف نمی‌شوند.',
+    '100% Local & Private': '۱۰۰٪ محلی و خصوصی',
+    About: 'درباره برنامه',
     'Accent colour': 'رنگ تأکیدی',
+    'Choose the primary highlight colour for borders, badges, active controls, and default search highlights.':
+        'رنگ اصلی برنامه برای کادرها، نشان‌ها، دکمه‌های فعال و هایلایت پیش‌فرض جستجو را انتخاب کنید.',
     'Action finished': 'اکشن انجام شد',
     'Action finished: new item': 'اکشن انجام شد: آیتم جدید ساخته شد',
     'Actions ▸': 'اکشن‌ها ▸',
     Active: 'فعال',
+    'Active and available': 'فعال و بدون تداخل',
     'Active pinboard (new copies go here)': 'Pinboard فعال (کپی‌های جدید به اینجا می‌روند)',
     Add: 'افزودن',
     'Add tag': 'افزودن برچسب',
+    'Adds ClipNest to the right-click context menu of folders and files in Windows Explorer to view and paste copied files or collect files into the Drop Basket.':
+        'برنامه‌ی ClipNest را به منوی راست‌کلیک پوشه‌ها و فایل‌ها در File Explorer ویندوز اضافه می‌کند تا بتوانید فایل‌های کپی‌شده را ببینید و پیست کنید یا به سبد فایل بفرستید.',
+    'All clipboard data, icons, and backups are stored strictly on your device with zero cloud sync or telemetry.':
+        'تمامی داده‌های کلیپ‌بورد، آیکن‌ها و پشتیبان‌ها صرفاً روی دستگاه خودتان ذخیره می‌شوند و هیچ‌گونه ارسال داده به فضای ابری وجود ندارد.',
+    'Already registered by another running application or Windows':
+        'این میانبر توسط ویندوز یا برنامه‌ی دیگری اشغال شده است',
+    'Also erase pinned items and pinboards': 'آیتم‌های سنجاق‌شده (Pin) و داخل Pinboard ها هم پاک شوند',
     Appearance: 'ظاهر',
     'Applied instantly to the popup, queue and settings windows. Needs Windows 10 2004+ for “Invisible”. Does not work inside Remote Desktop sessions.':
         'فوراً روی پنجره‌ی اصلی، صف و تنظیمات اعمال می‌شود. حالت «نامرئی» به ویندوز ۱۰ نسخه‌ی 2004 به بالا نیاز دارد و در Remote Desktop کار نمی‌کند.',
@@ -31,6 +43,8 @@ export const FA: Record<string, string> = {
     'Automatically saves text changes in the inline preview editor after a short pause without requiring Ctrl+S.':
         'تغییرات متن در ویرایشگر پیش‌نمایش را پس از مکثی کوتاه به‌طور خودکار و بدون نیاز به Ctrl+S ذخیره می‌کند.',
     'Automatic rules': 'قوانین خودکار',
+    'Available (captured via low-level keyboard hook)': 'در دسترس (از طریق هوک سطح پایین کیبورد)',
+    'Available (no conflict in Windows)': 'در دسترس (بدون تداخل در ویندوز)',
     'Back up now': 'پشتیبان‌گیری همین حالا',
     'Backup & Data': 'پشتیبان و داده‌ها',
     'Backups to keep': 'تعداد پشتیبان‌های نگهداری‌شده',
@@ -45,10 +59,14 @@ export const FA: Record<string, string> = {
     'Card numbers (Luhn), API keys (sk-…, ghp_…, AKIA…), private keys, JWTs.':
         'شماره کارت (Luhn)، کلیدهای API (مثل sk-…، ghp_…، AKIA…)، کلیدهای خصوصی و JWT ها.',
     Case: 'حروف',
+    'Choose any installed system font on your computer for rendering clipboard cards and previews.':
+        'فونت دلخواه خود را از میان فونت‌های نصب‌شده روی ویندوز برای نمایش متن کارت‌ها و پیش‌نمایش انتخاب کنید.',
     'Choose how much vertical padding each card uses in the popup list.':
         'میزان فاصله‌ی عمودی داخل هر کارت در لیست را تعیین می‌کند.',
     'Choose the colour scheme for the popup, queue, and settings windows.':
         'پوسته‌ی رنگی پنجره‌ی اصلی، صف و تنظیمات را انتخاب کنید.',
+    'Choose the colour scheme for the popup, queue, and settings windows (System follows Windows Dark/Light mode automatically).':
+        'پوسته‌ی رنگی برنامه را انتخاب کنید (حالت سیستم به‌طور خودکار از حالت تیره یا روشن ویندوز پیروی می‌کند).',
     'Choose the primary highlight colour for borders, badges, and active controls.':
         'رنگ اصلی هایلایت برای کادرها، نشان‌ها و کنترل‌های فعال را انتخاب کنید.',
     'Choose the UI language and text direction (LTR / RTL).':
@@ -59,6 +77,7 @@ export const FA: Record<string, string> = {
     'Clear search, then close': 'پاک کردن جستجو، سپس بستن',
     'Clear the search to reorder items': 'برای جابه‌جایی کارت‌ها ابتدا جستجو را پاک کنید',
     'Click to toggle between Copy and Cut': 'برای تغییر بین کپی و انتقال (Cut) کلیک کنید',
+    'Clip items font family': 'فونت آیتم‌های لیست',
     Clipboard: 'کلیپ‌بورد',
     'Close (Esc)': 'بستن (Esc)',
     'Close queue': 'بستن صف',
@@ -66,6 +85,8 @@ export const FA: Record<string, string> = {
     Color: 'رنگ',
     Comfortable: 'راحت',
     Compact: 'فشرده',
+    'Conflicts with Windows system shortcut (Alt+Tab / Alt+F4)':
+        'تداخل با کلیدهای سیستمی ویندوز (Alt+Tab / Alt+F4)',
     'Copied {v}': 'کپی شد: {v}',
     Copy: 'کپی',
     'Copy & Paste': 'کپی و پیست',
@@ -77,6 +98,8 @@ export const FA: Record<string, string> = {
     'Create a compressed snapshot of the SQLite database right now.':
         'همین لحظه یک نسخه‌ی پشتیبان فشرده از دیتابیس SQLite می‌سازد.',
     'Create backup': 'ساخت پشتیبان',
+    'Create colour-coded Pinboards with + or Ctrl+N and drag cards onto any tab. Right-click a Pinboard tab and enable Active pinboard so all new copies go straight into that tab automatically.':
+        'با دکمه‌ی + یا Ctrl+N تب‌های Pinboard رنگی بسازید و کارت‌ها را روی آن‌ها بکشید. با راست‌کلیک روی هر تب و فعال‌سازی گزینه‌ی Pinboard فعال، تمام کپی‌های جدید مستقیماً وارد همان تب می‌شوند.',
     'Ctrl + Click on card': 'Ctrl + کلیک روی کارت',
     'Ctrl + Shift + Click on card': 'Ctrl + Shift + کلیک روی کارت',
     'Ctrl+S save · Esc cancel': 'Ctrl+S ذخیره · Esc انصراف',
@@ -93,11 +116,16 @@ export const FA: Record<string, string> = {
     'Database, settings.json and backups.': 'دیتابیس، فایل settings.json و پشتیبان‌ها.',
     'Decode JWT': 'رمزگشایی JWT',
     Default: 'پیش‌فرض',
+    'Default (Vazirmatn / System)': 'پیش‌فرض (وزیرمتن / سیستم)',
     'Default height of the popup window in logical pixels.':
         'ارتفاع پیش‌فرض پنجره‌ی اصلی بر حسب پیکسل منطقی.',
+    'Default height of the popup window in logical pixels (minimum 380 px).':
+        'ارتفاع پیش‌فرض پنجره‌ی اصلی بر حسب پیکسل (حداقل ۳۸۰ پیکسل).',
     'Default paste (Enter)': 'پیست پیش‌فرض (Enter)',
     'Default paste mode': 'حالت پیست پیش‌فرض',
     'Default width of the popup window in logical pixels.': 'عرض پیش‌فرض پنجره‌ی اصلی بر حسب پیکسل منطقی.',
+    'Default width of the popup window in logical pixels (minimum 340 px).':
+        'عرض پیش‌فرض پنجره‌ی اصلی بر حسب پیکسل (حداقل ۳۴۰ پیکسل).',
     Delete: 'حذف',
     'Delete "{name}" and its {n} item(s)?': '«{name}» و {n} آیتمِ آن حذف شود؟',
     'Delete (or unpin inside a pinboard)': 'حذف (داخل Pinboard: برداشتن از آن)',
@@ -118,9 +146,10 @@ export const FA: Record<string, string> = {
     'Enable subtle Notion-style transitions for menus, dialogs, and hover states.':
         'انیمیشن‌های نرم و مدرن به سبک Notion را برای منوها، دیالوگ‌ها و حالت‌های هاور فعال می‌کند.',
     Encode: 'کدگذاری',
+    'Engine & Architecture': 'موتور و معماری نرم‌افزار',
     English: 'English',
     Erase: 'پاک کن',
-    'Erase all history?': 'کل تاریخچه پاک شود؟ (آیتم‌های پین‌شده و Pinboard ها می‌مانند)',
+    'Erase all history?': 'پاک کردن تاریخچه‌ی کلیپ‌بورد؟',
     'Erase all unpinned history?': 'کل تاریخچه‌ی پین‌نشده پاک شود؟',
     'Erase history': 'پاک کردن تاریخچه',
     'Erase history…': 'پاک کردن تاریخچه…',
@@ -133,7 +162,10 @@ export const FA: Record<string, string> = {
     'Export history': 'خروجی گرفتن از تاریخچه',
     'Export…': 'خروجی…',
     'Farsi digits (۰۱۲۳۴۵۶۷۸۹)': 'ارقام فارسی (۰۱۲۳۴۵۶۷۸۹)',
+    'Fast, private clipboard manager & file collector for Windows 10 and 11.':
+        'مدیر کلیپ‌بورد و سبد فایل سریع، هوشمند و کاملاً خصوصی برای ویندوز ۱۰ و ۱۱.',
     'File path': 'مسیر فایل',
+    'Filter…': 'جستجو در لیست…',
     'First copied → first pasted': 'اولین کپی → اولین پیست',
     'Font size (px)': 'اندازه‌ی فونت (px)',
     'Base font size in pixels across the popup, queue, and settings windows.':
@@ -141,6 +173,9 @@ export const FA: Record<string, string> = {
     'Formats (Ctrl+I)': 'فرمت‌ها (Ctrl+I)',
     'Formats (MIME inspector)': 'فرمت‌ها (بازرس MIME)',
     General: 'عمومی',
+    'Getting started': 'شروع کار با برنامه',
+    'Global hotkey to pause or resume clipboard capturing.':
+        'کلید میانبر سراسری برای توقف یا ازسرگیری ثبت کلیپ‌بورد.',
     'Globalhotkey to pause or resume clipboard capturing.':
         'کلید میانبر سراسری برای توقف یا ازسرگیری ثبت کلیپ‌بورد.',
     'Global hotkey to open or close the Paste Queue / Drop Basket window.':
@@ -150,18 +185,23 @@ export const FA: Record<string, string> = {
     'Global hotkey to toggle between rich formatting and plain-text paste mode.':
         'کلید میانبر سراسری برای جابه‌جایی بین حالت پیست با استایل و متن ساده.',
     'Global shortcuts': 'کلیدهای میانبر سراسری',
+    'Help & Guide': 'راهنما و آموزش',
     'High Contrast': 'کنتراست بالا',
     'Highlight background color (e.g. #ffe043 for yellow marker)':
         'رنگ پس‌زمینه‌ی هایلایت (مثلاً #ffe043 برای ماژیک زرد)',
     'Background colour behind matched characters (use transparent for text-only highlight).':
         'رنگ پس‌زمینه زیر حروف منطبق در جستجو (برای هایلایت فقط متنی، transparent بگذارید).',
     'Highlight presets': 'پیش‌فرض‌های هایلایت',
+    'Quickly switch between Accent color match, VS Code blue, yellow marker background, or high contrast.':
+        'انتخاب سریع بین هم‌رنگ با رنگ اصلی برنامه، آبی VS Code ، ماژیک زرد یا کنتراست بالا.',
     'Quickly switch between VS Code text highlight, yellow marker background, or high contrast.':
         'انتخاب سریع بین هایلایت متنی به سبک VS Code ، ماژیک زرد یا کنتراست بالا.',
     'Highlight search matches': 'هایلایت کردن نتایج جستجو',
     'Highlights matched characters and words inside cards and previews while searching.':
         'هنگام جستجو، حروف و کلمات منطبق را داخل کارت‌ها و پیش‌نمایش هایلایت می‌کند.',
     'Highlight text color (transparent = keep text color)': 'رنگ متن هایلایت (transparent = حفظ رنگ متن)',
+    'Use “accent” to automatically follow your Accent colour, or pick any custom colour.':
+        'مقدار accent را بگذارید تا خودکار هم‌رنگ با رنگ تأکیدی برنامه شود، یا رنگ دلخواه انتخاب کنید.',
     'Text colour applied to matched characters when searching (e.g. #2ea8ff for VS Code blue).':
         'رنگ متن حروف منطبق هنگام جستجو (مثلاً #2ea8ff برای آبی VS Code).',
     'History erased': 'تاریخچه پاک شد',
@@ -183,6 +223,7 @@ export const FA: Record<string, string> = {
     'Include the Windows key': 'شامل کلید ویندوز',
     Info: 'اطلاعات',
     'Inside the popup': 'داخل پنجره‌ی برنامه',
+    'Invalid shortcut combination': 'ترکیب کلید میانبر نامعتبر است',
     'Invisible in captures': 'نامرئی در اسکرین‌شات',
     'Item type': 'نوع آیتم',
     'Join lines': 'چسباندن خطوط با فاصله',
@@ -204,6 +245,10 @@ export const FA: Record<string, string> = {
     Lines: 'خطوط',
     'List display': 'نمایش لیست',
     'Loading…': 'در حال بارگذاری…',
+    'Match Accent': 'هم‌رنگ با رنگ برنامه',
+    'Maximum card height (px)': 'حداکثر ارتفاع هر کارت (px)',
+    'Maximum vertical height of each card body in the list (60 to 600 px).':
+        'حداکثر ارتفاع عمودی محتوای هر کارت در لیست (بین ۶۰ تا ۶۰۰ پیکسل).',
     'Maximum height of image and media thumbnails inside cards.':
         'حداکثر ارتفاع پیش‌نمایش تصاویر و فایل‌های رسانه‌ای داخل کارت‌ها.',
     'Maximum history items': 'حداکثر آیتم تاریخچه',
@@ -235,6 +280,7 @@ export const FA: Record<string, string> = {
     'New pinboard': 'Pinboard جدید',
     'New pinboard (Ctrl+N)': 'Pinboard جدید (Ctrl+N)',
     'No change': 'تغییری نکرد',
+    'No conflict detected': 'بدون تداخل در سیستم',
     'No raw formats stored.': 'فرمت خامی ذخیره نشده است.',
     'Normalize chars & English digits (ی ک 123)': 'یکسان‌سازی حروف فارسی و ارقام انگلیسی (ی ک 123)',
     'Normalize Persian (ی ک ۱۲۳)': 'یکسان‌سازی فارسی (ی ک ۱۲۳)',
@@ -262,6 +308,8 @@ export const FA: Record<string, string> = {
     'Original style': 'استایل اصلی',
     'Output → clipboard': 'خروجی ← کلیپ‌بورد',
     'Output → new item': 'خروجی ← آیتم جدید',
+    'Overrides Windows Clipboard History (Win+V) via low-level keyboard hook':
+        'جایگزین تاریخچه‌ی کلیپ‌بورد ویندوز (Win+V) از طریق هوک کیبورد',
     'Overrides the default for a specific target app (executable name). Example: Word keeps formatting, terminals get plain text.':
         'پیش‌فرض را برای یک برنامه‌ی مقصد (نام فایل اجرایی) تغییر می‌دهد. مثال: Word با استایل، ترمینال با متن ساده.',
     PascalCase: 'PascalCase',
@@ -274,7 +322,9 @@ export const FA: Record<string, string> = {
     'Choose whether a single click or a double-click pastes a card (single-click always selects).':
         'انتخاب کنید که تک‌کلیک یا دوبار کلیک کارت را پیست کند (تک‌کلیک همیشه کارت را انتخاب می‌کند).',
     'Paste file path': 'پیست مسیر فایل',
+    'Paste into folder': 'پیست در این پوشه',
     'Paste Queue': 'صف پیست',
+    'Paste Queue & Drop Basket': 'صف پیست و سبد جمع‌آوری فایل',
     'Paste queue / Drop Basket': 'صف پیست / سبد فایل',
     'Paste as': 'پیست به صورت',
     'Paste as plain text': 'پیست به صورت متن ساده',
@@ -301,6 +351,7 @@ export const FA: Record<string, string> = {
     Pinboard: 'Pinboard',
     'Pinboard settings': 'تنظیمات Pinboard',
     'Pinboard settings…': 'تنظیمات Pinboard…',
+    'Pinboards & active tab': 'Pinboard ها و تب فعال',
     'Pinned to {name}': 'به «{name}» سنجاق شد',
     'Plain text': 'متن ساده',
     'Plain text only': 'فقط متن ساده',
@@ -312,6 +363,10 @@ export const FA: Record<string, string> = {
     'Preserve popup size when resized with mouse': 'حفظ اندازه‌ی پنجره هنگام تغییر سایز با ماوس',
     'Automatically saves the new width and height when you drag the edges of the popup window.':
         'هنگام تغییر اندازه‌ی لبه‌های پنجره‌ی اصلی با ماوس، عرض و ارتفاع جدید را ذخیره می‌کند.',
+    'Press Ctrl+Alt+Q to open the floating Queue / Drop Basket window. In Queue mode, copy multiple items and press Ctrl+V repeatedly to paste them in FIFO or LIFO order. In Drop Basket mode, collect files and images from different folders and paste or move them all at once.':
+        'با کلیدهای Ctrl+Alt+Q پنجره‌ی شناور صف / سبد را باز کنید. در حالت Queue چندین متن را کپی کرده و با زدن پیاپی Ctrl+V به ترتیب پیست کنید. در حالت Drop Basket فایل‌ها و تصاویر را از پوشه‌های مختلف جمع کرده و یک‌جا کپی یا منتقل کنید.',
+    'Press Win+V (or your configured shortcut) anywhere in Windows to open ClipNest at your text cursor. Double-click a card or press Enter to paste it with original formatting, or press Shift+Enter to paste as plain text.':
+        'در هر جای ویندوز کلیدهای Win+V (یا میانبر انتخابی خود) را بزنید تا ClipNest کنار نشانگر تایپ باز شود. با دوبار کلیک یا Enter آیتم با استایل اصلی و با Shift+Enter به صورت متن ساده پیست می‌شود.',
     'Press keys…': 'کلیدها را بزنید…',
     'Prettify JSON': 'زیباسازی JSON',
     Preview: 'پیش‌نمایش',
@@ -320,6 +375,8 @@ export const FA: Record<string, string> = {
     Queue: 'صف',
     'Quick buttons next to the list: preview, pin, tags, copy, formats, edit, merge, actions, delete.':
         'دکمه‌های سریع کنار لیست: پیش‌نمایش، سنجاق، برچسب، کپی، فرمت‌ها، ویرایش، ادغام، اکشن‌ها، حذف.',
+    'Quick buttons next to the list: preview, pin, tags, copy, formats, edit, merge, actions, delete (can also be toggled from the popup header).':
+        'دکمه‌های سریع کنار لیست که از نوار بالای پنجره‌ی اصلی هم قابل روشن و خاموش کردن است.',
     'Quick-paste a visible card': 'پیست سریع یکی از کارت‌های دیده‌شده',
     Quit: 'خروج',
     'Quit ClipNest': 'خروج از ClipNest',
@@ -332,6 +389,8 @@ export const FA: Record<string, string> = {
     'Remove from pinboard': 'برداشتن از Pinboard',
     'Removes everything except pinned items and pinboards.':
         'همه‌چیز به‌جز آیتم‌های سنجاق‌شده و Pinboard ها پاک می‌شود.',
+    'Removes unpinned history, with an option in the confirmation dialog to also delete pinned items and pinboards.':
+        'تاریخچه‌ی پین‌نشده را پاک می‌کند و در پنجره‌ی تأیید گزینه‌ای برای پاک کردن پین‌ها و Pinboard ها نیز دارد.',
     'Rename item': 'تغییر نام آیتم',
     'Rename · tags · pin on top': 'تغییر نام · برچسب · سنجاق به بالا',
     'Rename…': 'تغییر نام…',
@@ -345,6 +404,10 @@ export const FA: Record<string, string> = {
         'تمامی تنظیمات، میانبرها و گزینه‌های ظاهری را بدون حذف کلیپ‌ها به حالت کارخانه برمی‌گرداند.',
     'Resume capture': 'ازسرگیری ثبت',
     'Reverse lines': 'معکوس کردن خطوط',
+    'Right-click any text card and choose Transform to convert case, format JSON, encode Base64/URL, normalize Arabic characters and digits to standard Persian/English, or convert all numbers to Persian digits.':
+        'روی هر کارت متنی راست‌کلیک کرده و از منوی «تبدیل» برای تغییر حروف، فرمت JSON ، کدگذاری Base64 / URL ، یکسان‌سازی حروف عربی به فارسی و ارقام انگلیسی، یا تبدیل تمام اعداد به ارقام فارسی استفاده کنید.',
+    'Right-click inside any folder in Windows File Explorer and select ClipNest to view your copied files and paste them directly into that folder, or right-click any file to add it to the Drop Basket.':
+        'در هر پوشه‌ای از File Explorer ویندوز راست‌کلیک کنید و گزینه‌ی ClipNest را بزنید تا فایل‌های کپی‌شده‌ی قبلی را ببینید و در همان پوشه پیست کنید، یا روی هر فایلی راست‌کلیک کرده و آن را به سبد فایل اضافه کنید.',
     'Rule name': 'نام قانون',
     'Run custom action': 'اجرای اکشن سفارشی',
     'Run on every new copy, in order. A rule applies when ALL of its filled-in conditions match. Example: app “keepass”, action “Do not store”; or pattern “^https?://”, action “Move to pinboard”.':
@@ -381,6 +444,7 @@ export const FA: Record<string, string> = {
     'Side toolbar (CopyQ style)': 'نوار ابزار کناری (مثل CopyQ)',
     'Single-click': 'تک‌کلیک',
     'Small (52px)': 'کوچک (52px)',
+    'Smart search & filters': 'جستجوی هوشمند و فیلترها',
     'Smooth animations': 'انیمیشن‌های نرم',
     'Sort lines A→Z': 'مرتب‌سازی خطوط الف→ی',
     'Sort lines Z→A': 'مرتب‌سازی خطوط ی→الف',
@@ -391,11 +455,13 @@ export const FA: Record<string, string> = {
     'Strict fuzzy: letters in order': 'فازی سخت‌گیرانه: حروف به ترتیب',
     'Switch between original style and plain text': 'جابه‌جایی بین استایل اصلی و متن ساده',
     'Switch Clipboard ↔ pinboards': 'جابه‌جایی بین کلیپ‌بورد و Pinboard ها',
+    'System (Auto)': 'سیستم (خودکار)',
     Tag: 'برچسب',
     'Tags (space separated)': 'برچسب‌ها (با فاصله جدا کنید)',
     'Tags…': 'برچسب‌ها…',
     'Text cursor (falls back to mouse)': 'نشانگر تایپ (در صورت نبود: ماوس)',
     'Text lines per card': 'تعداد خط متن در هر کارت',
+    'Text transforms & Persian tools': 'تبدیل‌های متنی و ابزارهای فارسی',
     Theme: 'تم',
     Then: 'آنگاه',
     'Then press Ctrl+V repeatedly to paste in order.': 'سپس Ctrl+V را پشت‌سرهم بزنید تا به ترتیب پیست شوند.',
@@ -403,10 +469,13 @@ export const FA: Record<string, string> = {
     'Thumbnail size': 'اندازه‌ی پیش‌نمایش تصویر',
     'Toggle multi-selection': 'تغییر وضعیت انتخاب چندتایی',
     'Toggle plain-text mode': 'حالت متن ساده روشن/خاموش',
+    'Toggle side toolbar': 'نمایش / مخفی کردن نوار ابزار کناری',
     'Transferred {n} item(s) to folder': '{n} آیتم به پوشه منتقل شد',
     'Transform ▸': 'تبدیل ▸',
     Trim: 'حذف فاصله‌های کناری',
     'Trim whitespace': 'حذف فاصله‌های ابتدا و انتها',
+    'Type any word to search text, titles, app names, and tags with typo tolerance. Type image, code, link, file, or color to filter by item type (or wrap in quotes like "image" for literal text). Toggle .* for Regex or ~ for strict fuzzy matching.':
+        'هر کلمه‌ای را تایپ کنید تا در متن، عنوان، نام برنامه و تگ‌ها با تحمل غلط املایی جستجو شود. برای فیلتر بر اساس نوع، کلمات image ، code ، link ، file یا color را بنویسید (یا داخل گیومه مثل "image" برای جستجوی خود کلمه). دکمه‌ی .* برای Regex و ~ برای جستجوی فازی است.',
     'Type to search your clipboard': 'برای جستجو در کلیپ‌بورد تایپ کنید',
     UPPERCASE: 'حروف بزرگ',
     'URL decode': 'رمزگشایی URL',
@@ -427,6 +496,7 @@ export const FA: Record<string, string> = {
     'While the queue has items, Ctrl+V pastes the next one.':
         'تا وقتی صف آیتم دارد، Ctrl+V آیتم بعدی را پیست می‌کند.',
     Whitespace: 'فاصله‌ها',
+    'Windows File Explorer context menu': 'منوی راست‌کلیک در File Explorer ویندوز',
     'Yellow Marker': 'ماژیک زرد',
     '\\n = new line, \\t = tab, or any text': '\\n = خط جدید، \\t = تب، یا هر متن دیگر',
     'and text matches (regex)': 'و متن مطابقت دارد (regex)',

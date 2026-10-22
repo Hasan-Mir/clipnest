@@ -1,13 +1,14 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api, on, Status } from '../lib/api';
 import { num, t, useLang } from '../lib/i18n';
 import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 
 export default function TrayMenu() {
-    useLang();
+    const lang = useLang();
     useSettings();
     const [status, setStatus] = useState<Status | null>(null);
+    const menuRef = useRef<HTMLDivElement>(null);
 
     const load = useCallback(() => {
         api.status()
@@ -37,15 +38,44 @@ export default function TrayMenu() {
     const qActive = status?.queue_active ?? false;
     const qLen = status?.queue_len ?? 0;
 
+    useLayoutEffect(() => {
+        const el = menuRef.current;
+        if (!el) {
+            return;
+        }
+        const measureAndSync = () => {
+            const h = Math.ceil(el.scrollHeight) + 2;
+            if (h >= 180) {
+                api.resizeTray(h).catch(() => {});
+            }
+        };
+        measureAndSync();
+        const ro = new ResizeObserver(measureAndSync);
+        ro.observe(el);
+        return () => {
+            ro.disconnect();
+        };
+    }, [paused, qActive, lang]);
+
     return (
-        <div className="tray-menu">
+        <div ref={menuRef} className="tray-menu">
             <div className="tray-head">
                 <img className="logo-img" src="/icon.png" alt="ClipNest" draggable={false} />
                 <span className="brand">ClipNest</span>
                 <span className="spacer" />
-                <span className={`tray-pill${paused ? ' warn' : ' ok'}`}>
+                <button
+                    type="button"
+                    className={`tray-pill${paused ? ' warn' : ' ok'}`}
+                    onClick={() => {
+                        if (paused) {
+                            api.resume();
+                        } else {
+                            api.pause(15);
+                        }
+                    }}
+                >
                     {paused ? t('Paused · resume') : t('Active')}
-                </span>
+                </button>
             </div>
 
             <div className="menu-sep" />
@@ -107,7 +137,7 @@ export default function TrayMenu() {
                         <Icon name="pause" size={13} />
                         <span>{t('Pause capture')}</span>
                     </div>
-                    <div className="tray-chips">
+                    <div className="tray-chips" dir="ltr">
                         <button type="button" className="chip" onClick={() => api.pause(15)}>
                             15m
                         </button>

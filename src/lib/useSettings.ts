@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, on, Settings } from './api';
+import { contrastOn } from './format';
 import { setLang } from './i18n';
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -8,6 +9,7 @@ export const DEFAULT_SETTINGS: Settings = {
     list_style: 'rich',
     rules: [],
     autostart: false,
+    explorer_context_menu: true,
     max_items: 5000,
     retention_days: 0,
     max_image_mb: 25,
@@ -45,7 +47,9 @@ export const DEFAULT_SETTINGS: Settings = {
     accent: '#4f8cff',
     density: 'compact',
     font_size: 13,
+    font_family: '',
     card_lines: 4,
+    card_max_height: 160,
     popup_width: 400,
     popup_height: 560,
     popup_position: 'caret',
@@ -56,7 +60,7 @@ export const DEFAULT_SETTINGS: Settings = {
     thumbnail_size: 'medium',
     virtual_scroll: true,
     highlight_matches: true,
-    highlight_color: '#2ea8ff',
+    highlight_color: 'accent',
     highlight_bg: 'transparent',
     shortcut_open: 'Super+V',
     shortcut_queue: 'Ctrl+Alt+Q',
@@ -104,17 +108,52 @@ export function useSettings(): [Settings | null, (s: Settings) => void] {
             return;
         }
         const r = document.documentElement;
-        r.dataset.theme = s.theme;
+        const mql = window.matchMedia('(prefers-color-scheme: light)');
+        const applyResolvedTheme = () => {
+            if (s.theme === 'system') {
+                r.dataset.theme = mql.matches ? 'light' : 'dark';
+            } else {
+                r.dataset.theme = s.theme;
+            }
+        };
+        applyResolvedTheme();
+
         r.dataset.density = s.density;
         r.dataset.animations = s.animations ? 'on' : 'off';
         r.style.setProperty('--accent', s.accent);
+        r.style.setProperty('--accent-fg', contrastOn(s.accent));
         r.style.setProperty('--fs', `${s.font_size}px`);
+
+        const fam = s.font_family ? s.font_family.trim() : '';
+        if (fam) {
+            r.style.setProperty(
+                '--card-font',
+                `"${fam.replace(/"/g, '')}", "Vazirmatn", "Segoe UI Variable Text", "Segoe UI", Tahoma, sans-serif`
+            );
+        } else {
+            r.style.removeProperty('--card-font');
+        }
+
+        const maxH = s.card_max_height > 0 ? `${Math.max(60, s.card_max_height)}px` : 'none';
+        r.style.setProperty('--card-max-h', maxH);
+
         const thumbPx =
             s.thumbnail_size === 'small' ? '52px' : s.thumbnail_size === 'large' ? '170px' : '110px';
         r.style.setProperty('--thumb-max-h', thumbPx);
-        r.style.setProperty('--hl-color', s.highlight_matches ? s.highlight_color : 'inherit');
+
+        const rawHl = (s.highlight_color || '').trim();
+        const resolvedHlColor = !rawHl || rawHl.toLowerCase() === 'accent' ? s.accent : rawHl;
+        r.style.setProperty('--hl-color', s.highlight_matches ? resolvedHlColor : 'inherit');
         r.style.setProperty('--hl-bg', s.highlight_matches ? s.highlight_bg : 'transparent');
         setLang(s.language || 'en');
+
+        if (s.theme === 'system') {
+            mql.addEventListener('change', applyResolvedTheme);
+            return () => {
+                mql.removeEventListener('change', applyResolvedTheme);
+            };
+        }
+        return undefined;
     }, [s]);
 
     const save = useCallback((next: Settings) => {

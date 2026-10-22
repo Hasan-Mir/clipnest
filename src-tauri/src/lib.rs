@@ -11,6 +11,7 @@ mod state;
 mod windowing;
 
 use state::{AppState, HotAction, Settings};
+use std::path::Path;
 use std::sync::atomic::Ordering;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, WindowEvent};
@@ -165,7 +166,7 @@ pub fn toggle_plain(app: &AppHandle) {
     apply_settings(app, s);
 }
 
-/// Persist + apply a new settings object (hotkeys, capture protection, autostart, tray, UI).
+/// Persist + apply a new settings object (hotkeys, capture protection, autostart, Explorer menu, tray, UI).
 pub fn apply_settings(app: &AppHandle, new: Settings) {
     let st = app.state::<AppState>();
     let old = st.settings.read().clone();
@@ -189,12 +190,67 @@ pub fn apply_settings(app: &AppHandle, new: Settings) {
         let al = app.autolaunch();
         let _ = if new.autostart { al.enable() } else { al.disable() };
     }
+    if old.explorer_context_menu != new.explorer_context_menu || old.language != new.language {
+        if let Err(e) = platform::win::sync_explorer_context_menu(new.explorer_context_menu, &new.language) {
+            eprintln!("clipnest: could not update Explorer context menu: {e}");
+        }
+    }
     if old.max_items != new.max_items || old.retention_days != new.retention_days {
         let _ = db::apply_limits(&st.db.lock(), &new);
         let _ = app.emit("items-changed", ());
     }
     refresh_tray_tooltip(app);
     let _ = app.emit("settings-changed", ());
+}
+
+// ───────────────────────────── Explorer CLI dispatch ─────────────────────────────
+
+fn handle_cli_args(app: &AppHandle, args: &[String], is_secondary: bool) {
+    let mut i = 0;
+    while i < args.len() {
+        let arg = args[i].as_str();
+        if arg == "--explorer-files" {
+            if let Some(dir) = args.get(i + 1) {
+                let clean = dir.trim_matches('"').trim().to_string();
+                if !clean.is_empty() {
+                    *app.state::<AppState>().explorer_target_dir.lock() = Some(clean.clone());
+                    let handle = app.clone();
+                    std::thread::spawn(move || {
+                        windowing::show_popup(&handle, Some("mouse"), true);
+                        std::thread::sleep(std::time::Duration::from_millis(90));
+                        let _ = handle.emit("explorer-files-mode", clean);
+                    });
+                    return;
+                }
+            }
+        } else if arg == "--paste-basket" {
+            if let Some(dir) = args.get(i + 1) {
+                let clean = dir.trim_matches('"').trim().to_string();
+                if !clean.is_empty() {
+                    let handle = app.clone();
+                    std::thread::spawn(move || {
+                        let _ = queue::paste_basket_to_dir(&handle, Path::new(&clean));
+                    });
+                    return;
+                }
+            }
+        } else if arg == "--collect-file" {
+            if let Some(file_path) = args.get(i + 1) {
+                let clean = file_path.trim_matches('"').trim().to_string();
+                if !clean.is_empty() {
+                    let handle = app.clone();
+                    std::thread::spawn(move || {
+                        let _ = queue::collect_file_from_explorer(&handle, &clean);
+                    });
+                    return;
+                }
+            }
+        }
+        i += 1;
+    }
+    if is_secondary {
+        windowing::spawn_show_popup(app.clone(), None, false);
+    }
 }
 
 // ───────────────────────────── tray ─────────────────────────────
@@ -246,8 +302,8 @@ fn spawn_maintenance(app: AppHandle) {
 
 pub fn run() {
     let app = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            windowing::spawn_show_popup(app.clone(), None, false);
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            handle_cli_args(app, &args, true);
         }))
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_dialog::init())
@@ -265,18 +321,32 @@ pub fn run() {
             if let Some(w) = handle.get_webview_window("popup") {
                 windowing::apply_protection_to(&handle, &w);
             }
+            windowing::init_background_windows(&handle);
             register_hotkeys(&handle);
             build_tray(&handle)?;
             capture::spawn(handle.clone());
             spawn_maintenance(handle.clone());
 
-            // keep the OS autostart entry in sync with the setting
+            // Keep the OS autostart entry in sync with the setting
             let al = handle.autolaunch();
             let enabled = al.is_enabled().unwrap_or(false);
             if settings.autostart && !enabled {
                 let _ = al.enable();
             } else if !settings.autostart && enabled {
                 let _ = al.disable();
+            }
+
+            // Keep the Windows File Explorer context menu in sync with settings
+            let _ = platform::win::sync_explorer_context_menu(settings.explorer_context_menu, &settings.language);
+
+            // Handle CLI args if ClipNest was cold-launched directly from File Explorer context menu
+            let init_args: Vec<String> = std::env::args().collect();
+            if init_args.len() > 1 {
+                let h2 = handle.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(250));
+                    handle_cli_args(&h2, &init_args, false);
+                });
             }
             Ok(())
         })
@@ -285,8 +355,17 @@ pub fn run() {
             match event {
                 WindowEvent::Focused(false) if label == "popup" => {
                     let app = window.app_handle().clone();
+                    let win_clone = window.clone();
                     std::thread::spawn(move || {
-                        std::thread::sleep(std::time::Duration::from_millis(45));
+                        // Wait for any active mouse click outside the window to finish so we do not
+                        // prematurely abort while the left mouse button is still held down.
+                        for _ in 0..16 {
+                            std::thread::sleep(std::time::Duration::from_millis(25));
+                            if !platform::win::is_down(0x01) {
+                                break;
+                            }
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(25));
                         let st = app.state::<AppState>();
                         let fg = platform::win::foreground();
                         if fg != 0 && !platform::win::is_own_window(fg) {
@@ -298,20 +377,38 @@ pub fn run() {
                         if st.suppress_blur.load(Ordering::SeqCst) {
                             return;
                         }
-                        if platform::win::is_down(0x01) {
+                        if win_clone.is_focused().unwrap_or(false) {
                             return;
                         }
-                        if fg != 0 && platform::win::is_own_window(fg) {
-                            return;
+                        if let Ok(popup_hwnd) = win_clone.hwnd() {
+                            if fg == popup_hwnd.0 as isize {
+                                return;
+                            }
                         }
                         let since = db::now_ms() - st.popup_shown_at.load(Ordering::SeqCst);
-                        if since > 300 {
+                        if since > 200 {
                             windowing::hide_popup(&app);
                         }
                     });
                 }
                 WindowEvent::Focused(false) if label == "tray" => {
-                    windowing::hide_tray(window.app_handle());
+                    let app = window.app_handle().clone();
+                    let win_clone = window.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(65));
+                        let st = app.state::<AppState>();
+                        let since = db::now_ms() - st.tray_shown_at.load(Ordering::SeqCst);
+                        if since < 380 {
+                            if let Ok(h) = win_clone.hwnd() {
+                                platform::win::focus_window(h.0 as isize);
+                            }
+                            let _ = win_clone.set_focus();
+                            return;
+                        }
+                        if !win_clone.is_focused().unwrap_or(false) {
+                            windowing::hide_tray(&app);
+                        }
+                    });
                 }
                 WindowEvent::Moved(pos) if label == "popup" => {
                     let app = window.app_handle();
@@ -322,7 +419,7 @@ pub fn run() {
                         let scale = window.scale_factor().unwrap_or(1.0);
                         let lw = ((phys.width as f64) / scale).round() as u32;
                         let lh = ((phys.height as f64) / scale).round() as u32;
-                        if (320..=1200).contains(&lw) && (360..=1200).contains(&lh) {
+                        if (340..=1400).contains(&lw) && (380..=1400).contains(&lh) {
                             let app = window.app_handle();
                             let st = app.state::<AppState>();
                             let remember = st.settings.read().remember_popup_size;
@@ -337,9 +434,11 @@ pub fn run() {
                         }
                     }
                 }
-                WindowEvent::CloseRequested { api, .. }
-                    if label == "settings" || label == "queue" || label == "tray" =>
-                {
+                WindowEvent::CloseRequested { api, .. } if label == "queue" => {
+                    api.prevent_close();
+                    queue::close_queue(window.app_handle());
+                }
+                WindowEvent::CloseRequested { api, .. } if label == "settings" || label == "tray" => {
                     // keep the window alive (hidden) so re-opening is instant
                     api.prevent_close();
                     let _ = window.hide();
@@ -397,6 +496,7 @@ pub fn run() {
             commands::show_popup_cmd,
             commands::hide_popup,
             commands::hide_tray,
+            commands::resize_tray,
             commands::request_erase_from_tray,
             commands::open_settings,
             commands::erase_history,
@@ -404,6 +504,11 @@ pub fn run() {
             commands::open_data_dir,
             commands::recent_apps,
             commands::quit_app,
+            commands::list_system_fonts,
+            commands::check_shortcut_conflict,
+            commands::get_explorer_target,
+            commands::clear_explorer_target,
+            commands::paste_files_to_folder,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ClipNest");
