@@ -139,8 +139,8 @@ type Built = (NewClip, Vec<StoredFormat>);
 fn extract_file_thumb(path: &str) -> Option<Vec<u8>> {
     let lower = path.to_lowercase();
     let is_media = [
-        ".png", ".bmp", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".tif", ".tiff", ".heic",
-        ".mp4", ".mkv", ".mov", ".avi", ".webm", ".wmv", ".m4v", ".pdf",
+        ".png", ".bmp", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".tif", ".tiff", ".heic", ".mp4", ".mkv", ".mov",
+        ".avi", ".webm", ".wmv", ".m4v", ".pdf",
     ]
     .iter()
     .any(|ext| lower.ends_with(ext));
@@ -164,8 +164,14 @@ fn extract_file_thumb(path: &str) -> Option<Vec<u8>> {
     None
 }
 
-fn build_from_snapshot(fmts: &[RawFormat], app_name: &str, app_exe: &str, s: &Settings) -> Result<Option<Built>, String> {
-    let text_raw = fmts.iter().find(|f| f.id == win::CF_UNICODETEXT_ID).map(|f| decode_utf16(&f.data)).unwrap_or_default();
+fn build_from_snapshot(
+    fmts: &[RawFormat],
+    app_name: &str,
+    app_exe: &str,
+    s: &Settings,
+) -> Result<Option<Built>, String> {
+    let text_raw =
+        fmts.iter().find(|f| f.id == win::CF_UNICODETEXT_ID).map(|f| decode_utf16(&f.data)).unwrap_or_default();
     let has_text = !text_raw.trim().is_empty();
     let hdrop = fmts.iter().find(|f| f.id == win::CF_HDROP_ID);
     let png = find(fmts, "PNG");
@@ -292,7 +298,13 @@ fn hash_of(prefix: &[u8], data: &[u8]) -> String {
 }
 
 /// Shared by capture, "new item", merge and inline-edit.
-pub fn build_text_clip(text: &str, vscode_lang: Option<String>, app_name: &str, app_exe: &str, has_rich: bool) -> NewClip {
+pub fn build_text_clip(
+    text: &str,
+    vscode_lang: Option<String>,
+    app_name: &str,
+    app_exe: &str,
+    has_rich: bool,
+) -> NewClip {
     let (kind, lang, color) = classify::text_kind(text, vscode_lang.as_deref());
     let preview: String = text.trim_start().chars().take(800).collect();
     let search = classify::normalize(&text.chars().take(100_000).collect::<String>());
@@ -469,4 +481,49 @@ pub fn extract_cf_html(d: &[u8]) -> Option<String> {
         return None;
     }
     Some(String::from_utf8_lossy(slice).to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn utf16_encode_decode_roundtrip() {
+        let original = "سلام ClipNest 🚀\nLine 2";
+        let bytes = utf16_bytes(original);
+        assert_eq!(decode_utf16(&bytes), original);
+    }
+
+    #[test]
+    fn hdrop_build_and_parse_roundtrip() {
+        let paths =
+            vec![r"C:\Users\Ali\Documents\فایل اول.txt".to_string(), r"D:\Projects\ClipNest\README.md".to_string()];
+        let raw = build_hdrop(&paths);
+        let parsed = parse_hdrop(&raw);
+        assert_eq!(parsed, paths);
+        assert!(parse_hdrop(&[0u8; 10]).is_empty());
+    }
+
+    #[test]
+    fn cf_html_extraction_with_and_without_offsets() {
+        let html = "<html><body><span>Hello</span></body></html>";
+        let header = format!("Version:0.9\r\nStartHTML:{:08}\r\nEndHTML:{:08}\r\n", 49, 49 + html.len());
+        let mut payload = header.into_bytes();
+        payload.extend_from_slice(html.as_bytes());
+        payload.extend_from_slice(&[0, 0]);
+        assert_eq!(extract_cf_html(&payload).as_deref(), Some(html));
+
+        let fallback = b"Version:0.9\r\n<div>Fallback</div>\0";
+        assert_eq!(extract_cf_html(fallback).as_deref(), Some("<div>Fallback</div>"));
+    }
+
+    #[test]
+    fn png_to_dib_and_decode_image_roundtrip() {
+        let img = image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(4, 3, image::Rgba([20, 120, 220, 255])));
+        let png = encode_png(&img).expect("encode png");
+        let dib = png_to_dib(&png).expect("png to dib");
+        let decoded = decode_image(None, Some(&dib)).expect("decode dib");
+        assert_eq!(decoded.width(), 4);
+        assert_eq!(decoded.height(), 3);
+    }
 }

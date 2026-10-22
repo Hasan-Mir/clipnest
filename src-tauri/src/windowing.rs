@@ -3,7 +3,9 @@
 use crate::platform::{self, win};
 use crate::state::AppState;
 use std::sync::atomic::Ordering;
-use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{
+    AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+};
 
 fn hwnd_of(w: &WebviewWindow) -> Option<isize> {
     w.hwnd().ok().map(|h| h.0 as isize)

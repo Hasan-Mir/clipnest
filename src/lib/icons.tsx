@@ -1,36 +1,89 @@
-import React from "react";
+import React from 'react';
+import {
+    Check,
+    ChevronDown,
+    ChevronUp,
+    Copy,
+    Eye,
+    Folder,
+    GitMerge,
+    Info,
+    List,
+    LucideProps,
+    MoreHorizontal,
+    Pause,
+    Pencil,
+    Pin,
+    Play,
+    Plus,
+    RotateCcw,
+    Search,
+    Settings,
+    ShoppingBasket,
+    Tag,
+    Trash2,
+    Type,
+    X,
+    Zap,
+} from 'lucide-react';
 
-const P: Record<string, string> = {
-  search: "M11 4a7 7 0 1 0 4.2 12.6l4.1 4.1 1.4-1.4-4.1-4.1A7 7 0 0 0 11 4zm0 2a5 5 0 1 1 0 10 5 5 0 0 1 0-10z",
-  gear: "M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7zm7.43-2.53c.04-.32.07-.64.07-.97s-.03-.66-.07-1l2.11-1.63c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65A.488.488 0 0 0 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64L4.57 11c-.04.34-.07.67-.07 1s.03.65.07.97l-2.11 1.66c-.19.15-.25.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1.01c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.58 1.69-.98l2.49 1.01c.22.08.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.66z",
-  close: "M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12 19 6.4 17.6 5 12 10.6z",
-  dots: "M5 10.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm7 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm7 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z",
-  pin: "M14 3l7 7-2 1-3.5 3.5L16 19l-2 .5-4-4-5.5 5.5-1-1L8 14.5 4 10.5l.5-2 4.5.5L12.5 5.5z",
-  tag: "M3 12V4h8l10 10-8 8zm4-5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z",
-  trash: "M9 3h6l1 2h4v2H4V5h4zM6 9h12l-1 12H7z",
-  edit: "M4 17.3V20h2.7L18 8.7 15.3 6zM19.7 7a1 1 0 0 0 0-1.4l-1.3-1.3a1 1 0 0 0-1.4 0l-1.1 1.1L18.6 8z",
-  info: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm-1 4h2v2h-2zm0 4h2v6h-2z",
-  copy: "M8 3h10a2 2 0 0 1 2 2v12h-2V5H8zM5 7h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z",
-  eye: "M12 5c5 0 9 4.5 10 7-1 2.5-5 7-10 7S3 14.5 2 12c1-2.5 5-7 10-7zm0 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z",
-  bolt: "M13 2 4 14h6l-1 8 9-12h-6z",
-  merge: "M6 3v6a4 4 0 0 0 4 4h4v3l5-4.5L14 7v3h-4a1 1 0 0 1-1-1V3z",
-  pause: "M7 5h4v14H7zm6 0h4v14h-4z",
-  play: "M8 5v14l11-7z",
-  plus: "M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z",
-  up: "M12 8l6 6-1.4 1.4L12 10.8l-4.6 4.6L6 14z",
-  chevronDown: "M6.7 8.7a1 1 0 0 1 1.4 0L12 12.6l3.9-3.9a1 1 0 1 1 1.4 1.4l-4.6 4.6a1 1 0 0 1-1.4 0L6.7 10.1a1 1 0 0 1 0-1.4z",
-  check: "M9.5 16.2 4.8 11.5l1.4-1.4 3.3 3.3 8.3-8.3 1.4 1.4z",
-  list: "M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z",
-  richText: "M4 5h10v2h-4v12H8V7H4V5zm11 5h5v2h-1.5v7h-2v-7H15v-2z",
-  folder: "M3 6a2 2 0 0 1 2-2h4.2l2 2H19a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z",
-  basket: "M5.5 10 8.5 4h2.2l-3 6h8.6l-3-6h2.2l3 6H21v2l-1.6 7.4A2 2 0 0 1 17.4 21H6.6a2 2 0 0 1-2-1.6L3 12v-2h2.5zm3.5 3v5h2v-5H9zm4 0v5h2v-5h-2z",
-  reset: "M12 5V2L7 6l5 4V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z",
+export type IconName =
+    | 'search'
+    | 'gear'
+    | 'close'
+    | 'dots'
+    | 'pin'
+    | 'tag'
+    | 'trash'
+    | 'edit'
+    | 'info'
+    | 'copy'
+    | 'eye'
+    | 'bolt'
+    | 'merge'
+    | 'pause'
+    | 'play'
+    | 'plus'
+    | 'up'
+    | 'chevronDown'
+    | 'check'
+    | 'list'
+    | 'richText'
+    | 'folder'
+    | 'basket'
+    | 'reset';
+
+const ICON_MAP: Record<IconName, React.ComponentType<LucideProps>> = {
+    search: Search,
+    gear: Settings,
+    close: X,
+    dots: MoreHorizontal,
+    pin: Pin,
+    tag: Tag,
+    trash: Trash2,
+    edit: Pencil,
+    info: Info,
+    copy: Copy,
+    eye: Eye,
+    bolt: Zap,
+    merge: GitMerge,
+    pause: Pause,
+    play: Play,
+    plus: Plus,
+    up: ChevronUp,
+    chevronDown: ChevronDown,
+    check: Check,
+    list: List,
+    richText: Type,
+    folder: Folder,
+    basket: ShoppingBasket,
+    reset: RotateCcw,
 };
 
-export function Icon({ name, size = 14 }: { name: keyof typeof P | string; size?: number }) {
-  return (
-    <svg className="icon" width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path fillRule="evenodd" clipRule="evenodd" d={P[name] || ""} />
-    </svg>
-  );
+export function Icon({ name, size = 14 }: { name: IconName | string; size?: number }) {
+    const Comp = ICON_MAP[name as IconName];
+    if (!Comp) {
+        return null;
+    }
+    return <Comp className="icon" size={size} strokeWidth={2} aria-hidden />;
 }

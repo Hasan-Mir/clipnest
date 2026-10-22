@@ -70,8 +70,30 @@ pub fn looks_like_code(t: &str) -> bool {
         return false;
     }
     const STARTS: &[&str] = &[
-        "function ", "const ", "let ", "var ", "def ", "class ", "import ", "from ", "return ", "if (", "for (",
-        "fn ", "pub ", "use ", "#include", "public ", "private ", "</", "<div", "select ", "//", "/*", "* ", "#!",
+        "function ",
+        "const ",
+        "let ",
+        "var ",
+        "def ",
+        "class ",
+        "import ",
+        "from ",
+        "return ",
+        "if (",
+        "for (",
+        "fn ",
+        "pub ",
+        "use ",
+        "#include",
+        "public ",
+        "private ",
+        "</",
+        "<div",
+        "select ",
+        "//",
+        "/*",
+        "* ",
+        "#!",
     ];
     const ENDS: &[&str] = &["{", "}", ";", ")", "]", "=>", ","];
     let n = lines.len().min(200);
@@ -217,40 +239,79 @@ mod tests {
     use super::*;
 
     #[test]
-    fn normalizes_persian_and_arabic() {
+    fn normalizes_persian_and_arabic_and_digits() {
         assert_eq!(normalize("كتاب\u{200c}ها"), normalize("کتابها"));
         assert_eq!(normalize("علي"), normalize("علی"));
-        assert_eq!(normalize("۱۲۳٤٥"), "12345");
-        assert_eq!(normalize("HeLLo"), "hello");
+        assert_eq!(normalize("مسألة إسلامية"), normalize("مساله اسلامیه"));
+        assert_eq!(normalize("مـتـن\u{064B}\u{0651}"), "متن");
+        assert_eq!(normalize("۱۲۳٤٥٦۷۸۹۰"), "1234567890");
+        assert_eq!(normalize("HeLLo WoRLd"), "hello world");
     }
 
     #[test]
-    fn detects_colors_and_links() {
-        assert!(parse_color("#3B66EA").is_some());
+    fn detects_colors_and_links_with_edge_cases() {
+        assert_eq!(parse_color("#3B66EA").as_deref(), Some("#3B66EA"));
+        assert!(parse_color("#fff").is_some());
+        assert!(parse_color("#ffff").is_some());
+        assert!(parse_color("#11223344").is_some());
         assert!(parse_color("rgb(10, 20, 30)").is_some());
+        assert!(parse_color("rgba(10, 20, 30, 0.5)").is_some());
+        assert!(parse_color("hsl(120deg 50% 50% / 80%)").is_some());
         assert!(parse_color("#12345").is_none());
+        assert!(parse_color("#3B66EA\n#000").is_none());
+
         assert!(parse_link("https://example.com/a?b=1").is_some());
+        assert!(parse_link("ftp://files.example.org/pub").is_some());
+        assert!(parse_link("mailto:user@example.com").is_some());
+        assert!(parse_link("https://example.com/with space").is_none());
         assert!(parse_link("not a link").is_none());
     }
 
     #[test]
-    fn detects_sensitive_data() {
+    fn detects_sensitive_data_and_luhn_edge_cases() {
+        // Valid Luhn credit cards (with spaces, dashes, and contiguous)
         assert!(is_sensitive("4111 1111 1111 1111"));
+        assert!(is_sensitive("4111-1111-1111-1111"));
+        assert!(is_sensitive("4111111111111111"));
+        // Invalid Luhn check digit
         assert!(!is_sensitive("4111 1111 1111 1112"));
+        // Too short to be a card
+        assert!(!is_sensitive("4111 1111"));
+
+        // API keys & secrets
         assert!(is_sensitive("sk-abcdefghijklmnopqrstuvwxyz123456"));
+        assert!(is_sensitive("ghp_1234567890abcdefghijklmnopqrstuvwxyz"));
+        assert!(is_sensitive("AKIAIOSFODNN7EXAMPLE"));
+        assert!(is_sensitive("-----BEGIN RSA PRIVATE KEY-----"));
+        assert!(is_sensitive("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"));
         assert!(!is_sensitive("hello world"));
+        // Oversized text > 6000 bytes is skipped for performance
+        assert!(!is_sensitive(&"a".repeat(6500)));
     }
 
     #[test]
-    fn vscode_language_tolerates_nul_padding() {
+    fn vscode_language_and_text_kind_priority() {
         let mut d = br#"{"version":1,"mode":"typescript"}"#.to_vec();
         d.extend_from_slice(&[0, 0, 0]);
         assert_eq!(vscode_language(&d).as_deref(), Some("typescript"));
+
+        let plain_mode = br#"{"version":1,"mode":"plaintext"}"#;
+        assert_eq!(vscode_language(plain_mode), None);
+
+        // Priority: color > link > vscode_lang > code_heuristic > text
+        assert_eq!(text_kind("#ff00aa", Some("typescript")).0, "color");
+        assert_eq!(text_kind("https://rust-lang.org", Some("rust")).0, "link");
+        assert_eq!(text_kind("hello", Some("rust")), ("code", Some("rust".into()), None));
+        assert_eq!(text_kind("fn main() {\n    println!(\"hi\");\n}", None).0, "code");
+        assert_eq!(text_kind("just a normal sentence\nand another one", None).0, "text");
     }
 
     #[test]
-    fn code_heuristic() {
-        assert!(looks_like_code("function a() {\n  return 1;\n}\n"));
-        assert!(!looks_like_code("just a normal sentence\nand another one"));
+    fn friendly_app_name_mappings_and_fallbacks() {
+        assert_eq!(friendly_app_name("Code.exe"), "VS Code");
+        assert_eq!(friendly_app_name("WINWORD.EXE"), "Word");
+        assert_eq!(friendly_app_name("pwsh.exe"), "PowerShell");
+        assert_eq!(friendly_app_name("obsidian.exe"), "Obsidian");
+        assert_eq!(friendly_app_name(""), "Unknown");
     }
 }

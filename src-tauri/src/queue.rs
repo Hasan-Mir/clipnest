@@ -218,11 +218,7 @@ pub fn basket_paste_here(app: &AppHandle) -> Result<usize, String> {
     st.self_seq.store(seq, Ordering::SeqCst);
 
     let fg = win::foreground();
-    let target = if fg != 0 && !win::is_own_window(fg) {
-        fg
-    } else {
-        st.target_hwnd.load(Ordering::SeqCst)
-    };
+    let target = if fg != 0 && !win::is_own_window(fg) { fg } else { st.target_hwnd.load(Ordering::SeqCst) };
     let count = all_paths.len();
     std::thread::spawn(move || {
         if target != 0 {
@@ -252,10 +248,7 @@ fn unique_dest_path(dest_dir: &Path, file_name: &str, src_path: Option<&Path>) -
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| file_name.to_string());
-    let ext = Path::new(file_name)
-        .extension()
-        .map(|e| format!(".{}", e.to_string_lossy()))
-        .unwrap_or_default();
+    let ext = Path::new(file_name).extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
     for i in 1..10_000 {
         let next = dest_dir.join(format!("{stem} ({i}){ext}"));
         if !next.exists() {
@@ -378,15 +371,20 @@ pub fn basket_paste_to_folder(app: &AppHandle) -> Result<Option<usize>, String> 
                 if src.is_dir() {
                     copy_dir_verified(&src, &dst)?;
                     if entry.cut && allow_cut {
-                        std::fs::remove_dir_all(&src)
-                            .map_err(|e| format!("Verified copy succeeded, but could not remove source folder {}: {e}", src.display()))?;
+                        std::fs::remove_dir_all(&src).map_err(|e| {
+                            format!(
+                                "Verified copy succeeded, but could not remove source folder {}: {e}",
+                                src.display()
+                            )
+                        })?;
                     }
                     transferred += 1;
                 } else if src.is_file() {
                     copy_file_verified(&src, &dst)?;
                     if entry.cut && allow_cut {
-                        std::fs::remove_file(&src)
-                            .map_err(|e| format!("Verified copy succeeded, but could not remove source file {}: {e}", src.display()))?;
+                        std::fs::remove_file(&src).map_err(|e| {
+                            format!("Verified copy succeeded, but could not remove source file {}: {e}", src.display())
+                        })?;
                     }
                     transferred += 1;
                 }

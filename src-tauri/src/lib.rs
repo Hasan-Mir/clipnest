@@ -200,27 +200,17 @@ pub fn apply_settings(app: &AppHandle, new: Settings) {
 // ───────────────────────────── tray ─────────────────────────────
 
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
-    let mut builder = TrayIconBuilder::with_id("main")
-        .tooltip("ClipNest")
-        .show_menu_on_left_click(false);
+    let mut builder = TrayIconBuilder::with_id("main").tooltip("ClipNest").show_menu_on_left_click(false);
     if let Some(icon) = app.default_window_icon() {
         builder = builder.icon(icon.clone());
     }
     builder
         .on_tray_icon_event(|tray, event| match event {
-            TrayIconEvent::Click {
-                button: MouseButton::Left,
-                button_state: MouseButtonState::Up,
-                ..
-            } => {
+            TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } => {
                 windowing::hide_tray(tray.app_handle());
                 windowing::spawn_show_popup(tray.app_handle().clone(), Some("mouse".into()), true);
             }
-            TrayIconEvent::Click {
-                button: MouseButton::Right,
-                button_state: MouseButtonState::Up,
-                ..
-            } => {
+            TrayIconEvent::Click { button: MouseButton::Right, button_state: MouseButtonState::Up, .. } => {
                 windowing::show_tray(tray.app_handle());
             }
             _ => {}
@@ -347,7 +337,9 @@ pub fn run() {
                         }
                     }
                 }
-                WindowEvent::CloseRequested { api, .. } if label == "settings" || label == "queue" || label == "tray" => {
+                WindowEvent::CloseRequested { api, .. }
+                    if label == "settings" || label == "queue" || label == "tray" =>
+                {
                     // keep the window alive (hidden) so re-opening is instant
                     api.prevent_close();
                     let _ = window.hide();

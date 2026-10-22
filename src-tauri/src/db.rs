@@ -8,10 +8,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 pub fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }
 
 // ───────────────────────────── models ─────────────────────────────
@@ -136,7 +133,8 @@ pub fn mime_for(name: &str) -> String {
 
 // ───────────────────────────── open / schema ─────────────────────────────
 
-const PRAGMAS: &str = "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;";
+const PRAGMAS: &str =
+    "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;";
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -195,11 +193,9 @@ INSERT OR IGNORE INTO meta(key,value) VALUES('schema_version','1');
 ";
 
 fn has_column(conn: &Connection, table: &str, col: &str) -> bool {
-    conn.query_row(
-        &format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name=?1"),
-        params![col],
-        |r| r.get::<_, i64>(0),
-    )
+    conn.query_row(&format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name=?1"), params![col], |r| {
+        r.get::<_, i64>(0)
+    })
     .map(|n| n > 0)
     .unwrap_or(false)
 }
@@ -227,18 +223,14 @@ pub fn migrate(conn: &Connection) {
         );
     }
     if pb_exist > 0 && !has_column(conn, "pinboards", "paste_mode") {
-        let _ = conn.execute_batch(
-            "ALTER TABLE pinboards ADD COLUMN paste_mode TEXT NOT NULL DEFAULT 'inherit';",
-        );
+        let _ = conn.execute_batch("ALTER TABLE pinboards ADD COLUMN paste_mode TEXT NOT NULL DEFAULT 'inherit';");
     }
 }
 
 fn try_open(path: &Path) -> Result<Connection, String> {
     let conn = Connection::open(path).map_err(|e| e.to_string())?;
     conn.execute_batch(PRAGMAS).map_err(|e| e.to_string())?;
-    let ok: String = conn
-        .query_row("PRAGMA quick_check", [], |r| r.get(0))
-        .map_err(|e| e.to_string())?;
+    let ok: String = conn.query_row("PRAGMA quick_check", [], |r| r.get(0)).map_err(|e| e.to_string())?;
     if ok != "ok" {
         return Err(format!("integrity check failed: {ok}"));
     }
@@ -295,10 +287,7 @@ fn backup_dir(data_dir: &Path) -> PathBuf {
 fn list_backups(data_dir: &Path) -> Vec<PathBuf> {
     let mut v: Vec<PathBuf> = std::fs::read_dir(backup_dir(data_dir))
         .map(|rd| {
-            rd.filter_map(|e| e.ok())
-                .map(|e| e.path())
-                .filter(|p| p.to_string_lossy().ends_with(".db.gz"))
-                .collect()
+            rd.filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.to_string_lossy().ends_with(".db.gz")).collect()
         })
         .unwrap_or_default();
     v.sort();
@@ -356,11 +345,8 @@ pub fn backup(db: &parking_lot::Mutex<Connection>, data_dir: &Path, keep: u32) -
 }
 
 pub fn backup_due(conn: &Connection) -> bool {
-    let last: Option<String> = conn
-        .query_row("SELECT value FROM meta WHERE key='last_backup'", [], |r| r.get(0))
-        .optional()
-        .ok()
-        .flatten();
+    let last: Option<String> =
+        conn.query_row("SELECT value FROM meta WHERE key='last_backup'", [], |r| r.get(0)).optional().ok().flatten();
     last.map(|l| l != today_string()).unwrap_or(true)
 }
 
@@ -484,11 +470,9 @@ pub fn get_format_metas(conn: &Connection, id: i64) -> Vec<FormatMeta> {
 }
 
 pub fn get_format_data(conn: &Connection, id: i64, name: &str) -> Option<Vec<u8>> {
-    conn.query_row(
-        "SELECT data FROM clip_formats WHERE clip_id=?1 AND name=?2 LIMIT 1",
-        params![id, name],
-        |r| r.get(0),
-    )
+    conn.query_row("SELECT data FROM clip_formats WHERE clip_id=?1 AND name=?2 LIMIT 1", params![id, name], |r| {
+        r.get(0)
+    })
     .optional()
     .ok()
     .flatten()
@@ -543,7 +527,8 @@ pub fn set_pinboard(conn: &Connection, ids: &[i64], board: Option<i64>) -> Resul
 
 pub fn set_pinned(conn: &Connection, ids: &[i64], pinned: bool) -> Result<(), String> {
     for id in ids {
-        conn.execute("UPDATE clips SET pinned=?1 WHERE id=?2", params![pinned as i64, id]).map_err(|e| e.to_string())?;
+        conn.execute("UPDATE clips SET pinned=?1 WHERE id=?2", params![pinned as i64, id])
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -580,9 +565,7 @@ pub fn list_pinboards(conn: &Connection) -> Result<Vec<Pinboard>, String> {
 }
 
 pub fn create_pinboard(conn: &Connection, name: &str, color: &str) -> Result<i64, String> {
-    let pos: i64 = conn
-        .query_row("SELECT COALESCE(MAX(position),0)+1 FROM pinboards", [], |r| r.get(0))
-        .unwrap_or(1);
+    let pos: i64 = conn.query_row("SELECT COALESCE(MAX(position),0)+1 FROM pinboards", [], |r| r.get(0)).unwrap_or(1);
     conn.execute(
         "INSERT INTO pinboards(name,color,position,created_at) VALUES(?1,?2,?3,?4)",
         params![name.trim(), color, pos, now_ms()],
@@ -613,7 +596,8 @@ pub fn update_pinboard(
 
 /// Per-pinboard item limit: the oldest items beyond the limit are removed.
 pub fn trim_board(conn: &Connection, board: i64) {
-    let max: i64 = conn.query_row("SELECT max_items FROM pinboards WHERE id=?1", params![board], |r| r.get(0)).unwrap_or(0);
+    let max: i64 =
+        conn.query_row("SELECT max_items FROM pinboards WHERE id=?1", params![board], |r| r.get(0)).unwrap_or(0);
     if max > 0 {
         let _ = conn.execute(
             "DELETE FROM clips WHERE id IN (SELECT id FROM clips WHERE pinboard_id=?1 ORDER BY sort_ts DESC LIMIT -1 OFFSET ?2)",
@@ -631,11 +615,8 @@ pub fn delete_pinboard(conn: &Connection, id: i64) -> Result<(), String> {
 pub fn apply_limits(conn: &Connection, s: &Settings) -> Result<(), String> {
     if s.retention_days > 0 {
         let cutoff = now_ms() - (s.retention_days as i64) * 86_400_000;
-        conn.execute(
-            "DELETE FROM clips WHERE pinned=0 AND pinboard_id IS NULL AND ts<?1",
-            params![cutoff],
-        )
-        .map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM clips WHERE pinned=0 AND pinboard_id IS NULL AND ts<?1", params![cutoff])
+            .map_err(|e| e.to_string())?;
     }
     if s.max_items > 0 {
         conn.execute(
@@ -654,9 +635,7 @@ pub fn delete_expired(conn: &Connection) -> usize {
 }
 
 pub fn erase_history(conn: &Connection) -> Result<(), String> {
-    conn.execute("DELETE FROM clips WHERE pinned=0 AND pinboard_id IS NULL", [])
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    conn.execute("DELETE FROM clips WHERE pinned=0 AND pinboard_id IS NULL", []).map(|_| ()).map_err(|e| e.to_string())
 }
 
 pub fn recent_apps(conn: &Connection) -> Vec<AppInfo> {
@@ -732,8 +711,7 @@ pub fn merge_from(conn: &Connection, imp: &Path) -> Result<usize, String> {
     if let Ok(imp_conn) = Connection::open(imp) {
         migrate(&imp_conn);
     }
-    conn.execute("ATTACH DATABASE ?1 AS imp", params![imp.to_string_lossy().to_string()])
-        .map_err(|e| e.to_string())?;
+    conn.execute("ATTACH DATABASE ?1 AS imp", params![imp.to_string_lossy().to_string()]).map_err(|e| e.to_string())?;
     let result = (|| -> Result<usize, String> {
         let ok: String = conn.query_row("PRAGMA imp.quick_check", [], |r| r.get(0)).map_err(|e| e.to_string())?;
         if ok != "ok" {
@@ -751,8 +729,10 @@ pub fn merge_from(conn: &Connection, imp: &Path) -> Result<usize, String> {
         }
         conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
         let body = (|| -> Result<usize, String> {
-            conn.execute_batch("CREATE TEMP TABLE IF NOT EXISTS pbmap(old INTEGER PRIMARY KEY, new INTEGER); DELETE FROM pbmap;")
-                .map_err(|e| e.to_string())?;
+            conn.execute_batch(
+                "CREATE TEMP TABLE IF NOT EXISTS pbmap(old INTEGER PRIMARY KEY, new INTEGER); DELETE FROM pbmap;",
+            )
+            .map_err(|e| e.to_string())?;
             let boards: Vec<(i64, String, String)> = {
                 let mut st = conn.prepare("SELECT id,name,color FROM imp.pinboards").map_err(|e| e.to_string())?;
                 let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).map_err(|e| e.to_string())?;
@@ -767,7 +747,8 @@ pub fn merge_from(conn: &Connection, imp: &Path) -> Result<usize, String> {
                     Some(id) => id,
                     None => create_pinboard(conn, &name, &color)?,
                 };
-                conn.execute("INSERT OR REPLACE INTO pbmap(old,new) VALUES(?1,?2)", params![old, new]).map_err(|e| e.to_string())?;
+                conn.execute("INSERT OR REPLACE INTO pbmap(old,new) VALUES(?1,?2)", params![old, new])
+                    .map_err(|e| e.to_string())?;
             }
             let max_before: i64 = conn
                 .query_row("SELECT COALESCE(MAX(id),0) FROM main.clips", [], |r| r.get(0))
@@ -812,4 +793,113 @@ pub fn merge_from(conn: &Connection, imp: &Path) -> Result<usize, String> {
     })();
     let _ = conn.execute_batch("DETACH DATABASE imp");
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::capture::{build_text_clip, text_format};
+
+    #[test]
+    fn deduplicates_and_upgrades_rich_formats_and_expiry() {
+        let dir = std::env::temp_dir().join(format!("clipnest_db_dedup_{}", now_ms()));
+        let mut conn = open_with_recovery(&dir).unwrap();
+
+        let c1 = build_text_clip("hello world", None, "Notepad", "notepad.exe", false);
+        let (id1, is_new1) = insert_clip(&mut conn, &c1, &[text_format("hello world")]).unwrap();
+        assert!(is_new1);
+        assert!(!get_row(&conn, id1).unwrap().has_rich);
+
+        // Re-copying the exact same text from VS Code with HTML format & sensitive expiry
+        let mut c2 = build_text_clip("hello world", Some("rust".into()), "VS Code", "code.exe", true);
+        c2.sensitive = true;
+        c2.expires_at = Some(now_ms() + 60_000);
+        let fmts2 = vec![
+            text_format("hello world"),
+            StoredFormat { fmt_id: 0xC100, name: "HTML Format".into(), data: b"<span>hello world</span>".to_vec() },
+        ];
+        let (id2, is_new2) = insert_clip(&mut conn, &c2, &fmts2).unwrap();
+        assert!(!is_new2);
+        assert_eq!(id1, id2);
+
+        let row = get_row(&conn, id1).unwrap();
+        assert!(row.has_rich);
+        assert!(row.sensitive);
+        assert_eq!(row.lang.as_deref(), Some("rust"));
+        assert_eq!(row.kind, "code");
+        assert_eq!(get_formats(&conn, id1).len(), 2);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn fractional_reordering_and_pinboard_limits() {
+        let dir = std::env::temp_dir().join(format!("clipnest_db_order_{}", now_ms()));
+        let mut conn = open_with_recovery(&dir).unwrap();
+
+        let mut ids = Vec::new();
+        for i in 1..=3 {
+            let txt = format!("item {i}");
+            let c = build_text_clip(&txt, None, "App", "app.exe", false);
+            let (id, _) = insert_clip(&mut conn, &c, &[text_format(&txt)]).unwrap();
+            conn.execute("UPDATE clips SET sort_ts=?1 WHERE id=?2", params![(i * 1000) as f64, id]).unwrap();
+            ids.push(id);
+        }
+        // Initially ordered: ids[2] (3000), ids[1] (2000), ids[0] (1000)
+        // Move ids[0] before (above) ids[2]
+        move_item(&conn, ids[0], ids[2], false, None).unwrap();
+        let top_id: i64 =
+            conn.query_row("SELECT id FROM clips ORDER BY sort_ts DESC LIMIT 1", [], |r| r.get(0)).unwrap();
+        assert_eq!(top_id, ids[0]);
+
+        // Pinboard with max_items = 2 trims the oldest item
+        let bid = create_pinboard(&conn, "Work", "#4f8cff").unwrap();
+        update_pinboard(&conn, bid, "Work", "#4f8cff", 2, "rich", "plain").unwrap();
+        set_pinboard(&conn, &ids, Some(bid)).unwrap();
+        let boards = list_pinboards(&conn).unwrap();
+        assert_eq!(boards[0].count, 2);
+        assert_eq!(boards[0].list_style, "rich");
+        assert_eq!(boards[0].paste_mode, "plain");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn v1_migration_and_backup_recovery() {
+        let dir = std::env::temp_dir().join(format!("clipnest_db_mig_{}", now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // Create a V1 database lacking sort_ts, max_items, list_style, paste_mode
+        let v1_path = dir.join("v1_export.db");
+        {
+            let v1 = Connection::open(&v1_path).unwrap();
+            v1.execute_batch(
+                "CREATE TABLE pinboards (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, color TEXT NOT NULL, position INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL);
+                 CREATE TABLE clips (id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, title TEXT, tags TEXT NOT NULL DEFAULT '', app_name TEXT NOT NULL DEFAULT '', app_exe TEXT NOT NULL DEFAULT '', lang TEXT, img_w INTEGER, img_h INTEGER, color TEXT, chars INTEGER NOT NULL DEFAULT 0, file_count INTEGER, pinboard_id INTEGER, pinned INTEGER NOT NULL DEFAULT 0, sensitive INTEGER NOT NULL DEFAULT 0, has_rich INTEGER NOT NULL DEFAULT 0, expires_at INTEGER, created_at INTEGER NOT NULL, ts INTEGER NOT NULL, preview TEXT NOT NULL DEFAULT '', search TEXT NOT NULL DEFAULT '', plain TEXT NOT NULL DEFAULT '', thumb BLOB);
+                 CREATE TABLE clip_formats (id INTEGER PRIMARY KEY AUTOINCREMENT, clip_id INTEGER NOT NULL, fmt_id INTEGER NOT NULL, name TEXT NOT NULL, size INTEGER NOT NULL, data BLOB NOT NULL);
+                 INSERT INTO pinboards(id,name,color,position,created_at) VALUES(1,'Legacy','#34c759',1,100);
+                 INSERT INTO clips(id,hash,kind,plain,preview,search,pinboard_id,created_at,ts) VALUES(1,'h_v1','text','v1 clip','v1 clip','v1 clip',1,1000,1000);
+                 INSERT INTO clip_formats(clip_id,fmt_id,name,size,data) VALUES(1,13,'CF_UNICODETEXT',4,X'76003100');",
+            ).unwrap();
+        }
+
+        // Open main DB and merge from V1 export
+        let conn = open_with_recovery(&dir).unwrap();
+        let added = merge_from(&conn, &v1_path).unwrap();
+        assert_eq!(added, 1);
+        assert_eq!(list_pinboards(&conn).unwrap().len(), 1);
+
+        // Create a daily backup, then corrupt clipnest.db and verify open_with_recovery restores it
+        let mutex = parking_lot::Mutex::new(conn);
+        let gz_path = backup(&mutex, &dir, 5).unwrap();
+        assert!(gz_path.exists());
+        drop(mutex);
+
+        std::fs::write(dir.join("clipnest.db"), b"corrupted bytes not sqlite").unwrap();
+        let recovered = open_with_recovery(&dir).unwrap();
+        let count: i64 = recovered.query_row("SELECT COUNT(*) FROM clips", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 1);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

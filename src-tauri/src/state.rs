@@ -112,11 +112,8 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        let rule = |exe: &str, mode: &str, keys: &str| AppRule {
-            exe: exe.into(),
-            mode: mode.into(),
-            keys: keys.into(),
-        };
+        let rule =
+            |exe: &str, mode: &str, keys: &str| AppRule { exe: exe.into(), mode: mode.into(), keys: keys.into() };
         Settings {
             language: "en".into(),
             store_rich: true,
@@ -188,10 +185,7 @@ impl Default for Settings {
 
 impl Settings {
     pub fn load(path: &Path) -> Settings {
-        std::fs::read_to_string(path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
+        std::fs::read_to_string(path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
     }
 
     /// Atomic write: temp file + fsync + rename, so a crash can never leave a half-written file.
@@ -227,12 +221,7 @@ pub struct Queue {
 
 impl Default for Queue {
     fn default() -> Self {
-        Queue {
-            active: false,
-            mode: "queue".into(),
-            items: Vec::new(),
-            basket: Vec::new(),
-        }
+        Queue { active: false, mode: "queue".into(), items: Vec::new(), basket: Vec::new() }
     }
 }
 

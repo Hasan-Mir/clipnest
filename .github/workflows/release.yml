@@ -1,0 +1,97 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag (e.g. v0.1.0)"
+        required: true
+        default: "v0.1.0"
+      draft:
+        description: "Create as draft release"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release-windows:
+    name: Build & Publish Windows Installer
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Run Frontend & Rust test suites before release
+        run: |
+          npm run typecheck
+          npm test
+          cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Extract release notes from CHANGELOG.md
+        id: changelog
+        shell: pwsh
+        run: |
+          $rawTag = if ("${{ github.event.inputs.tag_name }}" -ne "") { "${{ github.event.inputs.tag_name }}" } else { "${{ github.ref_name }}" }
+          $ver = $rawTag.TrimStart("v")
+          $notes = ""
+          if (Test-Path "CHANGELOG.md") {
+            $lines = Get-Content "CHANGELOG.md"
+            $capturing = $false
+            $collected = @()
+            foreach ($line in $lines) {
+              $trimmed = $line.Trim()
+              if ($trimmed -match "^$([regex]::Escape($ver))\s+\(\d{2}\.\d{2}\.\d{2}\)$") {
+                $capturing = $true
+                continue
+              }
+              if ($capturing -and $trimmed -match "^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\s+\(\d{2}\.\d{2}\.\d{2}\)$") {
+                break
+              }
+              if ($capturing) {
+                $collected += $line
+              }
+            }
+            $notes = ($collected -join "`n").Trim()
+          }
+          if ([string]::IsNullOrWhiteSpace($notes)) {
+            $notes = "ClipNest $rawTag for Windows (supports both Per-User and All-Users installation)."
+          }
+          $eof = "EOF_" + [guid]::NewGuid().ToString("N")
+          "tag=$rawTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "body<<$eof" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          $notes | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "$eof" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Build and publish Tauri v2 NSIS installer
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ steps.changelog.outputs.tag }}
+          releaseName: "ClipNest ${{ steps.changelog.outputs.tag }}"
+          releaseBody: ${{ steps.changelog.outputs.body }}
+          releaseDraft: ${{ github.event.inputs.draft == 'true' }}
+          prerelease: false

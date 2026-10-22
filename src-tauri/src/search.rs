@@ -170,7 +170,10 @@ fn matches(p: &Parsed, row: &ClipRow, f: &Fields, typos: bool) -> bool {
         return re.is_match(f.search) || re.is_match(f.title_n);
     }
     if let Some(fz) = &p.fuzzy {
-        return subsequence(f.search, fz) || subsequence(f.title_n, fz) || subsequence(f.app_n, fz) || subsequence(f.exe_n, fz);
+        return subsequence(f.search, fz)
+            || subsequence(f.title_n, fz)
+            || subsequence(f.app_n, fz)
+            || subsequence(f.exe_n, fz);
     }
     let mut hay: Option<Vec<char>> = None;
     p.terms.iter().all(|t| {
@@ -197,7 +200,13 @@ enum Tier {
     Typos,
 }
 
-fn scan(conn: &Connection, a: &ListArgs, p: &Parsed, tier: Tier, limit: usize) -> Result<(Vec<ClipRow>, usize), String> {
+fn scan(
+    conn: &Connection,
+    a: &ListArgs,
+    p: &Parsed,
+    tier: Tier,
+    limit: usize,
+) -> Result<(Vec<ClipRow>, usize), String> {
     let board_clause = if a.pinboard.is_some() { "WHERE pinboard_id=?1" } else { "WHERE ?1 IS NULL" };
     let sql = format!("SELECT {ROW_COLS}, search FROM clips {board_clause} ORDER BY pinned DESC, sort_ts DESC");
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
@@ -235,7 +244,9 @@ pub fn list(conn: &Connection, a: &ListArgs) -> ListResult {
             None => ("WHERE ?1 IS NULL", vec![None]),
         };
         let total: usize = conn
-            .query_row(&format!("SELECT COUNT(*) FROM clips {where_clause}"), params_from_iter(bind.iter()), |r| r.get::<_, i64>(0))
+            .query_row(&format!("SELECT COUNT(*) FROM clips {where_clause}"), params_from_iter(bind.iter()), |r| {
+                r.get::<_, i64>(0)
+            })
             .unwrap_or(0) as usize;
         let sql = format!(
             "SELECT {ROW_COLS} FROM clips {where_clause} ORDER BY pinned DESC, sort_ts DESC LIMIT {}",
@@ -267,4 +278,77 @@ pub fn list(conn: &Connection, a: &ListArgs) -> ListResult {
         }
     }
     ListResult { items, total, error: None }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::capture::{build_text_clip, text_format};
+    use crate::db;
+
+    fn seed_db() -> Connection {
+        let dir = std::env::temp_dir().join(format!("clipnest_search_test_{}", db::now_ms()));
+        let mut conn = db::open_with_recovery(&dir).expect("open db");
+        let c1 = build_text_clip("کتاب‌های برنامه‌نویسی Rust", None, "Chrome", "chrome.exe", false);
+        db::insert_clip(&mut conn, &c1, &[text_format(&c1.plain)]).unwrap();
+
+        let c2 = build_text_clip("https://tauri.app/v2/guide", None, "Edge", "msedge.exe", false);
+        db::insert_clip(&mut conn, &c2, &[text_format(&c2.plain)]).unwrap();
+
+        let c3 = build_text_clip("This text mentions an image file", None, "Word", "winword.exe", false);
+        db::insert_clip(&mut conn, &c3, &[text_format(&c3.plain)]).unwrap();
+
+        let _ = std::fs::remove_dir_all(&dir);
+        conn
+    }
+
+    #[test]
+    fn smart_search_handles_persian_arabic_and_exe_names() {
+        let conn = seed_db();
+        // Searching with Arabic Kaf (U+0643) and no ZWNJ matches the Persian word
+        let res = list(&conn, &ListArgs { pinboard: None, query: "كتابها".into(), mode: "smart".into(), limit: 50 });
+        assert_eq!(res.total, 1);
+        assert!(res.items[0].preview.contains("Rust"));
+
+        // Searching by executable name 'winword' matches the Word clip
+        let res_exe =
+            list(&conn, &ListArgs { pinboard: None, query: "winword".into(), mode: "smart".into(), limit: 50 });
+        assert_eq!(res_exe.total, 1);
+        assert_eq!(res_exe.items[0].app_exe, "winword.exe");
+    }
+
+    #[test]
+    fn type_word_vs_quoted_literal_search() {
+        let conn = seed_db();
+        // Unquoted 'image' filters by kind == 'image' (0 items in seed_db)
+        let r_kind = list(&conn, &ListArgs { pinboard: None, query: "image".into(), mode: "smart".into(), limit: 50 });
+        assert_eq!(r_kind.total, 0);
+
+        // Quoted '"image"' searches literal text content
+        let r_lit =
+            list(&conn, &ListArgs { pinboard: None, query: "\"image\"".into(), mode: "smart".into(), limit: 50 });
+        assert_eq!(r_lit.total, 1);
+    }
+
+    #[test]
+    fn typo_tolerance_and_fuzzy_and_regex_modes() {
+        let conn = seed_db();
+        // Typo in 'mentions' -> 'mentoins' (2 edits in 8-letter word)
+        let r_typo =
+            list(&conn, &ListArgs { pinboard: None, query: "mentoins".into(), mode: "smart".into(), limit: 50 });
+        assert_eq!(r_typo.total, 1);
+
+        // Fuzzy subsequence 'trgde' -> matches 'https://tauri.app/v2/guide'
+        let r_fuzzy = list(&conn, &ListArgs { pinboard: None, query: "trgde".into(), mode: "fuzzy".into(), limit: 50 });
+        assert_eq!(r_fuzzy.total, 1);
+
+        // Regex mode: valid vs invalid
+        let r_re =
+            list(&conn, &ListArgs { pinboard: None, query: r"v\d+/guide".into(), mode: "regex".into(), limit: 50 });
+        assert_eq!(r_re.total, 1);
+
+        let r_bad =
+            list(&conn, &ListArgs { pinboard: None, query: "[unclosed".into(), mode: "regex".into(), limit: 50 });
+        assert!(r_bad.error.is_some());
+    }
 }

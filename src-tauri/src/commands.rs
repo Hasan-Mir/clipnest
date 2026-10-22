@@ -135,11 +135,7 @@ pub async fn create_text_item(app: AppHandle, state: State<'_, AppState>, text: 
 pub async fn merge_items(app: AppHandle, state: State<'_, AppState>, ids: Vec<i64>, sep: String) -> Res<i64> {
     let parts: Vec<String> = {
         let conn = state.db.lock();
-        ids.iter()
-            .filter_map(|id| db::get_plain(&conn, *id))
-            .filter(|(k, _)| k != "image")
-            .map(|(_, p)| p)
-            .collect()
+        ids.iter().filter_map(|id| db::get_plain(&conn, *id)).filter(|(k, _)| k != "image").map(|(_, p)| p).collect()
     };
     store_text(&app, &state, &parts.join(&sep))
 }
@@ -525,7 +521,14 @@ pub async fn get_app_icon(state: State<'_, AppState>, exe: String) -> Res<Option
 }
 
 #[tauri::command]
-pub async fn move_item(app: AppHandle, state: State<'_, AppState>, id: i64, target: i64, after: bool, scope: Option<i64>) -> Res<()> {
+pub async fn move_item(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    target: i64,
+    after: bool,
+    scope: Option<i64>,
+) -> Res<()> {
     db::move_item(&state.db.lock(), id, target, after, scope)?;
     changed(&app);
     Ok(())
@@ -585,7 +588,8 @@ pub async fn import_data(app: AppHandle, state: State<'_, AppState>) -> Res<Opti
 pub async fn export_settings(app: AppHandle, state: State<'_, AppState>) -> Res<Option<String>> {
     use tauri_plugin_dialog::DialogExt;
     let json = serde_json::to_string_pretty(&*state.settings.read()).map_err(|e| e.to_string())?;
-    let dest = app.dialog().file().add_filter("JSON", &["json"]).set_file_name("clipnest-settings.json").blocking_save_file();
+    let dest =
+        app.dialog().file().add_filter("JSON", &["json"]).set_file_name("clipnest-settings.json").blocking_save_file();
     let Some(dest) = dest else { return Ok(None) };
     let dest = dest.into_path().map_err(|e| e.to_string())?;
     std::fs::write(&dest, json).map_err(|e| e.to_string())?;

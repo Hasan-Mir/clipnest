@@ -1,1 +1,1 @@
-export { FA } from "./locales/fa";
+export { FA } from './locales/fa';

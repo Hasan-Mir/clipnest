@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "master", "develop"]
+  pull_request:
+    branches: ["main", "master", "develop"]
+
+jobs:
+  check-and-test:
+    name: Verify Formatting, Types & Tests (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Check Frontend formatting (Prettier)
+        run: npx prettier --check "src/**/*.{ts,tsx,css}" "*.{json,md,ts}"
+
+      - name: Check TypeScript types
+        run: npm run typecheck
+
+      - name: Run Frontend unit tests (Vitest)
+        run: npm test
+
+      - name: Check Rust formatting (rustfmt)
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+
+      - name: Run Rust unit & integration tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml

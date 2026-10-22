@@ -58,20 +58,8 @@ pub fn spawn_clipboard_listener(tx: Sender<()>) {
         wc.hInstance = hinst;
         wc.lpszClassName = class.as_ptr();
         RegisterClassW(&wc);
-        let hwnd = CreateWindowExW(
-            0,
-            class.as_ptr(),
-            class.as_ptr(),
-            0,
-            0,
-            0,
-            0,
-            0,
-            HWND_MESSAGE,
-            0,
-            hinst,
-            std::ptr::null(),
-        );
+        let hwnd =
+            CreateWindowExW(0, class.as_ptr(), class.as_ptr(), 0, 0, 0, 0, 0, HWND_MESSAGE, 0, hinst, std::ptr::null());
         if hwnd == 0 {
             eprintln!("clipnest: could not create the clipboard listener window");
             return;
@@ -587,13 +575,30 @@ unsafe fn icon_to_rgba(hicon: isize) -> Option<(u32, u32, Vec<u8>)> {
             let n = (w * h) as usize;
             let mut px = vec![0u8; n * 4];
             let mut bi = Bmi::new_top_down(w, h);
-            let got = GetDIBits(hdc, hc, 0, h as u32, px.as_mut_ptr() as *mut c_void, &mut bi as *mut Bmi as *mut BITMAPINFO, 0);
+            let got = GetDIBits(
+                hdc,
+                hc,
+                0,
+                h as u32,
+                px.as_mut_ptr() as *mut c_void,
+                &mut bi as *mut Bmi as *mut BITMAPINFO,
+                0,
+            );
             if got != 0 {
                 // Old icons carry no alpha channel: derive it from the AND mask.
                 if px.chunks_exact(4).all(|p| p[3] == 0) && hm != 0 {
                     let mut mask = vec![0u8; n * 4];
                     let mut bi2 = Bmi::new_top_down(w, h);
-                    if GetDIBits(hdc, hm, 0, h as u32, mask.as_mut_ptr() as *mut c_void, &mut bi2 as *mut Bmi as *mut BITMAPINFO, 0) != 0 {
+                    if GetDIBits(
+                        hdc,
+                        hm,
+                        0,
+                        h as u32,
+                        mask.as_mut_ptr() as *mut c_void,
+                        &mut bi2 as *mut Bmi as *mut BITMAPINFO,
+                        0,
+                    ) != 0
+                    {
                         for i in 0..n {
                             px[i * 4 + 3] = if mask[i * 4] == 0 { 255 } else { 0 };
                         }
@@ -632,7 +637,8 @@ unsafe fn hbitmap_to_rgba(hbmp: isize) -> Option<(u32, u32, Vec<u8>)> {
     let n = (w * h) as usize;
     let mut px = vec![0u8; n * 4];
     let mut bi = Bmi::new_top_down(w, h);
-    let got = GetDIBits(hdc, hbmp, 0, h as u32, px.as_mut_ptr() as *mut c_void, &mut bi as *mut Bmi as *mut BITMAPINFO, 0);
+    let got =
+        GetDIBits(hdc, hbmp, 0, h as u32, px.as_mut_ptr() as *mut c_void, &mut bi as *mut Bmi as *mut BITMAPINFO, 0);
     ReleaseDC(0, hdc);
     if got == 0 {
         return None;
@@ -790,8 +796,12 @@ pub fn parse_shortcut(s: &str) -> Option<(u8, u32)> {
                     "bracketleft" => 0xDB,
                     "bracketright" => 0xDD,
                     "backslash" => 0xDC,
-                    k if k.len() == 1 && k.as_bytes()[0].is_ascii_alphanumeric() => k.to_uppercase().as_bytes()[0] as u32,
-                    k if k.starts_with('f') && k[1..].parse::<u32>().map(|n| (1..=24).contains(&n)).unwrap_or(false) => {
+                    k if k.len() == 1 && k.as_bytes()[0].is_ascii_alphanumeric() => {
+                        k.to_uppercase().as_bytes()[0] as u32
+                    }
+                    k if k.starts_with('f')
+                        && k[1..].parse::<u32>().map(|n| (1..=24).contains(&n)).unwrap_or(false) =>
+                    {
                         0x70 + k[1..].parse::<u32>().unwrap() - 1
                     }
                     _ => return None,

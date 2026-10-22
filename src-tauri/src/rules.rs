@@ -89,3 +89,107 @@ pub fn apply(rules: &[AutoRule], clip: &mut NewClip, fmts: &mut Vec<StoredFormat
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn automatic_rules_apply_in_order_and_handle_all_actions() {
+        let mut clip = build_text_clip("  https://secret.example.com  ", None, "Chrome", "chrome.exe", true);
+        clip.sensitive = true;
+        let mut fmts = vec![
+            text_format(&clip.plain),
+            StoredFormat { fmt_id: 0xC100, name: "HTML Format".into(), data: b"<b>hi</b>".to_vec() },
+        ];
+
+        let rules = vec![
+            AutoRule {
+                id: "r1".into(),
+                name: "Trim".into(),
+                enabled: true,
+                apps: "chrome, msedge".into(),
+                kinds: vec![],
+                pattern: r"https://".into(),
+                action: "trim".into(),
+                board: 0,
+                value: "".into(),
+            },
+            AutoRule {
+                id: "r2".into(),
+                name: "Board & Tag".into(),
+                enabled: true,
+                apps: "".into(),
+                kinds: vec!["link".into()],
+                pattern: "".into(),
+                action: "to_board".into(),
+                board: 42,
+                value: "".into(),
+            },
+            AutoRule {
+                id: "r3".into(),
+                name: "Tags".into(),
+                enabled: true,
+                apps: "".into(),
+                kinds: vec!["link".into()],
+                pattern: "".into(),
+                action: "tag".into(),
+                board: 0,
+                value: "#work, urgent".into(),
+            },
+            AutoRule {
+                id: "r4".into(),
+                name: "Expire".into(),
+                enabled: true,
+                apps: "".into(),
+                kinds: vec![],
+                pattern: "".into(),
+                action: "expire".into(),
+                board: 0,
+                value: "10".into(),
+            },
+            AutoRule {
+                id: "r5".into(),
+                name: "Action".into(),
+                enabled: true,
+                apps: "".into(),
+                kinds: vec![],
+                pattern: "".into(),
+                action: "run_action".into(),
+                board: 0,
+                value: "act_1".into(),
+            },
+        ];
+
+        let out = apply(&rules, &mut clip, &mut fmts);
+        assert!(!out.ignore);
+        assert_eq!(clip.plain, "https://secret.example.com");
+        assert_eq!(clip.kind, "link");
+        assert!(clip.sensitive);
+        assert!(!clip.has_rich);
+        assert_eq!(fmts.len(), 1);
+        assert_eq!(out.board, Some(42));
+        assert_eq!(out.tags, vec!["work", "urgent"]);
+        assert!(clip.expires_at.is_some());
+        assert_eq!(out.run, vec!["act_1"]);
+    }
+
+    #[test]
+    fn ignore_rule_short_circuits() {
+        let mut clip = build_text_clip("secret password", None, "KeePass", "keepass.exe", false);
+        let mut fmts = vec![text_format(&clip.plain)];
+        let rules = vec![AutoRule {
+            id: "r1".into(),
+            name: "Ignore KeePass".into(),
+            enabled: true,
+            apps: "keepass".into(),
+            kinds: vec![],
+            pattern: "".into(),
+            action: "ignore".into(),
+            board: 0,
+            value: "".into(),
+        }];
+        let out = apply(&rules, &mut clip, &mut fmts);
+        assert!(out.ignore);
+    }
+}
