@@ -3,6 +3,7 @@ import { LocaleDefinition } from './types';
 export const ru: LocaleDefinition = {
     code: 'ru',
     name: 'Русский',
+    englishName: 'Russian',
     dir: 'ltr',
     translations: {
         General: 'Общие',
@@ -19,7 +20,21 @@ export const ru: LocaleDefinition = {
         'System (Auto)': 'Системная (Авто)',
         'Clip items font family': 'Шрифт элементов списка',
         'Maximum card height (px)': 'Макс. высота карточки (px)',
+        'Show item count on pinboard tabs': 'Показывать количество элементов на вкладках досок',
+        'Displays a small badge with the number of items next to each pinboard tab in the popup.':
+            'Отображает небольшой значок с количеством элементов рядом с каждой вкладкой доски.',
+        'Also erase pinned items': 'Также удалить закреплённые элементы',
+        'Also erase all pinboards and main clipboard': 'Также очистить все доски и основной буфер обмена',
         'Also erase pinned items and pinboards': 'Также удалить закреплённые элементы и доски',
+        'This will erase items in the active pinboard "{name}".':
+            'Это действие удалит элементы в активной доске «{name}».',
+        'This will erase items in the main Clipboard tab (pinboards are kept unless you check the option below).':
+            'Это действие удалит элементы на главной вкладке Буфера обмена (доски сохранятся, если не отмечена опция ниже).',
+        'Activate pinboard (new copies go here)': 'Активировать доску (новые копии попадут сюда)',
+        'Deactivate pinboard': 'Деактивировать доску',
+        'Active pinboard (new copies go here)': 'Активная доска (новые копии попадут сюда)',
+        Transform: 'Преобразовать',
+        Actions: 'Действия',
         'Windows File Explorer context menu': 'Контекстное меню Проводника Windows',
         'Toggle side toolbar': 'Боковая панель инструментов',
         'No conflict detected': 'Конфликтов не обнаружено',
@@ -48,6 +63,9 @@ export const ru: LocaleDefinition = {
         Save: 'Сохранить',
         OK: 'ОК',
         Clear: 'Очистить',
+        Erase: 'Очистить',
+        'Erase all history?': 'Очистить историю буфера обмена?',
+        'Filter…': 'Фильтр…',
         'Search settings…': 'Поиск настроек…',
         'Paste Queue': 'Очередь вставки',
         'Drop Basket': 'Корзина файлов',
@@ -77,5 +95,43 @@ export const ru: LocaleDefinition = {
         '{n} item': '{n} элемент',
         '{n} items': '{n} элементов',
         '{n} selected': 'Выбрано: {n}',
+        // Help & Guide + About translations
+        'Getting started': 'Начало работы',
+        'Press Win+V (or your configured shortcut) anywhere in Windows to open ClipNest at your text cursor. Double-click a card or press Enter to paste it with original formatting, or press Shift+Enter to paste as plain text.':
+            'Нажмите Win+V (или выбранное сочетание клавиш) в любом месте Windows, чтобы открыть ClipNest рядом с текстовым курсором. Дважды щёлкните карточку или нажмите Enter для вставки с исходным форматированием, либо Shift+Enter для вставки обычным текстом.',
+        'Smart search & filters': 'Умный поиск и фильтры',
+        'Type any word to search text, titles, app names, and tags with typo tolerance. Type image, code, link, file, or color to filter by item type (or wrap in quotes like "image" for literal text). Toggle .* for Regex or ~ for strict fuzzy matching.':
+            'Введите любое слово для поиска по тексту, заголовкам, приложениям и тегам с учётом опечаток. Введите image, code, link, file или color для фильтрации по типу (или в кавычках, например "image", для буквального поиска). Нажмите .* для Regex или ~ для нечёткого поиска.',
+        'Pinboards & active tab': 'Доски (Pinboards) и активная вкладка',
+        'Create colour-coded Pinboards with + or Ctrl+N and drag cards onto any tab. Right-click a Pinboard tab and enable Active pinboard so all new copies go straight into that tab automatically.':
+            'Создавайте цветные доски кнопкой + или Ctrl+N и перетаскивайте карточки на любую вкладку. Щёлкните правой кнопкой мыши по вкладке доски и включите «Активная доска», чтобы все новые копии автоматически сохранялись в неё.',
+        'Paste Queue & Drop Basket': 'Очередь вставки и Корзина файлов',
+        'Press Ctrl+Alt+Q to open the floating Queue / Drop Basket window. In Queue mode, copy multiple items and press Ctrl+V repeatedly to paste them in FIFO or LIFO order. In Drop Basket mode, collect files and images from different folders and paste or move them all at once.':
+            'Нажмите Ctrl+Alt+Q, чтобы открыть плавающее окно Очереди / Корзины. В режиме Очереди скопируйте несколько элементов и нажимайте Ctrl+V для последовательной вставки (FIFO или LIFO). В режиме Корзины собирайте файлы и изображения из разных папок и вставляйте или перемещайте их одним действием.',
+        'Right-click inside any folder in Windows File Explorer and select ClipNest to view your copied files and paste them directly into that folder, or right-click any file to add it to the Drop Basket.':
+            'Щёлкните правой кнопкой мыши в любой папке Проводника Windows и выберите ClipNest, чтобы просмотреть скопированные файлы и вставить их прямо в эту папку, или щёлкните правой кнопкой по файлу, чтобы добавить его в Корзину.',
+        'Text transforms & Persian tools': 'Преобразование текста и инструменты',
+        'Right-click any text card and choose Transform to convert case, format JSON, encode Base64/URL, normalize Arabic characters and digits to standard Persian/English, or convert all numbers to Persian digits.':
+            'Щёлкните правой кнопкой мыши по любой текстовой карточке и выберите «Преобразовать» для изменения регистра, форматирования JSON, кодирования Base64/URL или нормализации символов и цифр.',
+        'Inside the popup': 'Клавиши внутри окна',
+        'Select / extend selection / jump': 'Выбор / расширение выделения / переход',
+        'Switch Clipboard ↔ pinboards': 'Переключение между Буфером и досками',
+        'Paste · plain text · keep formatting': 'Вставить · без форматирования · с форматированием',
+        'Quick-paste a visible card': 'Быстрая вставка видимой карточки',
+        'Move the card up / down': 'Переместить карточку вверх / вниз',
+        'Preview (empty search)': 'Просмотр (при пустом поиске)',
+        'Copy only': 'Только копировать',
+        'Delete (or unpin inside a pinboard)': 'Удалить (или убрать из доски)',
+        'Rename · tags · pin on top': 'Переименовать · теги · закрепить сверху',
+        'Edit · formats inspector · merge selected': 'Изменить · инспектор форматов · объединить выбранные',
+        'Open link/file · new pinboard · settings': 'Открыть ссылку/файл · новая доска · настройки',
+        'Clear search, then close': 'Очистить поиск, затем закрыть',
+        'Fast, private clipboard manager & file collector for Windows 10 and 11.':
+            'Быстрый и приватный менеджер буфера обмена и сборщик файлов для Windows 10 и 11.',
+        '100% Local & Private': '100% Локально и Приватно',
+        'All clipboard data, icons, and backups are stored strictly on your device with zero cloud sync or telemetry.':
+            'Все данные буфера обмена, значки и резервные копии хранятся исключительно на вашем устройстве без облачной синхронизации и телеметрии.',
+        'Data folder': 'Папка данных',
+        'Open in Explorer': 'Открыть в Проводнике',
     },
 };

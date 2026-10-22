@@ -20,10 +20,13 @@ export const FA: Record<string, string> = {
         'رنگ اصلی برنامه برای کادرها، نشان‌ها، دکمه‌های فعال و هایلایت پیش‌فرض جستجو را انتخاب کنید.',
     'Action finished': 'اکشن انجام شد',
     'Action finished: new item': 'اکشن انجام شد: آیتم جدید ساخته شد',
-    'Actions ▸': 'اکشن‌ها ▸',
+    Actions: 'اکشن‌ها',
+    'Actions ▸': 'اکشن‌ها',
     Active: 'فعال',
     'Active and available': 'فعال و بدون تداخل',
     'Active pinboard (new copies go here)': 'Pinboard فعال (کپی‌های جدید به اینجا می‌روند)',
+    'Activate pinboard (new copies go here)': 'فعال‌سازی Pinboard (کپی‌های جدید به اینجا بروند)',
+    'Deactivate pinboard': 'غیرفعال‌سازی Pinboard',
     Add: 'افزودن',
     'Add tag': 'افزودن برچسب',
     'Adds ClipNest to the right-click context menu of folders and files in Windows Explorer to view and paste copied files or collect files into the Drop Basket.':
@@ -32,10 +35,20 @@ export const FA: Record<string, string> = {
         'تمامی داده‌های کلیپ‌بورد، آیکن‌ها و پشتیبان‌ها صرفاً روی دستگاه خودتان ذخیره می‌شوند و هیچ‌گونه ارسال داده به فضای ابری وجود ندارد.',
     'Already registered by another running application or Windows':
         'این میانبر توسط ویندوز یا برنامه‌ی دیگری اشغال شده است',
+    'Also erase pinned items': 'آیتم‌های سنجاق‌شده (Pin) هم پاک شوند',
+    'Also erase all pinboards and main clipboard': 'همه‌ی Pinboard ها و کلیپ‌بورد اصلی هم پاک شوند',
     'Also erase pinned items and pinboards': 'آیتم‌های سنجاق‌شده (Pin) و داخل Pinboard ها هم پاک شوند',
+    'This will erase items in the active pinboard "{name}".':
+        'این عملیات آیتم‌های Pinboard فعال («{name}») را پاک می‌کند.',
+    'This will erase items in the main Clipboard tab (pinboards are kept unless you check the option below).':
+        'این عملیات آیتم‌های تب کلیپ‌بورد اصلی را پاک می‌کند (محتوای Pinboard ها حفظ می‌شود مگر گزینه‌ی زیر را تیک بزنید).',
+    'Show item count on pinboard tabs': 'نمایش تعداد آیتم‌ها کنار هر تب Pinboard',
+    'Displays a small badge with the number of items next to each pinboard tab in the popup.':
+        'یک شمارنده‌ی کوچک شامل تعداد آیتم‌ها در کنار نام هر Pinboard نمایش می‌دهد.',
     Appearance: 'ظاهر',
     'Applied instantly to the popup, queue and settings windows. Needs Windows 10 2004+ for “Invisible”. Does not work inside Remote Desktop sessions.':
         'فوراً روی پنجره‌ی اصلی، صف و تنظیمات اعمال می‌شود. حالت «نامرئی» به ویندوز ۱۰ نسخه‌ی 2004 به بالا نیاز دارد و در Remote Desktop کار نمی‌کند.',
+    'Arabic Yeh/Kaf → Persian (ی ک)': 'تبدیل ی و ک عربی به فارسی (ی ک)',
     'Auto-delete after (minutes)': 'حذف خودکار پس از (دقیقه)',
     'Auto-delete after N minutes': 'حذف خودکار پس از N دقیقه',
     'Auto-save edits in preview': 'ذخیره‌ی خودکار ویرایش‌ها در پیش‌نمایش',
@@ -85,6 +98,7 @@ export const FA: Record<string, string> = {
     Color: 'رنگ',
     Comfortable: 'راحت',
     Compact: 'فشرده',
+    CONSTANT_CASE: 'CONSTANT_CASE',
     'Conflicts with Windows system shortcut (Alt+Tab / Alt+F4)':
         'تداخل با کلیدهای سیستمی ویندوز (Alt+Tab / Alt+F4)',
     'Copied {v}': 'کپی شد: {v}',
@@ -205,6 +219,8 @@ export const FA: Record<string, string> = {
     'Text colour applied to matched characters when searching (e.g. #2ea8ff for VS Code blue).':
         'رنگ متن حروف منطبق هنگام جستجو (مثلاً #2ea8ff برای آبی VS Code).',
     'History erased': 'تاریخچه پاک شد',
+    'HTML escape': 'کدگذاری HTML',
+    'HTML unescape': 'رمزگشایی HTML',
     'How Sensitive clips are handled when detected.':
         'نحوه‌ی برخورد با آیتم‌های حاوی اطلاعات حساس هنگام تشخیص.',
     'How many lines of text are previewed on each card before truncating.':
@@ -287,6 +303,7 @@ export const FA: Record<string, string> = {
     'Nothing copied from these executables is stored.': 'چیزی که از این برنامه‌ها کپی شود ذخیره نمی‌شود.',
     'Nothing copied yet': 'هنوز چیزی کپی نشده',
     'Nothing found': 'چیزی پیدا نشد',
+    'Number lines': 'شماره‌گذاری خطوط',
     OK: 'تأیید',
     'OLED black': 'مشکی OLED',
     Off: 'خاموش',
@@ -423,6 +440,7 @@ export const FA: Record<string, string> = {
     'Search settings…': 'جستجو در تنظیمات…',
     'Select / extend selection / jump': 'انتخاب / گسترش انتخاب / پرش',
     'Select several items first (Shift+↑/↓)': 'ابتدا چند آیتم را انتخاب کنید (Shift+↑/↓)',
+    'Sentence case': 'حرف اول جمله بزرگ',
     'Settings (Ctrl+,)': 'تنظیمات (Ctrl+,)',
     'Settings imported': 'تنظیمات وارد شد',
     'Settings reset to defaults': 'تنظیمات به حالت پیش‌فرض بازگردانی شد',
@@ -467,11 +485,13 @@ export const FA: Record<string, string> = {
     'Then press Ctrl+V repeatedly to paste in order.': 'سپس Ctrl+V را پشت‌سرهم بزنید تا به ترتیب پیست شوند.',
     'This pinboard is empty — drag cards onto its tab': 'این Pinboard خالی است — کارت‌ها را روی تبش بکشید',
     'Thumbnail size': 'اندازه‌ی پیش‌نمایش تصویر',
+    'Title Case': 'حروف اول کلمات بزرگ',
     'Toggle multi-selection': 'تغییر وضعیت انتخاب چندتایی',
     'Toggle plain-text mode': 'حالت متن ساده روشن/خاموش',
     'Toggle side toolbar': 'نمایش / مخفی کردن نوار ابزار کناری',
     'Transferred {n} item(s) to folder': '{n} آیتم به پوشه منتقل شد',
-    'Transform ▸': 'تبدیل ▸',
+    Transform: 'تبدیل',
+    'Transform ▸': 'تبدیل',
     Trim: 'حذف فاصله‌های کناری',
     'Trim whitespace': 'حذف فاصله‌های ابتدا و انتها',
     'Type any word to search text, titles, app names, and tags with typo tolerance. Type image, code, link, file, or color to filter by item type (or wrap in quotes like "image" for literal text). Toggle .* for Regex or ~ for strict fuzzy matching.':
@@ -527,6 +547,7 @@ export const FA: Record<string, string> = {
 export const fa: LocaleDefinition = {
     code: 'fa',
     name: 'فارسی',
+    englishName: 'Persian/Farsi',
     dir: 'rtl',
     translations: FA,
 };

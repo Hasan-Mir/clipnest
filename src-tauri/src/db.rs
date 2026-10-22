@@ -634,16 +634,34 @@ pub fn delete_expired(conn: &Connection) -> usize {
     conn.execute("DELETE FROM clips WHERE expires_at IS NOT NULL AND expires_at<?1", params![now_ms()]).unwrap_or(0)
 }
 
-/// Erases clipboard history.
-/// - When `include_pinned` is `true`, deletes ALL clips (including `pinned = 1` and pinboard items).
-/// - When `include_pinned` is `false`, deletes all unpinned clips (`pinned = 0`) that are either in
-///   the main history (`pinboard_id IS NULL`) or in the currently active pinboard (`active_pinboard`).
-pub fn erase_history(conn: &Connection, include_pinned: bool, active_pinboard: Option<i64>) -> Result<usize, String> {
-    if include_pinned {
-        conn.execute("DELETE FROM clips", []).map_err(|e| e.to_string())
-    } else if let Some(board_id) = active_pinboard {
-        conn.execute("DELETE FROM clips WHERE pinned=0 AND (pinboard_id IS NULL OR pinboard_id=?1)", params![board_id])
-            .map_err(|e| e.to_string())
+/// Erases clipboard history according to the selected scope and pinned-items option:
+/// - `all_pinboards == true`:
+///   - `include_pinned == true`: deletes ALL clips across the main clipboard and all pinboards.
+///   - `include_pinned == false`: deletes all unpinned clips (`pinned = 0`) across the main clipboard and all pinboards.
+/// - `all_pinboards == false`:
+///   - If `target_pinboard` is `Some(board_id)`, deletes clips in that pinboard (`pinboard_id = board_id`).
+///   - If `target_pinboard` is `None`, deletes clips in the main Clipboard tab (`pinboard_id IS NULL`).
+pub fn erase_history(
+    conn: &Connection,
+    include_pinned: bool,
+    target_pinboard: Option<i64>,
+    all_pinboards: bool,
+) -> Result<usize, String> {
+    if all_pinboards {
+        if include_pinned {
+            conn.execute("DELETE FROM clips", []).map_err(|e| e.to_string())
+        } else {
+            conn.execute("DELETE FROM clips WHERE pinned=0", []).map_err(|e| e.to_string())
+        }
+    } else if let Some(board_id) = target_pinboard {
+        if include_pinned {
+            conn.execute("DELETE FROM clips WHERE pinboard_id=?1", params![board_id]).map_err(|e| e.to_string())
+        } else {
+            conn.execute("DELETE FROM clips WHERE pinned=0 AND pinboard_id=?1", params![board_id])
+                .map_err(|e| e.to_string())
+        }
+    } else if include_pinned {
+        conn.execute("DELETE FROM clips WHERE pinboard_id IS NULL", []).map_err(|e| e.to_string())
     } else {
         conn.execute("DELETE FROM clips WHERE pinned=0 AND pinboard_id IS NULL", []).map_err(|e| e.to_string())
     }
@@ -860,15 +878,22 @@ mod tests {
         let (id_board, _) = insert_clip(&mut conn, &c_board, &[text_format("board item")]).unwrap();
         set_pinboard(&conn, &[id_board], Some(bid)).unwrap();
 
-        // 1. Erase with include_pinned=false and active_pinboard=Some(bid): deletes normal + unpinned active-board item, keeps pinned
-        let deleted = erase_history(&conn, false, Some(bid)).unwrap();
-        assert_eq!(deleted, 2);
-        assert!(get_row(&conn, id_normal).is_none());
+        // 1. Erase only active pinboard (include_pinned=false, target_pinboard=Some(bid), all_pinboards=false):
+        //    deletes unpinned item in TestBoard, keeps main normal item and pinned item.
+        let deleted_board = erase_history(&conn, false, Some(bid), false).unwrap();
+        assert_eq!(deleted_board, 1);
         assert!(get_row(&conn, id_board).is_none());
+        assert!(get_row(&conn, id_normal).is_some());
         assert!(get_row(&conn, id_pinned).is_some());
 
-        // 2. Erase with include_pinned=true: deletes everything including pinned
-        let deleted_all = erase_history(&conn, true, None).unwrap();
+        // 2. Erase main clipboard unpinned (include_pinned=false, target_pinboard=None, all_pinboards=false):
+        let deleted_main = erase_history(&conn, false, None, false).unwrap();
+        assert_eq!(deleted_main, 1);
+        assert!(get_row(&conn, id_normal).is_none());
+        assert!(get_row(&conn, id_pinned).is_some());
+
+        // 3. Erase all including pinned across all boards (include_pinned=true, target_pinboard=None, all_pinboards=true):
+        let deleted_all = erase_history(&conn, true, None, true).unwrap();
         assert_eq!(deleted_all, 1);
         assert!(get_row(&conn, id_pinned).is_none());
 

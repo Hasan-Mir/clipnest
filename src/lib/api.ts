@@ -132,6 +132,7 @@ export interface Settings {
     popup_position: 'caret' | 'mouse' | 'center' | 'last';
     remember_popup_size: boolean;
     show_toolbar: boolean;
+    show_pinboard_counts: boolean;
     animations: boolean;
     show_thumbnails: boolean;
     thumbnail_size: 'small' | 'medium' | 'large';
@@ -214,7 +215,8 @@ export const api = {
     resizeTray: (height: number) => invoke<void>('resize_tray', { height }),
     requestEraseFromTray: () => invoke<void>('request_erase_from_tray'),
     openSettings: () => invoke<void>('open_settings'),
-    eraseHistory: (includePinned = false) => invoke<number>('erase_history', { includePinned }),
+    eraseHistory: (includePinned = false, pinboard: number | null = null, allPinboards = false) =>
+        invoke<number>('erase_history', { includePinned, pinboard, allPinboards }),
     backupNow: () => invoke<string>('backup_now'),
     openDataDir: () => invoke<void>('open_data_dir'),
     recentApps: () => invoke<AppInfo[]>('recent_apps'),

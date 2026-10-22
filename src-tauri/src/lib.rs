@@ -11,12 +11,44 @@ mod state;
 mod windowing;
 
 use state::{AppState, HotAction, Settings};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, WindowEvent};
 use tauri_plugin_autostart::ManagerExt as _;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutEvent, ShortcutState};
+
+// ───────────────────────────── portable mode detection ─────────────────────────────
+
+/// Resolves the data directory (`clipnest.db`, `settings.json`, `backups/`).
+/// Uses `<exe_dir>/data` when running in portable mode (triggered by `portable.txt`, `.portable`,
+/// `portable_data` folder next to the executable, `--portable` CLI flag, or `portable` in the `.exe` name).
+fn resolve_data_dir(app: &tauri::App) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let args: Vec<String> = std::env::args().collect();
+    let flag_portable = args.iter().any(|a| a.eq_ignore_ascii_case("--portable"));
+    if let Ok(exe_path) = std::env::current_exe() {
+        let exe_name = exe_path.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+        if let Some(exe_dir) = exe_path.parent() {
+            let marker_portable = exe_dir.join("portable.txt").exists()
+                || exe_dir.join(".portable").exists()
+                || exe_dir.join("portable_data").exists()
+                || exe_name.contains("portable");
+            if flag_portable || marker_portable {
+                let portable_dir = if exe_dir.join("portable_data").exists() {
+                    exe_dir.join("portable_data")
+                } else {
+                    exe_dir.join("data")
+                };
+                if std::fs::create_dir_all(&portable_dir).is_ok() {
+                    return Ok(portable_dir);
+                }
+            }
+        }
+    }
+    let dir = app.path().app_data_dir()?;
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
 
 // ───────────────────────────── hotkeys ─────────────────────────────
 
@@ -310,18 +342,13 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(on_shortcut).build())
         .setup(|app| {
             let handle = app.handle().clone();
-            let data_dir = app.path().app_data_dir()?;
-            std::fs::create_dir_all(&data_dir)?;
+            let data_dir = resolve_data_dir(app)?;
             let settings_path = data_dir.join("settings.json");
             let settings = Settings::load(&settings_path);
             let conn = db::open_with_recovery(&data_dir).map_err(|e| e.to_string())?;
             let _ = db::apply_limits(&conn, &settings);
             app.manage(AppState::new(conn, settings.clone(), data_dir, settings_path));
 
-            if let Some(w) = handle.get_webview_window("popup") {
-                windowing::apply_protection_to(&handle, &w);
-            }
-            windowing::init_background_windows(&handle);
             register_hotkeys(&handle);
             build_tray(&handle)?;
             capture::spawn(handle.clone());
@@ -341,7 +368,7 @@ pub fn run() {
 
             // Handle CLI args if ClipNest was cold-launched directly from File Explorer context menu
             let init_args: Vec<String> = std::env::args().collect();
-            if init_args.len() > 1 {
+            if init_args.iter().skip(1).any(|a| !a.eq_ignore_ascii_case("--portable")) {
                 let h2 = handle.clone();
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_millis(250));
@@ -398,7 +425,7 @@ pub fn run() {
                         std::thread::sleep(std::time::Duration::from_millis(65));
                         let st = app.state::<AppState>();
                         let since = db::now_ms() - st.tray_shown_at.load(Ordering::SeqCst);
-                        if since < 380 {
+                        if since < 550 {
                             if let Ok(h) = win_clone.hwnd() {
                                 platform::win::focus_window(h.0 as isize);
                             }

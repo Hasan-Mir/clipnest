@@ -161,6 +161,7 @@ const BASE_CSS = `
     position: relative;
     padding: 4px 6px;
     box-sizing: border-box;
+    font-family: var(--card-font, 'Vazirmatn', system-ui, -apple-system, 'Segoe UI', sans-serif);
   }
   body, pre, p, div { margin: 0; }
   img { max-width: 100%; height: auto; }
@@ -178,6 +179,12 @@ const BASE_CSS = `
     font-family: inherit;
     font-size: inherit;
     border-radius: 2px;
+  }
+`;
+
+const CUSTOM_FONT_OVERRIDE_CSS = `
+  :host, body, pre, p, div, span, code, td, th, li {
+    font-family: var(--card-font, 'Vazirmatn', system-ui, sans-serif) !important;
   }
 `;
 
@@ -226,8 +233,9 @@ export const RichView = memo(function RichView({
                 onMissing?.();
                 return;
             }
+            const customFontOn = document.documentElement.dataset.customFont === 'on';
             const root = host.current.shadowRoot ?? host.current.attachShadow({ mode: 'open' });
-            root.innerHTML = `<style>${BASE_CSS}</style>${html}`;
+            root.innerHTML = `<style>${BASE_CSS}${customFontOn ? CUSTOM_FONT_OVERRIDE_CSS : ''}</style>${html}`;
             if (highlight && query.trim()) {
                 highlightDomElement(root, query, searchMode, highlight);
             }

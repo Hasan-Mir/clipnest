@@ -484,30 +484,43 @@ pub fn work_area_at(x: i32, y: i32) -> (i32, i32, i32, i32) {
 /// mode: "off" | "black" | "hidden"
 ///  black  -> WDA_MONITOR (0x1): the window shows as a black rectangle in screenshots/recordings
 ///  hidden -> WDA_EXCLUDEFROMCAPTURE (0x11, Win10 2004+): the window is invisible in captures
+///
+/// IMPORTANT: Never call `SetWindowDisplayAffinity` on a hidden (`!IsWindowVisible`) window on Windows:
+/// calling it before a window is shown forces DWM to compose and display a white ghost window frame.
 pub fn set_capture_protection(hwnd: isize, mode: &str) -> bool {
+    if hwnd == 0 {
+        return false;
+    }
     let affinity: u32 = match mode {
         "black" => 0x1,
         "hidden" => 0x11,
         _ => 0x0,
     };
-    unsafe { SetWindowDisplayAffinity(hwnd, affinity) != 0 }
+    unsafe {
+        if IsWindow(hwnd) == 0 || IsWindowVisible(hwnd) == 0 {
+            return false;
+        }
+        let mut current: u32 = 0;
+        if GetWindowDisplayAffinity(hwnd, &mut current) != 0 && current == affinity {
+            return true;
+        }
+        SetWindowDisplayAffinity(hwnd, affinity) != 0
+    }
 }
 
-/// Window that never steals focus and has no native OS titlebar/close button (used for the paste-queue overlay).
+/// Marks a frameless Tauri window as non-activating (`WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW`)
+/// without stripping `WS_THICKFRAME` from `GWL_STYLE` (preserving Tauri's `WM_NCCALCSIZE` client rect
+/// so no unpainted white Win32 border appears around the WebView).
 pub fn make_no_activate(hwnd: isize) {
     unsafe {
-        let style = GetWindowLongPtrW(hwnd, GWL_STYLE);
-        let strip = (WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU) as isize;
-        SetWindowLongPtrW(hwnd, GWL_STYLE, (style & !strip) | (WS_POPUP as isize));
-
+        if hwnd == 0 || IsWindow(hwnd) == 0 {
+            return;
+        }
         let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-        let strip_ex = (WS_EX_APPWINDOW | WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE) as isize;
-        SetWindowLongPtrW(
-            hwnd,
-            GWL_EXSTYLE,
-            (ex & !strip_ex) | (WS_EX_NOACTIVATE as isize) | (WS_EX_TOOLWINDOW as isize),
-        );
-        SetWindowPos(hwnd, 0, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+        let target_ex = (ex & !(WS_EX_APPWINDOW as isize)) | (WS_EX_NOACTIVATE as isize) | (WS_EX_TOOLWINDOW as isize);
+        if ex != target_ex {
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, target_ex);
+        }
     }
 }
 

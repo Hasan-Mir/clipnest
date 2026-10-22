@@ -3,6 +3,7 @@ import { LocaleDefinition } from './types';
 export const tr: LocaleDefinition = {
     code: 'tr',
     name: 'Türkçe',
+    englishName: 'Turkish',
     dir: 'ltr',
     translations: {
         General: 'Genel',
@@ -19,7 +20,21 @@ export const tr: LocaleDefinition = {
         'System (Auto)': 'Sistem (Otomatik)',
         'Clip items font family': 'Liste öğeleri yazı tipi',
         'Maximum card height (px)': 'Maksimum kart yüksekliği (px)',
+        'Show item count on pinboard tabs': 'Pano sekmelerinde öğe sayısını göster',
+        'Displays a small badge with the number of items next to each pinboard tab in the popup.':
+            'Açılır pencerede her pano sekmesinin yanında öğe sayısını gösteren küçük bir rozet görüntüler.',
+        'Also erase pinned items': 'Sabitlenen öğeleri de sil',
+        'Also erase all pinboards and main clipboard': 'Tüm panoları ve ana geçmişi de temizle',
         'Also erase pinned items and pinboards': 'Sabitlenen öğeleri ve panoları da sil',
+        'This will erase items in the active pinboard "{name}".':
+            'Bu işlem aktif «{name}» panosundaki öğeleri temizleyecektir.',
+        'This will erase items in the main Clipboard tab (pinboards are kept unless you check the option below).':
+            'Bu işlem ana Pano sekmesindeki öğeleri temizleyecektir (aşağıdaki seçeneği işaretlemediğiniz sürece panolar korunur).',
+        'Activate pinboard (new copies go here)': 'Panoyu etkinleştir (yeni kopyalar buraya gider)',
+        'Deactivate pinboard': 'Panoyu devre dışı bırak',
+        'Active pinboard (new copies go here)': 'Aktif pano (yeni kopyalar buraya gider)',
+        Transform: 'Dönüştür',
+        Actions: 'Eylemler',
         'Windows File Explorer context menu': 'Windows Dosya Gezgini sağ tık menüsü',
         'Toggle side toolbar': 'Yan araç çubuğunu aç/kapat',
         'No conflict detected': 'Çakışma algılanmadı',
@@ -48,6 +63,9 @@ export const tr: LocaleDefinition = {
         Save: 'Kaydet',
         OK: 'Tamam',
         Clear: 'Temizle',
+        Erase: 'Temizle',
+        'Erase all history?': 'Pano geçmişi temizlensin mi?',
+        'Filter…': 'Filtrele…',
         'Search settings…': 'Ayarlarda ara…',
         'Paste Queue': 'Yapıştırma Kuyruğu',
         'Drop Basket': 'Dosya Sepeti',
@@ -77,5 +95,43 @@ export const tr: LocaleDefinition = {
         '{n} item': '{n} öğe',
         '{n} items': '{n} öğe',
         '{n} selected': '{n} seçildi',
+        // Help & Guide + About translations
+        'Getting started': 'Başlangıç',
+        'Press Win+V (or your configured shortcut) anywhere in Windows to open ClipNest at your text cursor. Double-click a card or press Enter to paste it with original formatting, or press Shift+Enter to paste as plain text.':
+            "ClipNest'i metin imlecinizin yanında açmak için Windows'un herhangi bir yerinde Win+V (veya ayarladığınız kısayol) tuşlarına basın. Orijinal biçimlendirmeyle yapıştırmak için bir karta çift tıklayın veya Enter'a basın; düz metin olarak yapıştırmak için Shift+Enter'a basın.",
+        'Smart search & filters': 'Akıllı arama ve filtreler',
+        'Type any word to search text, titles, app names, and tags with typo tolerance. Type image, code, link, file, or color to filter by item type (or wrap in quotes like "image" for literal text). Toggle .* for Regex or ~ for strict fuzzy matching.':
+            'Yazım hatası toleransıyla metin, başlık, uygulama adı ve etiketlerde arama yapmak için herhangi bir kelime yazın. Türüne göre filtrelemek için image, code, link, file veya color yazın (veya kelimenin kendisini aramak için "image" gibi tırnak içine alın). Regex için .* veya bulanık arama için ~ düğmesini kullanın.',
+        'Pinboards & active tab': 'Panolar (Pinboards) ve aktif sekme',
+        'Create colour-coded Pinboards with + or Ctrl+N and drag cards onto any tab. Right-click a Pinboard tab and enable Active pinboard so all new copies go straight into that tab automatically.':
+            '+ veya Ctrl+N ile renkli panolar oluşturun ve kartları istediğiniz sekmeye sürükleyin. Bir pano sekmesine sağ tıklayıp Aktif pano seçeneğini etkinleştirerek tüm yeni kopyaların doğrudan o sekmeye kaydedilmesini sağlayın.',
+        'Paste Queue & Drop Basket': 'Yapıştırma Kuyruğu ve Dosya Sepeti',
+        'Press Ctrl+Alt+Q to open the floating Queue / Drop Basket window. In Queue mode, copy multiple items and press Ctrl+V repeatedly to paste them in FIFO or LIFO order. In Drop Basket mode, collect files and images from different folders and paste or move them all at once.':
+            'Yüzen Kuyruk / Dosya Sepeti penceresini açmak için Ctrl+Alt+Q tuşlarına basın. Kuyruk modunda birden fazla öğeyi kopyalayıp art arda Ctrl+V ile sırayla yapıştırın. Dosya Sepeti modunda farklı klasörlerden dosya ve resimleri toplayıp tek seferde yapıştırın veya taşıyın.',
+        'Right-click inside any folder in Windows File Explorer and select ClipNest to view your copied files and paste them directly into that folder, or right-click any file to add it to the Drop Basket.':
+            'Windows Dosya Gezgini’nde herhangi bir klasörün içine sağ tıklayıp ClipNest’i seçerek kopyaladığınız dosyaları görüntüleyin ve doğrudan o klasöre yapıştırın veya herhangi bir dosyaya sağ tıklayarak Dosya Sepeti’ne ekleyin.',
+        'Text transforms & Persian tools': 'Metin dönüştürme ve araçlar',
+        'Right-click any text card and choose Transform to convert case, format JSON, encode Base64/URL, normalize Arabic characters and digits to standard Persian/English, or convert all numbers to Persian digits.':
+            'Harf büyüklüğünü değiştirmek, JSON biçimlendirmek, Base64/URL kodlamak veya karakter ve rakamları dönüştürmek için herhangi bir metin kartına sağ tıklayıp Dönüştür menüsünü seçin.',
+        'Inside the popup': 'Açılır pencere kısayolları',
+        'Select / extend selection / jump': 'Seç / seçimi genişlet / atla',
+        'Switch Clipboard ↔ pinboards': 'Pano ve özel panolar arasında geçiş yap',
+        'Paste · plain text · keep formatting': 'Yapıştır · düz metin · biçimi koru',
+        'Quick-paste a visible card': 'Görünür bir kartı hızlı yapıştır',
+        'Move the card up / down': 'Kartı yukarı / aşağı taşı',
+        'Preview (empty search)': 'Önizleme (arama boşken)',
+        'Copy only': 'Yalnızca kopyala',
+        'Delete (or unpin inside a pinboard)': 'Sil (veya panodan çıkar)',
+        'Rename · tags · pin on top': 'Yeniden adlandır · etiketler · üste sabitle',
+        'Edit · formats inspector · merge selected': 'Düzenle · biçim denetçisi · seçilenleri birleştir',
+        'Open link/file · new pinboard · settings': 'Bağlantı/dosya aç · yeni pano · ayarlar',
+        'Clear search, then close': 'Aramayı temizle, ardından kapat',
+        'Fast, private clipboard manager & file collector for Windows 10 and 11.':
+            'Windows 10 ve 11 için hızlı, gizlilik odaklı pano yöneticisi ve dosya toplayıcı.',
+        '100% Local & Private': '%100 Yerel ve Gizli',
+        'All clipboard data, icons, and backups are stored strictly on your device with zero cloud sync or telemetry.':
+            'Tüm pano verileri, simgeler ve yedeklemeler hiçbir bulut eşitlemesi veya telemetri olmadan yalnızca cihazınızda saklanır.',
+        'Data folder': 'Veri klasörü',
+        'Open in Explorer': "Gezgin'de Aç",
     },
 };

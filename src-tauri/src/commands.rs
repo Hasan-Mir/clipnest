@@ -486,13 +486,20 @@ pub async fn open_settings(app: AppHandle) -> Res<()> {
 }
 
 #[tauri::command]
-pub async fn erase_history(app: AppHandle, state: State<'_, AppState>, include_pinned: Option<bool>) -> Res<usize> {
+pub async fn erase_history(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    include_pinned: Option<bool>,
+    pinboard: Option<i64>,
+    all_pinboards: Option<bool>,
+) -> Res<usize> {
     let inc = include_pinned.unwrap_or(false);
-    let active_board = state.settings.read().active_pinboard;
-    let deleted = db::erase_history(&state.db.lock(), inc, active_board)?;
+    let all_boards = all_pinboards.unwrap_or(false);
+    let target_board = if all_boards { None } else { pinboard.or_else(|| state.settings.read().active_pinboard) };
+    let deleted = db::erase_history(&state.db.lock(), inc, target_board, all_boards)?;
     {
         let mut q = state.queue.lock();
-        if inc {
+        if inc && all_boards {
             q.items.clear();
             q.basket.clear();
         } else {

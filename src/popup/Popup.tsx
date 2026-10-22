@@ -99,25 +99,43 @@ export default function Popup() {
             .catch(() => {});
     }, []);
 
-    const askErase = useCallback(() => {
-        setMenu(null);
-        setPrompt({
-            title: t('Erase all history?'),
-            confirm: true,
-            checkLabel: t('Also erase pinned items and pinboards'),
-            defaultChecked: false,
-            okLabel: t('Erase'),
-            danger: true,
-            onSubmit: (_val, includePinned) => {
-                api.eraseHistory(includePinned)
-                    .then(() => {
-                        reloadRef.current();
-                        showToast(t('History erased'));
-                    })
-                    .catch(fail);
-            },
-        });
-    }, [showToast, fail]);
+    const askErase = useCallback(
+        (explicitBoard?: Pinboard | null) => {
+            setMenu(null);
+            const activeId = settingsRef.current?.active_pinboard ?? null;
+            const targetBoard =
+                explicitBoard !== undefined
+                    ? explicitBoard
+                    : (curBoard ?? boards.find((b) => b.id === activeId) ?? null);
+            const msg = targetBoard
+                ? t('This will erase items in the active pinboard "{name}".', {
+                      name: targetBoard.name,
+                  })
+                : t(
+                      'This will erase items in the main Clipboard tab (pinboards are kept unless you check the option below).'
+                  );
+            setPrompt({
+                title: t('Erase all history?'),
+                message: msg,
+                confirm: true,
+                checkLabel: t('Also erase pinned items'),
+                defaultChecked: false,
+                checkLabel2: t('Also erase all pinboards and main clipboard'),
+                defaultChecked2: false,
+                okLabel: t('Erase'),
+                danger: true,
+                onSubmit: (_val, includePinned, allPinboards) => {
+                    api.eraseHistory(includePinned, targetBoard?.id ?? null, allPinboards)
+                        .then(() => {
+                            reloadRef.current();
+                            showToast(t('History erased'));
+                        })
+                        .catch(fail);
+                },
+            });
+        },
+        [curBoard, boards, showToast, fail]
+    );
     const askEraseRef = useRef(askErase);
     askEraseRef.current = askErase;
 
@@ -556,7 +574,7 @@ export default function Popup() {
         if (textual) {
             e.push({ sep: true });
             e.push({
-                label: t('Transform ▸'),
+                label: t('Transform'),
                 submenu: TRANSFORMS.map((tr) => ({
                     label: `${t(tr.group)} · ${t(tr.label)}`,
                     onClick: () => applyTransform(it, tr),
@@ -564,7 +582,7 @@ export default function Popup() {
             });
             if (settings?.actions.length) {
                 e.push({
-                    label: t('Actions ▸'),
+                    label: t('Actions'),
                     submenu: settings.actions.map((a) => ({
                         label: a.name,
                         onClick: () => {
@@ -605,7 +623,11 @@ export default function Popup() {
 
     const openTabMenu = (b: Pinboard | null, x: number, y: number) => {
         if (!b) {
-            setMenu({ x, y, entries: [{ label: t('Erase history…'), danger: true, onClick: askErase }] });
+            setMenu({
+                x,
+                y,
+                entries: [{ label: t('Erase history…'), danger: true, onClick: () => askErase(null) }],
+            });
             return;
         }
         const isAct = settings?.active_pinboard === b.id;
@@ -614,8 +636,7 @@ export default function Popup() {
             y,
             entries: [
                 {
-                    label: t('Active pinboard (new copies go here)'),
-                    hint: isAct ? '✓' : undefined,
+                    label: isAct ? t('Deactivate pinboard') : t('Activate pinboard (new copies go here)'),
                     onClick: () => {
                         if (settings) {
                             saveSettings({ ...settings, active_pinboard: isAct ? null : b.id });
@@ -624,6 +645,11 @@ export default function Popup() {
                 },
                 { label: t('Pinboard settings…'), onClick: () => setBoardDlg(b) },
                 { sep: true },
+                {
+                    label: t('Erase history…'),
+                    danger: true,
+                    onClick: () => askErase(b),
+                },
                 {
                     label: t('Delete pinboard…'),
                     danger: true,
@@ -952,6 +978,7 @@ export default function Popup() {
     const hlEnabled = s?.highlight_matches ?? true;
     const useVirtual = s?.virtual_scroll !== false;
     const toolbar = s?.show_toolbar && cur;
+    const showCounts = s?.show_pinboard_counts ?? true;
 
     const renderCard = (it: ClipRow, i: number) => (
         <Card
@@ -1209,6 +1236,7 @@ export default function Popup() {
                                 style={{ background: b.color }}
                             />
                             <span>{isDropTarget ? t('Move to {name}', { name: b.name }) : b.name}</span>
+                            {showCounts && !isDropTarget && <span className="tab-count">{num(b.count)}</span>}
                         </button>
                     );
                 })}
@@ -1325,7 +1353,7 @@ export default function Popup() {
                         </button>
                         <button
                             type="button"
-                            data-tip={t('Actions ▸')}
+                            data-tip={t('Actions')}
                             onClick={(e) => openMenu(cur, e.clientX, e.clientY)}
                         >
                             <Icon name="bolt" size={16} />
@@ -1351,7 +1379,7 @@ export default function Popup() {
                     type="button"
                     className="iconbtn erase"
                     data-tip={t('Erase history…')}
-                    onClick={askErase}
+                    onClick={() => askErase()}
                 >
                     <Icon name="trash" size={13} />
                 </button>

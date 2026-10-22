@@ -55,6 +55,7 @@ export const DEFAULT_SETTINGS: Settings = {
     popup_position: 'caret',
     remember_popup_size: true,
     show_toolbar: false,
+    show_pinboard_counts: true,
     animations: true,
     show_thumbnails: true,
     thumbnail_size: 'medium',
@@ -126,12 +127,17 @@ export function useSettings(): [Settings | null, (s: Settings) => void] {
 
         const fam = s.font_family ? s.font_family.trim() : '';
         if (fam) {
+            r.dataset.customFont = 'on';
             r.style.setProperty(
                 '--card-font',
-                `"${fam.replace(/"/g, '')}", "Vazirmatn", "Segoe UI Variable Text", "Segoe UI", Tahoma, sans-serif`
+                `"${fam.replace(/"/g, '')}", "Vazirmatn", system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", Tahoma, sans-serif`
             );
         } else {
-            r.style.removeProperty('--card-font');
+            r.dataset.customFont = 'off';
+            r.style.setProperty(
+                '--card-font',
+                '"Vazirmatn", system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", Tahoma, sans-serif'
+            );
         }
 
         const maxH = s.card_max_height > 0 ? `${Math.max(60, s.card_max_height)}px` : 'none';

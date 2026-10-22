@@ -1,4 +1,4 @@
-// CopyQ-style text transformations. Each returns the new text or throws with a readable message.
+// CopyQ-style text transformations. Each returns the new text or gracefully falls back.
 
 export interface Transform {
     id: string;
@@ -7,8 +7,8 @@ export interface Transform {
     run: (s: string) => string;
 }
 
-const arabicChars = ['ك', '\u0640', 'دِ', 'بِ', 'زِ', 'ذِ', 'ِشِ', 'ِسِ', 'ى', 'ي', 'ة'] as const;
-const persianChars = ['ک', '', 'د', 'ب', 'ز', 'ذ', 'ش', 'س', 'ی', 'ی', 'ه'] as const;
+const arabicChars = ['ك', '\u0640', '\u200d', 'دِ', 'بِ', 'زِ', 'ذِ', 'ِشِ', 'ِسِ', 'ى', 'ي', 'ة'] as const;
+const persianChars = ['ک', '', '\u200c', 'د', 'ب', 'ز', 'ذ', 'ش', 'س', 'ی', 'ی', 'ه'] as const;
 const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'] as const;
 const persianDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'] as const;
 const englishDigits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'] as const;
@@ -61,6 +61,7 @@ export const toPersianDigits = (value: string): string => {
 const words = (s: string) =>
     s
         .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+        .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
         .replace(/[_\-.]+/g, ' ')
         .trim()
         .split(/\s+/)
@@ -78,16 +79,61 @@ const b64dec = (s: string) => {
     return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
 };
 
+const htmlEsc = (s: string) =>
+    s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+const htmlUnesc = (s: string) =>
+    s
+        .replace(/&#39;|&apos;/g, "'")
+        .replace(/&quot;/g, '"')
+        .replace(/&gt;/g, '>')
+        .replace(/&lt;/g, '<')
+        .replace(/&amp;/g, '&');
+
 export const TRANSFORMS: Transform[] = [
     {
         id: 'json-pretty',
         group: 'JSON',
         label: 'Prettify JSON',
-        run: (s) => JSON.stringify(JSON.parse(s), null, 2),
+        run: (s) => {
+            try {
+                return JSON.stringify(JSON.parse(s), null, 2);
+            } catch {
+                return s;
+            }
+        },
     },
-    { id: 'json-min', group: 'JSON', label: 'Minify JSON', run: (s) => JSON.stringify(JSON.parse(s)) },
+    {
+        id: 'json-min',
+        group: 'JSON',
+        label: 'Minify JSON',
+        run: (s) => {
+            try {
+                return JSON.stringify(JSON.parse(s));
+            } catch {
+                return s;
+            }
+        },
+    },
     { id: 'upper', group: 'Case', label: 'UPPERCASE', run: (s) => s.toUpperCase() },
     { id: 'lower', group: 'Case', label: 'lowercase', run: (s) => s.toLowerCase() },
+    {
+        id: 'title',
+        group: 'Case',
+        label: 'Title Case',
+        run: (s) => s.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()),
+    },
+    {
+        id: 'sentence',
+        group: 'Case',
+        label: 'Sentence case',
+        run: (s) => s.toLowerCase().replace(/(^\s*[a-z]|[.!?]\s+[a-z])/g, (m) => m.toUpperCase()),
+    },
     {
         id: 'camel',
         group: 'Case',
@@ -124,10 +170,21 @@ export const TRANSFORMS: Transform[] = [
                 .map((w) => w.toLowerCase())
                 .join('-'),
     },
-    { id: 'b64e', group: 'Encode', label: 'Base64 encode', run: b64enc },
-    { id: 'b64d', group: 'Encode', label: 'Base64 decode', run: b64dec },
-    { id: 'urle', group: 'Encode', label: 'URL encode', run: encodeURIComponent },
-    { id: 'urld', group: 'Encode', label: 'URL decode', run: decodeURIComponent },
+    {
+        id: 'const',
+        group: 'Case',
+        label: 'CONSTANT_CASE',
+        run: (s) =>
+            words(s)
+                .map((w) => w.toUpperCase())
+                .join('_'),
+    },
+    { id: 'b64-enc', group: 'Encode', label: 'Base64 encode', run: b64enc },
+    { id: 'b64-dec', group: 'Encode', label: 'Base64 decode', run: b64dec },
+    { id: 'url-enc', group: 'Encode', label: 'URL encode', run: encodeURIComponent },
+    { id: 'url-dec', group: 'Encode', label: 'URL decode', run: decodeURIComponent },
+    { id: 'html-esc', group: 'Encode', label: 'HTML escape', run: htmlEsc },
+    { id: 'html-unesc', group: 'Encode', label: 'HTML unescape', run: htmlUnesc },
     {
         id: 'jwt',
         group: 'Encode',
@@ -141,7 +198,17 @@ export const TRANSFORMS: Transform[] = [
             return `// header\n${pretty(p[0])}\n\n// payload\n${pretty(p[1])}`;
         },
     },
-    { id: 'trim', group: 'Whitespace', label: 'Trim', run: (s) => s.trim() },
+    {
+        id: 'trim',
+        group: 'Whitespace',
+        label: 'Trim',
+        run: (s) =>
+            s
+                .split(/\r?\n/)
+                .map((l) => l.trim())
+                .filter(Boolean)
+                .join('\n'),
+    },
     {
         id: 'collapse',
         group: 'Whitespace',
@@ -153,7 +220,7 @@ export const TRANSFORMS: Transform[] = [
                 .trim(),
     },
     {
-        id: 'join-lines',
+        id: 'singleline',
         group: 'Lines',
         label: 'Join lines',
         run: (s) => s.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim(),
@@ -207,7 +274,17 @@ export const TRANSFORMS: Transform[] = [
         run: (s) => s.split(/\r?\n/).reverse().join('\n'),
     },
     {
-        id: 'fa',
+        id: 'number',
+        group: 'Lines',
+        label: 'Number lines',
+        run: (s) =>
+            s
+                .split(/\r?\n/)
+                .map((l, i) => `${i + 1}. ${l}`)
+                .join('\n'),
+    },
+    {
+        id: 'fa-normalize',
         group: 'Persian',
         label: 'Normalize chars & English digits (ی ک 123)',
         run: arabicReplacer,
@@ -217,6 +294,12 @@ export const TRANSFORMS: Transform[] = [
         group: 'Persian',
         label: 'Farsi digits (۰۱۲۳۴۵۶۷۸۹)',
         run: toPersianDigits,
+    },
+    {
+        id: 'fa-ye-ke',
+        group: 'Persian',
+        label: 'Arabic Yeh/Kaf → Persian (ی ک)',
+        run: (s) => s.replace(/[يى]/gu, 'ی').replace(/ك/gu, 'ک').replace(/ة/gu, 'ه'),
     },
     {
         id: 'count',

@@ -3,6 +3,7 @@ import { LocaleDefinition } from './types';
 export const ar: LocaleDefinition = {
     code: 'ar',
     name: 'العربية',
+    englishName: 'Arabic',
     dir: 'rtl',
     translations: {
         General: 'عام',
@@ -19,7 +20,21 @@ export const ar: LocaleDefinition = {
         'System (Auto)': 'النظام (تلقائي)',
         'Clip items font family': 'خط عناصر القائمة',
         'Maximum card height (px)': 'أقصى ارتفاع للبطاقة (بكسل)',
+        'Show item count on pinboard tabs': 'إظهار عدد العناصر بجانب علامات تبويب اللوحات',
+        'Displays a small badge with the number of items next to each pinboard tab in the popup.':
+            'يعرض شارة صغيرة بعدد العناصر بجانب كل علامة تبويب لوحة تثبيت.',
+        'Also erase pinned items': 'مسح العناصر المثبتة أيضاً',
+        'Also erase all pinboards and main clipboard': 'مسح جميع لوحات التثبيت والحافظة الرئيسية أيضاً',
         'Also erase pinned items and pinboards': 'مسح العناصر المثبتة ولوحات التثبيت أيضاً',
+        'This will erase items in the active pinboard "{name}".':
+            'سيؤدي هذا إلى مسح العناصر الموجودة في لوحة التثبيت النشطة «{name}».',
+        'This will erase items in the main Clipboard tab (pinboards are kept unless you check the option below).':
+            'سيؤدي هذا إلى مسح العناصر في تبويب الحافظة الرئيسية (تبقى لوحات التثبيت ما لم تحدد الخيار أدناه).',
+        'Activate pinboard (new copies go here)': 'تفعيل اللوحة (النسخ الجديدة تذهب إلى هنا)',
+        'Deactivate pinboard': 'إلغاء تفعيل اللوحة',
+        'Active pinboard (new copies go here)': 'اللوحة النشطة (النسخ الجديدة تذهب إلى هنا)',
+        Transform: 'تحويل النص',
+        Actions: 'الإجراءات',
         'Windows File Explorer context menu': 'قائمة النقر بزر الماوس الأيمن في مستكشف الملفات',
         'Toggle side toolbar': 'إظهار/إخفاء الشريط الجانبي',
         'No conflict detected': 'لا يوجد تعارض',
@@ -48,6 +63,9 @@ export const ar: LocaleDefinition = {
         Save: 'حفظ',
         OK: 'موافق',
         Clear: 'مسح',
+        Erase: 'مسح',
+        'Erase all history?': 'مسح سجل الحافظة؟',
+        'Filter…': 'تصفية…',
         'Search settings…': 'البحث في الإعدادات…',
         'Paste Queue': 'طابور اللصق',
         'Drop Basket': 'سلة الملفات والصور',
@@ -77,5 +95,43 @@ export const ar: LocaleDefinition = {
         '{n} item': '{n} عنصر',
         '{n} items': '{n} عناصر',
         '{n} selected': '{n} محدد',
+        // Help & Guide + About translations
+        'Getting started': 'البدء السريع',
+        'Press Win+V (or your configured shortcut) anywhere in Windows to open ClipNest at your text cursor. Double-click a card or press Enter to paste it with original formatting, or press Shift+Enter to paste as plain text.':
+            'اضغط على Win+V (أو الاختصار المخصص لك) في أي مكان في ويندوز لفتح ClipNest بجانب مؤشر الكتابة. انقر نقراً مزدوجاً على البطاقة أو اضغط Enter للصقها بالتنسيق الأصلي، أو Shift+Enter للصقها كنص عادي.',
+        'Smart search & filters': 'البحث الذكي والفلاتر',
+        'Type any word to search text, titles, app names, and tags with typo tolerance. Type image, code, link, file, or color to filter by item type (or wrap in quotes like "image" for literal text). Toggle .* for Regex or ~ for strict fuzzy matching.':
+            'اكتب أي كلمة للبحث في النصوص والعناوين وأسماء التطبيقات والوسوم مع التسامح مع الأخطاء الإملائية. اكتب image أو code أو link أو file أو color للتصفية حسب النوع (أو ضعها بين علامتي اقتباس مثل "image" للبحث النصي). فعّل .* للتعبيرات النمطية أو ~ للبحث الضبابي.',
+        'Pinboards & active tab': 'لوحات التثبيت والتبويب النشط',
+        'Create colour-coded Pinboards with + or Ctrl+N and drag cards onto any tab. Right-click a Pinboard tab and enable Active pinboard so all new copies go straight into that tab automatically.':
+            'أنشئ لوحات تثبيت ملونة بزر + أو Ctrl+N واسحب البطاقات إليها. انقر بزر الماوس الأيمن على أي لوحة وفعّل خيار اللوحة النشطة ليتم حفظ جميع النسخ الجديدة فيها تلقائياً.',
+        'Paste Queue & Drop Basket': 'طابور اللصق وسلة الملفات',
+        'Press Ctrl+Alt+Q to open the floating Queue / Drop Basket window. In Queue mode, copy multiple items and press Ctrl+V repeatedly to paste them in FIFO or LIFO order. In Drop Basket mode, collect files and images from different folders and paste or move them all at once.':
+            'اضغط Ctrl+Alt+Q لفتح نافذة الطابور / سلة الملفات العائمة. في وضع الطابور، انسخ عدة عناصر واضغط Ctrl+V بشكل متكرر للصقها بالترتيب. وفي وضع سلة الملفات، اجمع الملفات والصور من مجلدات مختلفة والصقها أو انقلها دفعة واحدة.',
+        'Right-click inside any folder in Windows File Explorer and select ClipNest to view your copied files and paste them directly into that folder, or right-click any file to add it to the Drop Basket.':
+            'انقر بزر الماوس الأيمن داخل أي مجلد في مستكشف ملفات ويندوز واختر ClipNest لعرض الملفات المنسوخة ولصقها مباشرة في ذلك المجلد، أو انقر بزر الماوس الأيمن على أي ملف لإضافته إلى سلة الملفات.',
+        'Text transforms & Persian tools': 'تحويلات النصوص والأدوات اللغوية',
+        'Right-click any text card and choose Transform to convert case, format JSON, encode Base64/URL, normalize Arabic characters and digits to standard Persian/English, or convert all numbers to Persian digits.':
+            'انقر بزر الماوس الأيمن على أي بطاقة نصية واختر «تحويل النص» لتغيير حالة الأحرف، أو تنسيق JSON، أو ترميز Base64/URL، أو توحيد الحروف والأرقام.',
+        'Inside the popup': 'داخل النافذة المنبثقة',
+        'Select / extend selection / jump': 'تحديد / توسيع التحديد / قفز',
+        'Switch Clipboard ↔ pinboards': 'التنقل بين الحافظة ولوحات التثبيت',
+        'Paste · plain text · keep formatting': 'لصق · نص عادي · مع التنسيق',
+        'Quick-paste a visible card': 'لصق سريع لبطاقة ظاهرة',
+        'Move the card up / down': 'تحريك البطاقة لأعلى / لأسفل',
+        'Preview (empty search)': 'معاينة (عندما يكون البحث فارغاً)',
+        'Copy only': 'نسخ فقط',
+        'Delete (or unpin inside a pinboard)': 'حذف (أو إزالة من اللوحة)',
+        'Rename · tags · pin on top': 'إعادة تسمية · وسوم · تثبيت في الأعلى',
+        'Edit · formats inspector · merge selected': 'تعديل · فاحص الصيغ · دمج المحدد',
+        'Open link/file · new pinboard · settings': 'فتح رابط/ملف · لوحة جديدة · الإعدادات',
+        'Clear search, then close': 'مسح البحث ثم الإغلاق',
+        'Fast, private clipboard manager & file collector for Windows 10 and 11.':
+            'مدير حافظة وجامع ملفات سريع وخاص لنظامي ويندوز 10 و 11.',
+        '100% Local & Private': 'محلي وخاص 100%',
+        'All clipboard data, icons, and backups are stored strictly on your device with zero cloud sync or telemetry.':
+            'يتم تخزين جميع بيانات الحافظة والأيقونات والنسخ الاحتياطية محلياً على جهازك فقط دون أي مزامنة سحابية.',
+        'Data folder': 'مجلد البيانات',
+        'Open in Explorer': 'فتح في مستكشف الملفات',
     },
 };

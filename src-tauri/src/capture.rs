@@ -507,7 +507,9 @@ mod tests {
     #[test]
     fn cf_html_extraction_with_and_without_offsets() {
         let html = "<html><body><span>Hello</span></body></html>";
-        let header = format!("Version:0.9\r\nStartHTML:{:08}\r\nEndHTML:{:08}\r\n", 49, 49 + html.len());
+        let start = 51usize;
+        let header = format!("Version:0.9\r\nStartHTML:{:08}\r\nEndHTML:{:08}\r\n", start, start + html.len());
+        assert_eq!(header.len(), start);
         let mut payload = header.into_bytes();
         payload.extend_from_slice(html.as_bytes());
         payload.extend_from_slice(&[0, 0]);

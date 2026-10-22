@@ -3,6 +3,7 @@ import { LocaleDefinition } from './types';
 export const de: LocaleDefinition = {
     code: 'de',
     name: 'Deutsch',
+    englishName: 'German',
     dir: 'ltr',
     translations: {
         General: 'Allgemein',
@@ -19,7 +20,22 @@ export const de: LocaleDefinition = {
         'System (Auto)': 'System (Automatisch)',
         'Clip items font family': 'Schriftart der Einträge',
         'Maximum card height (px)': 'Maximale Kartenhöhe (px)',
+        'Show item count on pinboard tabs': 'Elementanzahl auf Pinboard-Tabs anzeigen',
+        'Displays a small badge with the number of items next to each pinboard tab in the popup.':
+            'Zeigt ein kleines Abzeichen mit der Anzahl der Elemente neben jedem Pinboard-Tab an.',
+        'Also erase pinned items': 'Angeheftete Elemente ebenfalls löschen',
+        'Also erase all pinboards and main clipboard':
+            'Alle Pinboards und die Haupt-Zwischenablage ebenfalls löschen',
         'Also erase pinned items and pinboards': 'Angeheftete Elemente und Pinboards ebenfalls löschen',
+        'This will erase items in the active pinboard "{name}".':
+            'Dadurch werden die Elemente im aktiven Pinboard „{name}“ gelöscht.',
+        'This will erase items in the main Clipboard tab (pinboards are kept unless you check the option below).':
+            'Dadurch werden die Elemente im Haupt-Tab „Zwischenablage“ gelöscht (Pinboards bleiben erhalten, sofern Sie die Option unten nicht aktivieren).',
+        'Activate pinboard (new copies go here)': 'Pinboard aktivieren (neue Kopien landen hier)',
+        'Deactivate pinboard': 'Pinboard deaktivieren',
+        'Active pinboard (new copies go here)': 'Aktives Pinboard (neue Kopien landen hier)',
+        Transform: 'Transformieren',
+        Actions: 'Aktionen',
         'Windows File Explorer context menu': 'Windows Explorer-Kontextmenü',
         'Toggle side toolbar': 'Seitenleiste ein-/ausblenden',
         'No conflict detected': 'Kein Konflikt erkannt',
@@ -48,6 +64,9 @@ export const de: LocaleDefinition = {
         Save: 'Speichern',
         OK: 'OK',
         Clear: 'Leeren',
+        Erase: 'Löschen',
+        'Erase all history?': 'Verlauf der Zwischenablage löschen?',
+        'Filter…': 'Filtern…',
         'Search settings…': 'Einstellungen durchsuchen…',
         'Paste Queue': 'Einfüge-Warteschlange',
         'Drop Basket': 'Dateikorb',
@@ -77,5 +96,43 @@ export const de: LocaleDefinition = {
         '{n} item': '{n} Element',
         '{n} items': '{n} Elemente',
         '{n} selected': '{n} ausgewählt',
+        // Help & Guide + About translations
+        'Getting started': 'Erste Schritte',
+        'Press Win+V (or your configured shortcut) anywhere in Windows to open ClipNest at your text cursor. Double-click a card or press Enter to paste it with original formatting, or press Shift+Enter to paste as plain text.':
+            'Drücken Sie überall in Windows Win+V (oder Ihr konfiguriertes Tastenkürzel), um ClipNest direkt am Textcursor zu öffnen. Doppelklicken Sie auf eine Karte oder drücken Sie Enter zum Einfügen mit Originalformatierung, oder Shift+Enter für Nur-Text.',
+        'Smart search & filters': 'Intelligente Suche & Filter',
+        'Type any word to search text, titles, app names, and tags with typo tolerance. Type image, code, link, file, or color to filter by item type (or wrap in quotes like "image" for literal text). Toggle .* for Regex or ~ for strict fuzzy matching.':
+            'Tippen Sie ein beliebiges Wort ein, um Text, Titel, App-Namen und Tags fehlertolerant zu durchsuchen. Geben Sie image, code, link, file oder color ein, um nach Typ zu filtern (oder in Anführungszeichen wie "image" für wörtlichen Text). Nutzen Sie .* für Regex oder ~ für Fuzzy-Suche.',
+        'Pinboards & active tab': 'Pinboards & aktiver Tab',
+        'Create colour-coded Pinboards with + or Ctrl+N and drag cards onto any tab. Right-click a Pinboard tab and enable Active pinboard so all new copies go straight into that tab automatically.':
+            'Erstellen Sie farbige Pinboards mit + oder Ctrl+N und ziehen Sie Karten auf einen beliebigen Tab. Klicken Sie mit der rechten Maustaste auf ein Pinboard und aktivieren Sie es, damit alle neuen Kopien automatisch dort gespeichert werden.',
+        'Paste Queue & Drop Basket': 'Einfüge-Warteschlange & Dateikorb',
+        'Press Ctrl+Alt+Q to open the floating Queue / Drop Basket window. In Queue mode, copy multiple items and press Ctrl+V repeatedly to paste them in FIFO or LIFO order. In Drop Basket mode, collect files and images from different folders and paste or move them all at once.':
+            'Drücken Sie Ctrl+Alt+Q, um das schwebende Fenster für Warteschlange / Dateikorb zu öffnen. Im Warteschlangen-Modus kopieren Sie mehrere Einträge und fügen sie mit wiederholtem Ctrl+V der Reihe nach ein. Im Dateikorb-Modus sammeln Sie Dateien und Bilder aus verschiedenen Ordnern und fügen sie gemeinsam ein.',
+        'Right-click inside any folder in Windows File Explorer and select ClipNest to view your copied files and paste them directly into that folder, or right-click any file to add it to the Drop Basket.':
+            'Klicken Sie im Windows Explorer mit der rechten Maustaste in einen Ordner und wählen Sie ClipNest, um kopierte Dateien anzuzeigen und direkt dort einzufügen, oder klicken Sie mit der rechten Maustaste auf eine Datei, um sie zum Dateikorb hinzuzufügen.',
+        'Text transforms & Persian tools': 'Texttransformationen & Werkzeuge',
+        'Right-click any text card and choose Transform to convert case, format JSON, encode Base64/URL, normalize Arabic characters and digits to standard Persian/English, or convert all numbers to Persian digits.':
+            'Klicken Sie mit der rechten Maustaste auf eine Textkarte und wählen Sie „Transformieren“, um Groß-/Kleinschreibung zu ändern, JSON zu formatieren, Base64/URL zu kodieren oder Zeichen und Ziffern zu normalisieren.',
+        'Inside the popup': 'Innerhalb des Popups',
+        'Select / extend selection / jump': 'Auswählen / Auswahl erweitern / springen',
+        'Switch Clipboard ↔ pinboards': 'Zwischen Zwischenablage & Pinboards wechseln',
+        'Paste · plain text · keep formatting': 'Einfügen · Nur-Text · Formatierung behalten',
+        'Quick-paste a visible card': 'Sichtbare Karte schnell einfügen',
+        'Move the card up / down': 'Karte nach oben / unten verschieben',
+        'Preview (empty search)': 'Vorschau (bei leerer Suche)',
+        'Copy only': 'Nur kopieren',
+        'Delete (or unpin inside a pinboard)': 'Löschen (oder aus Pinboard entfernen)',
+        'Rename · tags · pin on top': 'Umbenennen · Tags · oben anheften',
+        'Edit · formats inspector · merge selected': 'Bearbeiten · Format-Inspektor · Auswahl zusammenführen',
+        'Open link/file · new pinboard · settings': 'Link/Datei öffnen · neues Pinboard · Einstellungen',
+        'Clear search, then close': 'Suche leeren, dann schließen',
+        'Fast, private clipboard manager & file collector for Windows 10 and 11.':
+            'Schneller, privater Zwischenablage-Manager & Dateisammler für Windows 10 und 11.',
+        '100% Local & Private': '100 % Lokal & Privat',
+        'All clipboard data, icons, and backups are stored strictly on your device with zero cloud sync or telemetry.':
+            'Alle Daten der Zwischenablage, Icons und Sicherungen werden ausschließlich lokal auf Ihrem Gerät gespeichert – ohne Cloud-Synchronisierung oder Telemetrie.',
+        'Data folder': 'Datenordner',
+        'Open in Explorer': 'Im Explorer öffnen',
     },
 };

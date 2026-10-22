@@ -14,7 +14,9 @@
         "format": "prettier --write \"**/*.{ts,tsx,css,json}\" && cargo fmt --manifest-path src-tauri/Cargo.toml --all",
         "format:check": "prettier --check \"**/*.{ts,tsx,css,json}\" && cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
         "prepare": "husky",
-        "tauri": "tauri dev"
+        "tauri": "tauri dev",
+        "tauri:build": "tauri build && node scripts/build-portable.mjs",
+        "tauri:portable": "tauri build --no-bundle && node scripts/build-portable.mjs"
     },
     "dependencies": {
         "@floating-ui/dom": "^1.8.0",

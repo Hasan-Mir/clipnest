@@ -29,11 +29,14 @@ export function ContextMenu({
 }) {
     const [openSub, setOpenSub] = useState<number | null>(null);
     const [subAnchor, setSubAnchor] = useState<DOMRect | null>(null);
+    const [parentRect, setParentRect] = useState<DOMRect | null>(null);
+    const menuElRef = useRef<HTMLDivElement | null>(null);
 
-    const { refs, floatingStyles } = useFloating({
+    const { refs, floatingStyles, isPositioned } = useFloating({
         open: true,
         placement: 'bottom-start',
         strategy: 'fixed',
+        transform: false,
         whileElementsMounted: autoUpdate,
         middleware: [
             offset(2),
@@ -55,6 +58,7 @@ export function ContextMenu({
     });
 
     useLayoutEffect(() => {
+        setOpenSub(null);
         refs.setPositionReference({
             getBoundingClientRect() {
                 return {
@@ -82,9 +86,16 @@ export function ContextMenu({
                 }}
             />
             <div
-                className="menu"
-                ref={refs.setFloating}
-                style={floatingStyles}
+                key={`${x}-${y}`}
+                className={`menu${isPositioned ? ' menu-ready' : ''}`}
+                ref={(node) => {
+                    menuElRef.current = node;
+                    refs.setFloating(node);
+                }}
+                style={{
+                    ...floatingStyles,
+                    visibility: isPositioned ? 'visible' : 'hidden',
+                }}
                 onScroll={() => {
                     if (openSub !== null) {
                         setOpenSub(null);
@@ -130,12 +141,20 @@ export function ContextMenu({
                                 onMouseEnter={(ev) => {
                                     setOpenSub(i);
                                     setSubAnchor(ev.currentTarget.getBoundingClientRect());
+                                    if (menuElRef.current) {
+                                        setParentRect(menuElRef.current.getBoundingClientRect());
+                                    }
                                 }}
                             >
                                 <span className="menu-item-label">{e.label}</span>
                                 <span className="hint">▸</span>
                                 {openSub === i && subAnchor && (
-                                    <SubMenu anchor={subAnchor} entries={e.submenu} onPick={onClose} />
+                                    <SubMenu
+                                        anchor={subAnchor}
+                                        parentRect={parentRect ?? subAnchor}
+                                        entries={e.submenu}
+                                        onPick={onClose}
+                                    />
                                 )}
                             </div>
                         );
@@ -161,28 +180,52 @@ export function ContextMenu({
 }
 
 /**
- * Collision-aware submenu powered by @floating-ui/react: opens to the right if there is room,
- * otherwise flips to the left or top/bottom, and scrolls cleanly inside small popup windows.
+ * Side-anchored submenu powered by @floating-ui/react: opens to the right or left of the parent
+ * menu depending on which side has more horizontal room, and never stacks vertically on top of
+ * the parent menu.
  */
-function SubMenu({ anchor, entries, onPick }: { anchor: DOMRect; entries: MenuEntry[]; onPick: () => void }) {
-    const { refs, floatingStyles } = useFloating({
+function SubMenu({
+    anchor,
+    parentRect,
+    entries,
+    onPick,
+}: {
+    anchor: DOMRect;
+    parentRect: DOMRect;
+    entries: MenuEntry[];
+    onPick: () => void;
+}) {
+    const spaceRight = window.innerWidth - parentRect.right - 6;
+    const spaceLeft = parentRect.left - 6;
+    const preferLeft = spaceRight < 185 && spaceLeft > spaceRight;
+
+    const { refs, floatingStyles, isPositioned } = useFloating({
         open: true,
-        placement: 'right-start',
+        placement: preferLeft ? 'left-start' : 'right-start',
         strategy: 'fixed',
+        transform: false,
         whileElementsMounted: autoUpdate,
         middleware: [
-            offset(-4),
+            offset(2),
             flip({
-                fallbackPlacements: ['left-start', 'right-end', 'left-end', 'bottom-start', 'top-start'],
-                padding: 8,
+                fallbackPlacements: preferLeft
+                    ? ['right-start', 'left-end', 'right-end']
+                    : ['left-start', 'right-end', 'left-end'],
+                padding: 6,
             }),
-            shift({ padding: 8 }),
+            shift({
+                padding: 6,
+                crossAxis: true,
+            }),
             size({
-                padding: 8,
-                apply({ availableHeight, availableWidth, elements }) {
+                padding: 6,
+                apply({ availableHeight, elements }) {
+                    const sideSpace = Math.max(spaceRight, spaceLeft);
+                    const targetMaxW =
+                        sideSpace >= 165 ? Math.min(250, sideSpace) : Math.min(220, window.innerWidth * 0.56);
                     Object.assign(elements.floating.style, {
-                        maxHeight: `${Math.max(100, availableHeight)}px`,
-                        maxWidth: `${Math.max(180, availableWidth)}px`,
+                        maxHeight: `${Math.max(110, Math.min(320, availableHeight))}px`,
+                        maxWidth: `${Math.max(155, Math.round(targetMaxW))}px`,
                     });
                 },
             }),
@@ -192,13 +235,29 @@ function SubMenu({ anchor, entries, onPick }: { anchor: DOMRect; entries: MenuEn
     useLayoutEffect(() => {
         refs.setPositionReference({
             getBoundingClientRect() {
-                return anchor;
+                return {
+                    width: parentRect.width,
+                    height: anchor.height,
+                    x: parentRect.left,
+                    y: anchor.top,
+                    top: anchor.top,
+                    left: parentRect.left,
+                    right: parentRect.right,
+                    bottom: anchor.bottom,
+                };
             },
         });
-    }, [anchor, refs]);
+    }, [anchor, parentRect, refs]);
 
     return (
-        <div className="menu sub" ref={refs.setFloating} style={floatingStyles}>
+        <div
+            className={`menu sub${isPositioned ? ' menu-ready' : ''}`}
+            ref={refs.setFloating}
+            style={{
+                ...floatingStyles,
+                visibility: isPositioned ? 'visible' : 'hidden',
+            }}
+        >
             {entries.map((s, j) => (
                 <div
                     key={j}
@@ -219,19 +278,23 @@ function SubMenu({ anchor, entries, onPick }: { anchor: DOMRect; entries: MenuEn
 // ───────────── prompt dialog ─────────────
 export interface PromptState {
     title: string;
+    message?: string;
     initial?: string;
     placeholder?: string;
     confirm?: boolean; // confirm-only (no text field)
-    checkLabel?: string; // optional checkbox (e.g. "Also erase pinned items and pinboards")
+    checkLabel?: string; // primary checkbox (e.g. "Also erase pinned items")
     defaultChecked?: boolean;
+    checkLabel2?: string; // secondary checkbox (e.g. "Also erase all pinboards and main clipboard")
+    defaultChecked2?: boolean;
     okLabel?: string;
     danger?: boolean;
-    onSubmit: (value: string, checked: boolean) => void;
+    onSubmit: (value: string, checked: boolean, checked2: boolean) => void;
 }
 
 export function Prompt({ p, onClose }: { p: PromptState; onClose: () => void }) {
     const [v, setV] = useState(p.initial ?? '');
     const [checked, setChecked] = useState(Boolean(p.defaultChecked));
+    const [checked2, setChecked2] = useState(Boolean(p.defaultChecked2));
     const ref = useRef<HTMLInputElement>(null);
     const dialogRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
@@ -243,7 +306,7 @@ export function Prompt({ p, onClose }: { p: PromptState; onClose: () => void }) 
         }
     }, [p.confirm]);
     const submit = () => {
-        p.onSubmit(v, checked);
+        p.onSubmit(v, checked, checked2);
         onClose();
     };
     return (
@@ -266,6 +329,7 @@ export function Prompt({ p, onClose }: { p: PromptState; onClose: () => void }) 
                 }}
             >
                 <div className="dialog-title">{p.title}</div>
+                {p.message && <p className="dialog-msg muted small">{p.message}</p>}
                 {!p.confirm && (
                     <input
                         ref={ref}
@@ -282,6 +346,16 @@ export function Prompt({ p, onClose }: { p: PromptState; onClose: () => void }) 
                             onChange={(e) => setChecked(e.target.checked)}
                         />
                         <span>{p.checkLabel}</span>
+                    </label>
+                )}
+                {p.checkLabel2 && (
+                    <label className="dialog-check">
+                        <input
+                            type="checkbox"
+                            checked={checked2}
+                            onChange={(e) => setChecked2(e.target.checked)}
+                        />
+                        <span>{p.checkLabel2}</span>
                     </label>
                 )}
                 <div className="dialog-actions">

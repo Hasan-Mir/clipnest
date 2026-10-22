@@ -3,6 +3,7 @@ import { LocaleDefinition } from './types';
 export const es: LocaleDefinition = {
     code: 'es',
     name: 'Español',
+    englishName: 'Spanish',
     dir: 'ltr',
     translations: {
         General: 'General',
@@ -19,7 +20,22 @@ export const es: LocaleDefinition = {
         'System (Auto)': 'Sistema (Automático)',
         'Clip items font family': 'Fuente de los elementos',
         'Maximum card height (px)': 'Altura máxima de tarjeta (px)',
+        'Show item count on pinboard tabs': 'Mostrar contador de elementos en pestañas',
+        'Displays a small badge with the number of items next to each pinboard tab in the popup.':
+            'Muestra un pequeño contador con el número de elementos junto a cada pestaña de tablero.',
+        'Also erase pinned items': 'Borrar también elementos fijados',
+        'Also erase all pinboards and main clipboard':
+            'Borrar también todos los tableros y el portapapeles principal',
         'Also erase pinned items and pinboards': 'Borrar también elementos fijados y tableros',
+        'This will erase items in the active pinboard "{name}".':
+            'Esto borrará los elementos del tablero activo «{name}».',
+        'This will erase items in the main Clipboard tab (pinboards are kept unless you check the option below).':
+            'Esto borrará los elementos de la pestaña principal del Portapapeles (los tableros se conservan salvo que marques la opción inferior).',
+        'Activate pinboard (new copies go here)': 'Activar tablero (nuevas copias van aquí)',
+        'Deactivate pinboard': 'Desactivar tablero',
+        'Active pinboard (new copies go here)': 'Tablero activo (nuevas copias van aquí)',
+        Transform: 'Transformar',
+        Actions: 'Acciones',
         'Windows File Explorer context menu': 'Menú contextual del Explorador de Windows',
         'Toggle side toolbar': 'Mostrar/ocultar barra lateral',
         'No conflict detected': 'Sin conflictos detectados',
@@ -48,6 +64,9 @@ export const es: LocaleDefinition = {
         Save: 'Guardar',
         OK: 'Aceptar',
         Clear: 'Limpiar',
+        Erase: 'Borrar',
+        'Erase all history?': '¿Borrar historial del portapapeles?',
+        'Filter…': 'Filtrar…',
         'Search settings…': 'Buscar ajustes…',
         'Paste Queue': 'Cola de pegado',
         'Drop Basket': 'Cesta de archivos',
@@ -77,5 +96,43 @@ export const es: LocaleDefinition = {
         '{n} item': '{n} elemento',
         '{n} items': '{n} elementos',
         '{n} selected': '{n} seleccionados',
+        // Help & Guide + About translations
+        'Getting started': 'Primeros pasos',
+        'Press Win+V (or your configured shortcut) anywhere in Windows to open ClipNest at your text cursor. Double-click a card or press Enter to paste it with original formatting, or press Shift+Enter to paste as plain text.':
+            'Pulsa Win+V (o tu atajo configurado) en cualquier lugar de Windows para abrir ClipNest junto al cursor. Haz doble clic en una tarjeta o pulsa Enter para pegar con su formato original, o Shift+Enter para pegar como texto sin formato.',
+        'Smart search & filters': 'Búsqueda inteligente y filtros',
+        'Type any word to search text, titles, app names, and tags with typo tolerance. Type image, code, link, file, or color to filter by item type (or wrap in quotes like "image" for literal text). Toggle .* for Regex or ~ for strict fuzzy matching.':
+            'Escribe cualquier palabra para buscar en texto, títulos, aplicaciones y etiquetas con tolerancia a errores. Escribe image, code, link, file o color para filtrar por tipo (o entre comillas como "image" para buscar texto literal). Activa .* para Regex o ~ para búsqueda difusa.',
+        'Pinboards & active tab': 'Tableros y pestaña activa',
+        'Create colour-coded Pinboards with + or Ctrl+N and drag cards onto any tab. Right-click a Pinboard tab and enable Active pinboard so all new copies go straight into that tab automatically.':
+            'Crea tableros con colores usando + o Ctrl+N y arrastra tarjetas a cualquier pestaña. Haz clic derecho en un tablero y actívalo para que todas las nuevas copias se guarden allí automáticamente.',
+        'Paste Queue & Drop Basket': 'Cola de pegado y Cesta de archivos',
+        'Press Ctrl+Alt+Q to open the floating Queue / Drop Basket window. In Queue mode, copy multiple items and press Ctrl+V repeatedly to paste them in FIFO or LIFO order. In Drop Basket mode, collect files and images from different folders and paste or move them all at once.':
+            'Pulsa Ctrl+Alt+Q para abrir la ventana flotante de Cola / Cesta. En modo Cola, copia varios elementos y pulsa Ctrl+V repetidamente para pegarlos en orden FIFO o LIFO. En modo Cesta, reúne archivos e imágenes de distintas carpetas y pégalos o muévelos de una vez.',
+        'Right-click inside any folder in Windows File Explorer and select ClipNest to view your copied files and paste them directly into that folder, or right-click any file to add it to the Drop Basket.':
+            'Haz clic derecho dentro de cualquier carpeta en el Explorador de Windows y elige ClipNest para ver tus archivos copiados y pegarlos directamente en esa carpeta, o haz clic derecho sobre un archivo para añadirlo a la Cesta.',
+        'Text transforms & Persian tools': 'Transformaciones de texto y herramientas',
+        'Right-click any text card and choose Transform to convert case, format JSON, encode Base64/URL, normalize Arabic characters and digits to standard Persian/English, or convert all numbers to Persian digits.':
+            'Haz clic derecho en cualquier tarjeta de texto y selecciona Transformar para cambiar mayúsculas/minúsculas, formatear JSON, codificar Base64/URL o normalizar caracteres y dígitos.',
+        'Inside the popup': 'Dentro de la ventana emergente',
+        'Select / extend selection / jump': 'Seleccionar / ampliar selección / saltar',
+        'Switch Clipboard ↔ pinboards': 'Cambiar entre Portapapeles y tableros',
+        'Paste · plain text · keep formatting': 'Pegar · texto sin formato · mantener formato',
+        'Quick-paste a visible card': 'Pegado rápido de una tarjeta visible',
+        'Move the card up / down': 'Mover tarjeta arriba / abajo',
+        'Preview (empty search)': 'Vista previa (búsqueda vacía)',
+        'Copy only': 'Solo copiar',
+        'Delete (or unpin inside a pinboard)': 'Eliminar (o quitar del tablero)',
+        'Rename · tags · pin on top': 'Renombrar · etiquetas · fijar arriba',
+        'Edit · formats inspector · merge selected': 'Editar · inspector de formatos · fusionar selección',
+        'Open link/file · new pinboard · settings': 'Abrir enlace/archivo · nuevo tablero · ajustes',
+        'Clear search, then close': 'Limpiar búsqueda y cerrar',
+        'Fast, private clipboard manager & file collector for Windows 10 and 11.':
+            'Gestor de portapapeles y recolector de archivos rápido y privado para Windows 10 y 11.',
+        '100% Local & Private': '100% Local y Privado',
+        'All clipboard data, icons, and backups are stored strictly on your device with zero cloud sync or telemetry.':
+            'Todos los datos del portapapeles, iconos y copias de seguridad se almacenan únicamente en tu dispositivo sin sincronización en la nube ni telemetría.',
+        'Data folder': 'Carpeta de datos',
+        'Open in Explorer': 'Abrir en el Explorador',
     },
 };

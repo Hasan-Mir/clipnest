@@ -37,6 +37,8 @@
     --accent: #4f8cff;
     --accent-fg: #ffffff;
     --fs: 13px;
+    --card-font:
+        'Vazirmatn', system-ui, -apple-system, 'Segoe UI Variable Text', 'Segoe UI', Tahoma, sans-serif;
     --card-max-h: 160px;
     --thumb-max-h: 110px;
     --hl-color: #4f8cff;
@@ -100,7 +102,7 @@
 @keyframes menuIn {
     from {
         opacity: 0;
-        transform: scale(0.98) translateY(-2px);
+        transform: scale(0.95) translateY(-4px);
     }
     to {
         opacity: 1;
@@ -115,6 +117,17 @@
     to {
         opacity: 1;
         transform: scale(1) translateY(0);
+    }
+}
+@keyframes checkPop {
+    0% {
+        transform: scale(0.84);
+    }
+    55% {
+        transform: scale(1.12);
+    }
+    100% {
+        transform: scale(1);
     }
 }
 
@@ -136,7 +149,7 @@ body,
     height: 100%;
 }
 
-/* In LTR, prioritize Segoe UI for balanced Latin cap-height/descender metrics while keeping Vazirmatn for Persian glyphs */
+/* Prioritize embedded Vazirmatn first so both Persian and Latin glyphs render with Vazirmatn by default */
 body {
     background: var(--bg);
     color: var(--text);
@@ -146,17 +159,13 @@ body {
     font-size: var(--fs);
     line-height: 1.35;
     font-family:
-        'Segoe UI Variable Text',
-        'Segoe UI',
+        'Vazirmatn',
         system-ui,
         -apple-system,
-        'Vazirmatn',
+        'Segoe UI Variable Text',
+        'Segoe UI',
         Tahoma,
         sans-serif;
-}
-
-:root[dir='rtl'] body {
-    font-family: 'Vazirmatn', 'Segoe UI Variable Text', 'Segoe UI', Tahoma, system-ui, sans-serif;
 }
 
 button,
@@ -198,10 +207,8 @@ button > span {
     font-size: 0.85em;
 }
 
-.mono,
-pre,
-textarea.editor {
-    font-family: 'Cascadia Mono', 'Cascadia Code', Consolas, 'Courier New', monospace;
+.mono {
+    font-family: 'Cascadia Mono', 'Cascadia Code', Consolas, 'Vazirmatn', monospace;
 }
 
 .wrap {
@@ -235,6 +242,80 @@ kbd {
 
 ::-webkit-scrollbar-thumb:hover {
     background: var(--muted);
+}
+
+/* ───────── custom animated checkboxes ───────── */
+.dialog-check input[type='checkbox'],
+.winbox input[type='checkbox'],
+.kind input[type='checkbox'] {
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    width: 17px !important;
+    height: 17px !important;
+    margin: 0;
+    border-radius: 5px;
+    border: 1.5px solid var(--border);
+    background-color: var(--bg);
+    cursor: pointer;
+    flex: none;
+    display: inline-grid;
+    place-content: center;
+    transition:
+        background-color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+        border-color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+        box-shadow 0.18s ease,
+        transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.dialog-check input[type='checkbox']:hover:not(:disabled),
+.winbox input[type='checkbox']:hover:not(:disabled),
+.kind input[type='checkbox']:hover:not(:disabled) {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.dialog-check input[type='checkbox']:active:not(:disabled),
+.winbox input[type='checkbox']:active:not(:disabled),
+.kind input[type='checkbox']:active:not(:disabled) {
+    transform: scale(0.88);
+}
+
+.dialog-check input[type='checkbox']::after,
+.winbox input[type='checkbox']::after,
+.kind input[type='checkbox']::after {
+    content: '';
+    width: 5px;
+    height: 9px;
+    border-right: 2px solid var(--accent-fg);
+    border-bottom: 2px solid var(--accent-fg);
+    transform: translateY(-1px) rotate(45deg) scale(0);
+    opacity: 0;
+    transition:
+        transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1),
+        opacity 0.14s ease;
+}
+
+.dialog-check input[type='checkbox']:checked,
+.winbox input[type='checkbox']:checked,
+.kind input[type='checkbox']:checked {
+    background-color: var(--accent);
+    border-color: var(--accent);
+    animation: checkPop 240ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.dialog-check input[type='checkbox']:checked::after,
+.winbox input[type='checkbox']:checked::after,
+.kind input[type='checkbox']:checked::after {
+    transform: translateY(-1px) rotate(45deg) scale(1);
+    opacity: 1;
+}
+
+.dialog-check input[type='checkbox']:disabled,
+.winbox input[type='checkbox']:disabled,
+.kind input[type='checkbox']:disabled {
+    opacity: 0.45;
+    cursor: default;
 }
 
 /* ───────── search match highlighting (Persian cursive safe) ───────── */
@@ -505,6 +586,26 @@ input.search-bare,
 .tab.plus {
     width: 27px;
     padding: 0;
+}
+
+.tab-count {
+    font-size: 0.75em;
+    font-weight: 600;
+    line-height: 1;
+    height: 16px;
+    min-width: 16px;
+    padding: 0 5px;
+    border-radius: 99px;
+    background: color-mix(in srgb, var(--text) 10%, var(--bg2));
+    color: var(--muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tab.active .tab-count {
+    background: color-mix(in srgb, var(--accent) 18%, var(--bg2));
+    color: var(--accent);
 }
 
 .dot {
@@ -789,6 +890,7 @@ input.search-bare,
     -webkit-box-orient: vertical;
     text-overflow: ellipsis;
     line-height: 1.35;
+    font-family: var(--card-font, 'Cascadia Mono', 'Cascadia Code', Consolas, 'Vazirmatn', monospace);
 }
 
 .card.sensitive .body {
@@ -1045,7 +1147,10 @@ input.search-bare,
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    animation: menuIn 120ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cselect-menu.cselect-menu-ready {
+    animation: menuIn 130ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .cselect-search {
@@ -1095,7 +1200,33 @@ input.search-bare,
         color 0.12s ease;
 }
 
+.cselect-opt.two-line {
+    min-height: 44px;
+    padding: 6px 10px;
+}
+
+.cselect-opt-texts {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
 .cselect-opt-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cselect-opt.two-line .cselect-opt-label {
+    font-weight: 600;
+}
+
+.cselect-opt-sub {
+    font-size: 0.8em;
+    font-weight: 400;
+    color: var(--muted);
+    line-height: 1.15;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1138,11 +1269,14 @@ input.search-bare,
     border-radius: 10px;
     box-shadow: var(--shadow);
     font-size: 0.93em;
-    animation: menuIn 120ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.menu.menu-ready {
+    animation: menuIn 130ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .menu.sub {
-    min-width: 225px;
+    min-width: 195px;
     z-index: 90;
 }
 
@@ -1259,29 +1393,32 @@ input.search-bare,
 
 .dialog-title {
     font-weight: 600;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
+}
+
+.dialog-msg {
+    margin: 0 0 10px;
+    line-height: 1.45;
 }
 
 .dialog-check {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-top: 10px;
-    padding: 7px 9px;
-    border-radius: 7px;
+    gap: 9px;
+    margin-top: 8px;
+    padding: 7px 10px;
+    border-radius: 8px;
     background: var(--bg2);
     border: 1px solid var(--border);
     cursor: pointer;
     font-size: 0.9em;
+    transition:
+        border-color 0.15s ease,
+        background-color 0.15s ease;
 }
 
-.dialog-check input[type='checkbox'] {
-    width: 15px !important;
-    height: 15px;
-    margin: 0;
-    accent-color: var(--accent);
-    cursor: pointer;
-    flex: none;
+.dialog-check:hover {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
 }
 
 .dialog input:not([type='checkbox']):not(.search-bare),
@@ -1415,7 +1552,7 @@ textarea.editor:focus {
     overflow: auto;
     padding: 10px;
     user-select: text;
-    font-family: var(--card-font, inherit);
+    font-family: var(--card-font, 'Vazirmatn', system-ui, sans-serif);
 }
 
 .preview-foot {
@@ -1443,6 +1580,7 @@ textarea.editor:focus {
     display: flex;
     gap: 10px;
     font-size: 0.92em;
+    font-family: var(--card-font, 'Vazirmatn', system-ui, sans-serif);
 }
 
 .gutter {
@@ -1462,6 +1600,7 @@ textarea.editor:focus {
     line-height: 1.45;
     min-width: 0;
     background: none;
+    font-family: var(--card-font, 'Vazirmatn', system-ui, sans-serif);
 }
 
 textarea.editor {
@@ -1475,6 +1614,7 @@ textarea.editor {
     padding: 8px;
     outline: 0;
     font-size: 0.92em;
+    font-family: var(--card-font, 'Vazirmatn', system-ui, sans-serif);
     transition:
         border-color 0.16s ease,
         box-shadow 0.16s ease;
@@ -1826,10 +1966,18 @@ textarea.editor {
 .sbrand {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-weight: 700;
-    padding: 4px 8px 10px;
-    font-size: 1.05em;
+    gap: 11px;
+    font-weight: 800;
+    padding: 8px 10px 14px;
+    font-size: 1.38em;
+    letter-spacing: -0.015em;
+    color: var(--text);
+}
+
+.sbrand .logo-img {
+    width: 30px;
+    height: 30px;
+    border-radius: 7px;
 }
 
 .snav-search {
@@ -2284,17 +2432,10 @@ code {
 .winbox {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 6px;
     padding: 0 6px;
     color: var(--muted);
     cursor: pointer;
-}
-
-.winbox input {
-    width: 14px !important;
-    height: 14px;
-    margin: 0;
-    accent-color: var(--accent);
 }
 
 .stack {
@@ -2356,15 +2497,8 @@ code {
 .kind {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 6px;
     cursor: pointer;
-}
-
-.kind input {
-    width: 14px !important;
-    height: 14px;
-    margin: 0;
-    accent-color: var(--accent);
 }
 
 /* right-to-left (Persian / Arabic UI) */

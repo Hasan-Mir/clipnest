@@ -3,6 +3,7 @@ import { LocaleDefinition } from './types';
 export const zh: LocaleDefinition = {
     code: 'zh',
     name: '简体中文',
+    englishName: 'Chinese (Simplified)',
     dir: 'ltr',
     translations: {
         General: '常规',
@@ -19,7 +20,21 @@ export const zh: LocaleDefinition = {
         'System (Auto)': '跟随系统 (自动)',
         'Clip items font family': '列表项字体',
         'Maximum card height (px)': '卡片最大高度 (px)',
+        'Show item count on pinboard tabs': '在看板标签页旁显示条目数量',
+        'Displays a small badge with the number of items next to each pinboard tab in the popup.':
+            '在主窗口每个看板标签页旁显示包含条目数量的小徽标。',
+        'Also erase pinned items': '同时清空置顶项',
+        'Also erase all pinboards and main clipboard': '同时清空所有看板与主剪贴板',
         'Also erase pinned items and pinboards': '同时清空置顶项与看板内容',
+        'This will erase items in the active pinboard "{name}".':
+            '此操作将清空当前激活看板“{name}”中的条目。',
+        'This will erase items in the main Clipboard tab (pinboards are kept unless you check the option below).':
+            '此操作将清空主剪贴板标签页中的条目（除非勾选下方选项，否则各看板内容将保留）。',
+        'Activate pinboard (new copies go here)': '激活看板（新复制内容自动存入此处）',
+        'Deactivate pinboard': '取消激活看板',
+        'Active pinboard (new copies go here)': '当前激活看板（新复制内容自动存入此处）',
+        Transform: '文本转换',
+        Actions: '动作',
         'Windows File Explorer context menu': 'Windows 文件资源管理器右键菜单',
         'Toggle side toolbar': '切换侧边工具栏',
         'No conflict detected': '未检测到快捷键冲突',
@@ -48,6 +63,9 @@ export const zh: LocaleDefinition = {
         Save: '保存',
         OK: '确定',
         Clear: '清除',
+        Erase: '清空',
+        'Erase all history?': '清空剪贴板历史记录？',
+        'Filter…': '筛选…',
         'Search settings…': '搜索设置…',
         'Paste Queue': '粘贴队列',
         'Drop Basket': '文件收集篮',
@@ -77,5 +95,43 @@ export const zh: LocaleDefinition = {
         '{n} item': '{n} 项',
         '{n} items': '{n} 项',
         '{n} selected': '已选 {n} 项',
+        // Help & Guide + About translations
+        'Getting started': '快速入门',
+        'Press Win+V (or your configured shortcut) anywhere in Windows to open ClipNest at your text cursor. Double-click a card or press Enter to paste it with original formatting, or press Shift+Enter to paste as plain text.':
+            '在 Windows 任意位置按 Win+V（或您自定义的快捷键）即可在输入光标旁打开 ClipNest。双击卡片或按 Enter 以原始格式粘贴，按 Shift+Enter 以纯文本粘贴。',
+        'Smart search & filters': '智能搜索与过滤',
+        'Type any word to search text, titles, app names, and tags with typo tolerance. Type image, code, link, file, or color to filter by item type (or wrap in quotes like "image" for literal text). Toggle .* for Regex or ~ for strict fuzzy matching.':
+            '输入任意关键词即可搜索文本、标题、应用名称和标签（支持拼写容错）。输入 image、code、link、file 或 color 可按类型过滤（加上引号如 "image" 则搜索原词）。点击 .* 启用正则表达式，点击 ~ 启用模糊匹配。',
+        'Pinboards & active tab': '分类看板与激活标签页',
+        'Create colour-coded Pinboards with + or Ctrl+N and drag cards onto any tab. Right-click a Pinboard tab and enable Active pinboard so all new copies go straight into that tab automatically.':
+            '点击 + 或按 Ctrl+N 创建彩色看板，并将卡片拖入任意标签页。右键点击看板标签页并开启“激活看板”，之后所有新复制的内容都会自动存入该看板。',
+        'Paste Queue & Drop Basket': '粘贴队列与文件收集篮',
+        'Press Ctrl+Alt+Q to open the floating Queue / Drop Basket window. In Queue mode, copy multiple items and press Ctrl+V repeatedly to paste them in FIFO or LIFO order. In Drop Basket mode, collect files and images from different folders and paste or move them all at once.':
+            '按 Ctrl+Alt+Q 打开悬浮的“粘贴队列 / 文件收集篮”窗口。在队列模式下，连续复制多项内容后重复按 Ctrl+V 即可按顺序逐一粘贴；在文件收集篮模式下，可跨文件夹收集多个文件与图片并一次性粘贴或移动。',
+        'Right-click inside any folder in Windows File Explorer and select ClipNest to view your copied files and paste them directly into that folder, or right-click any file to add it to the Drop Basket.':
+            '在 Windows 文件资源管理器的任意文件夹中右键点击并选择 ClipNest，即可查看已复制的文件并直接粘贴到该文件夹，或右键点击任意文件将其加入文件收集篮。',
+        'Text transforms & Persian tools': '文本转换与格式化工具',
+        'Right-click any text card and choose Transform to convert case, format JSON, encode Base64/URL, normalize Arabic characters and digits to standard Persian/English, or convert all numbers to Persian digits.':
+            '右键点击任意文本卡片并选择“文本转换”，即可转换大小写、美化/压缩 JSON、进行 Base64/URL 编解码或规范化字符与数字。',
+        'Inside the popup': '主窗口内快捷键',
+        'Select / extend selection / jump': '选择 / 扩展多选 / 跳转',
+        'Switch Clipboard ↔ pinboards': '在剪贴板与看板之间切换',
+        'Paste · plain text · keep formatting': '粘贴 · 纯文本粘贴 · 保留格式粘贴',
+        'Quick-paste a visible card': '快速粘贴当前可见卡片',
+        'Move the card up / down': '上移 / 下移卡片顺序',
+        'Preview (empty search)': '预览详情（搜索框为空时）',
+        'Copy only': '仅复制到剪贴板',
+        'Delete (or unpin inside a pinboard)': '删除（在看板内为移出看板）',
+        'Rename · tags · pin on top': '重命名 · 标签 · 置顶固定',
+        'Edit · formats inspector · merge selected': '编辑文本 · 查看 MIME 格式 · 合并已选项',
+        'Open link/file · new pinboard · settings': '打开链接/文件 · 新建看板 · 打开设置',
+        'Clear search, then close': '清空搜索框，再次按下关闭窗口',
+        'Fast, private clipboard manager & file collector for Windows 10 and 11.':
+            '专为 Windows 10 与 11 打造的快速、私密剪贴板管理器与文件收集工具。',
+        '100% Local & Private': '100% 本地与隐私安全',
+        'All clipboard data, icons, and backups are stored strictly on your device with zero cloud sync or telemetry.':
+            '所有剪贴板数据、应用图标与备份文件均完全存储在您的本地设备上，无任何云端上传或遥测追踪。',
+        'Data folder': '数据文件夹',
+        'Open in Explorer': '在资源管理器中打开',
     },
 };

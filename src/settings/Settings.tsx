@@ -84,6 +84,7 @@ const TABS: { id: TabId; label: string; keys: (keyof Settings)[] }[] = [
             'popup_height',
             'remember_popup_size',
             'show_toolbar',
+            'show_pinboard_counts',
         ],
     },
     {
@@ -585,15 +586,24 @@ export default function SettingsView() {
     };
 
     const askEraseHistory = () => {
+        const targetBoard = boards.find((b) => b.id === s.active_pinboard) ?? null;
+        const msgText = targetBoard
+            ? t('This will erase items in the active pinboard "{name}".', { name: targetBoard.name })
+            : t(
+                  'This will erase items in the main Clipboard tab (pinboards are kept unless you check the option below).'
+              );
         setPrompt({
             title: t('Erase all history?'),
+            message: msgText,
             confirm: true,
-            checkLabel: t('Also erase pinned items and pinboards'),
+            checkLabel: t('Also erase pinned items'),
             defaultChecked: false,
+            checkLabel2: t('Also erase all pinboards and main clipboard'),
+            defaultChecked2: false,
             okLabel: t('Erase'),
             danger: true,
-            onSubmit: (_val, includePinned) => {
-                api.eraseHistory(includePinned)
+            onSubmit: (_val, includePinned, allPinboards) => {
+                api.eraseHistory(includePinned, targetBoard?.id ?? null, allPinboards)
                     .then(() => flash(t('History erased')))
                     .catch((e) => flash(errText(e)));
             },
@@ -644,7 +654,11 @@ export default function SettingsView() {
         return matchesSearch(q, ...keywords);
     };
 
-    const localeOpts: [string, string][] = LOCALES.map((l) => [l.code, l.name]);
+    const localeOptions = LOCALES.map((l) => ({
+        value: l.code,
+        label: l.name,
+        subLabel: l.englishName,
+    }));
     const fontOptions = [
         { value: '', label: t('Default (Vazirmatn / System)') },
         ...systemFonts.map((f) => ({ value: f, label: f, fontFamily: f })),
@@ -728,7 +742,8 @@ export default function SettingsView() {
                             <CustomSelect
                                 value={s.language}
                                 onChange={(v) => set('language', v)}
-                                options={localeOpts.map(([code, name]) => ({ value: code, label: name }))}
+                                options={localeOptions}
+                                searchable
                             />
                         </Row>
                         <Row
@@ -1099,6 +1114,7 @@ export default function SettingsView() {
                     'Popup height (px)',
                     'Preserve popup size when resized with mouse',
                     'Side toolbar (CopyQ style)',
+                    'Show item count on pinboard tabs',
                 ]) && (
                     <section className="ssection">
                         {renderSectionHeader('appearance', 'Appearance')}
@@ -1454,6 +1470,16 @@ export default function SettingsView() {
                             hint="Quick buttons next to the list: preview, pin, tags, copy, formats, edit, merge, actions, delete (can also be toggled from the popup header)."
                         >
                             <Toggle v={s.show_toolbar} on={(b) => set('show_toolbar', b)} />
+                        </Row>
+                        <Row
+                            k="show_pinboard_counts"
+                            s={s}
+                            searchQuery={q}
+                            onGearMenu={openGearMenu}
+                            label="Show item count on pinboard tabs"
+                            hint="Displays a small badge with the number of items next to each pinboard tab in the popup."
+                        >
+                            <Toggle v={s.show_pinboard_counts} on={(b) => set('show_pinboard_counts', b)} />
                         </Row>
                     </section>
                 )}
@@ -2238,7 +2264,7 @@ export default function SettingsView() {
                     </section>
                 )}
 
-                {showTab('about', ['About', 'ClipNest', 'Version', 'Architecture', 'Privacy']) && (
+                {showTab('about', ['About', 'ClipNest', 'Version', 'Privacy']) && (
                     <section className="ssection">
                         <div className="spane-head">
                             <h2>{t('About')}</h2>
@@ -2259,12 +2285,6 @@ export default function SettingsView() {
                         </div>
 
                         <div className="guide-grid">
-                            <div className="guide-card">
-                                <h3>{t('Engine & Architecture')}</h3>
-                                <p className="muted" dir="ltr">
-                                    Tauri v2 · Rust · Win32 API · SQLite (WAL + FTS5) · React 18 · TypeScript
-                                </p>
-                            </div>
                             <div className="guide-card">
                                 <h3>{t('100% Local & Private')}</h3>
                                 <p className="muted">

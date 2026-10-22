@@ -4,24 +4,32 @@ use crate::platform::{self, win};
 use crate::state::AppState;
 use std::sync::atomic::Ordering;
 use tauri::{
-    AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    window::Color, AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder,
 };
+
+const BG_DARK: Color = Color(0x1d, 0x1e, 0x21, 0xff);
 
 pub fn hwnd_of(w: &WebviewWindow) -> Option<isize> {
     w.hwnd().ok().map(|h| h.0 as isize)
 }
 
 pub fn apply_protection_to(app: &AppHandle, w: &WebviewWindow) {
+    if !w.is_visible().unwrap_or(false) {
+        return;
+    }
     let mode = app.state::<AppState>().settings.read().capture_protection.clone();
     if let Some(h) = hwnd_of(w) {
         win::set_capture_protection(h, &mode);
     }
 }
 
-/// Applies the capture-protection setting to every open window (takes effect immediately).
+/// Applies the capture-protection setting to every visible window (takes effect immediately).
 pub fn apply_capture_protection(app: &AppHandle) {
     for (_, w) in app.webview_windows() {
-        apply_protection_to(app, &w);
+        if w.is_visible().unwrap_or(false) {
+            apply_protection_to(app, &w);
+        }
     }
 }
 
@@ -122,6 +130,7 @@ pub fn show_popup(app: &AppHandle, mode: Option<&str>, from_tray: bool) {
     }
     st.popup_shown_at.store(crate::db::now_ms(), Ordering::SeqCst);
     let _ = w.show();
+    apply_protection_to(app, &w);
     if let Some(h) = hwnd_of(&w) {
         win::focus_window(h);
     }
@@ -134,7 +143,7 @@ fn ensure_window(app: &AppHandle, label: &str) -> Option<WebviewWindow> {
     if let Some(w) = app.get_webview_window(label) {
         return Some(w);
     }
-    let base = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into()));
+    let base = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into())).background_color(BG_DARK);
     let built = if label == "settings" {
         base.title("ClipNest Settings").inner_size(900.0, 680.0).min_inner_size(740.0, 520.0).center().build()
     } else if label == "tray" {
@@ -166,7 +175,6 @@ fn ensure_window(app: &AppHandle, label: &str) -> Option<WebviewWindow> {
                     win::make_no_activate(h);
                 }
             }
-            apply_protection_to(app, &w);
             Some(w)
         }
         Err(e) => {
@@ -174,12 +182,6 @@ fn ensure_window(app: &AppHandle, label: &str) -> Option<WebviewWindow> {
             None
         }
     }
-}
-
-/// Pre-creates the hidden tray window on startup so the first right-click on the tray icon is instant
-/// and never suffers from cold-start WebView focus loss.
-pub fn init_background_windows(app: &AppHandle) {
-    let _ = ensure_window(app, "tray");
 }
 
 pub fn open_settings(app: &AppHandle) {
@@ -191,6 +193,7 @@ pub fn open_settings(app: &AppHandle) {
     if let Some(w) = w {
         let _ = w.unminimize();
         let _ = w.show();
+        apply_protection_to(app, &w);
         let _ = w.set_focus();
     }
 }
@@ -205,6 +208,7 @@ pub fn show_queue(app: &AppHandle) {
         let width = w.outer_size().map(|s| s.width as i32).unwrap_or(310);
         let _ = w.set_position(PhysicalPosition::new(r - width - 16, t + 16));
         win::show_no_activate(h);
+        apply_protection_to(app, &w);
     }
 }
 
@@ -234,6 +238,7 @@ pub fn show_tray(app: &AppHandle) {
     y = y.min(b - size.1 - 8).max(t + 8);
     let _ = w.set_position(PhysicalPosition::new(x, y));
     let _ = w.show();
+    apply_protection_to(app, &w);
     if let Some(h) = hwnd_of(&w) {
         win::focus_window(h);
     }
@@ -246,6 +251,14 @@ pub fn resize_tray(app: &AppHandle, height: u32) {
     let Some(w) = app.get_webview_window("tray") else { return };
     let clamped = height.clamp(180, 460) as f64;
     let _ = w.set_size(LogicalSize::new(246.0, clamped));
+    if w.is_visible().unwrap_or(false) {
+        let st = app.state::<AppState>();
+        st.tray_shown_at.store(crate::db::now_ms(), Ordering::SeqCst);
+        if let Some(h) = hwnd_of(&w) {
+            win::focus_window(h);
+        }
+        let _ = w.set_focus();
+    }
 }
 
 pub fn hide_tray(app: &AppHandle) {

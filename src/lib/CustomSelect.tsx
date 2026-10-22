@@ -6,6 +6,7 @@ import { Icon } from './icons';
 export interface SelectOption<T extends string | number> {
     value: T;
     label: string;
+    subLabel?: string;
     fontFamily?: string;
 }
 
@@ -19,7 +20,7 @@ interface CustomSelectProps<T extends string | number> {
 
 /**
  * Notion-style custom dropdown component powered by @floating-ui/react for collision-aware
- * positioning, dynamic max-height clamping, and optional font preview / search filtering.
+ * positioning, dynamic max-height clamping, two-line Telegram-style options, and search filtering.
  */
 export function CustomSelect<T extends string | number>({
     value,
@@ -33,11 +34,12 @@ export function CustomSelect<T extends string | number>({
     const [focusIdx, setFocusIdx] = useState(0);
     const searchRef = useRef<HTMLInputElement>(null);
 
-    const { refs, floatingStyles } = useFloating({
+    const { refs, floatingStyles, isPositioned } = useFloating({
         open,
         onOpenChange: setOpen,
         placement: 'bottom-start',
         strategy: 'fixed',
+        transform: false,
         whileElementsMounted: autoUpdate,
         middleware: [
             offset(4),
@@ -47,8 +49,8 @@ export function CustomSelect<T extends string | number>({
                 padding: 8,
                 apply({ availableHeight, rects, elements }) {
                     Object.assign(elements.floating.style, {
-                        minWidth: `${Math.max(150, rects.reference.width)}px`,
-                        maxHeight: `${Math.max(120, Math.min(300, availableHeight))}px`,
+                        minWidth: `${Math.max(175, rects.reference.width)}px`,
+                        maxHeight: `${Math.max(120, Math.min(310, availableHeight))}px`,
                     });
                 },
             }),
@@ -61,7 +63,10 @@ export function CustomSelect<T extends string | number>({
             return options;
         }
         return options.filter(
-            (o) => o.label.toLowerCase().includes(q) || String(o.value).toLowerCase().includes(q)
+            (o) =>
+                o.label.toLowerCase().includes(q) ||
+                (o.subLabel !== undefined && o.subLabel.toLowerCase().includes(q)) ||
+                String(o.value).toLowerCase().includes(q)
         );
     }, [options, filter]);
 
@@ -184,7 +189,15 @@ export function CustomSelect<T extends string | number>({
                 </span>
             </button>
             {open && (
-                <div ref={refs.setFloating} role="listbox" className="cselect-menu" style={floatingStyles}>
+                <div
+                    ref={refs.setFloating}
+                    role="listbox"
+                    className={`cselect-menu${isPositioned ? ' cselect-menu-ready' : ''}`}
+                    style={{
+                        ...floatingStyles,
+                        visibility: isPositioned ? 'visible' : 'hidden',
+                    }}
+                >
                     {searchable && (
                         <div className="cselect-search">
                             <Icon name="search" size={12} />
@@ -213,7 +226,9 @@ export function CustomSelect<T extends string | number>({
                                     key={String(opt.value)}
                                     role="option"
                                     aria-selected={isSel}
-                                    className={`cselect-opt${isSel ? ' sel' : ''}${isFocus ? ' focus' : ''}`}
+                                    className={`cselect-opt${opt.subLabel ? ' two-line' : ''}${
+                                        isSel ? ' sel' : ''
+                                    }${isFocus ? ' focus' : ''}`}
                                     style={
                                         opt.fontFamily
                                             ? { fontFamily: `"${opt.fontFamily}", sans-serif` }
@@ -227,7 +242,14 @@ export function CustomSelect<T extends string | number>({
                                         setOpen(false);
                                     }}
                                 >
-                                    <span className="cselect-opt-label">{opt.label}</span>
+                                    <div className="cselect-opt-texts">
+                                        <span className="cselect-opt-label">{opt.label}</span>
+                                        {opt.subLabel && (
+                                            <span className="cselect-opt-sub" dir="ltr">
+                                                {opt.subLabel}
+                                            </span>
+                                        )}
+                                    </div>
                                     {isSel && (
                                         <span className="cselect-check">
                                             <Icon name="check" size={12} />
