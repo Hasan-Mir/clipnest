@@ -6,6 +6,8 @@ export const zh: LocaleDefinition = {
     englishName: 'Chinese (Simplified)',
     dir: 'ltr',
     translations: {
+        Language: 'Language / 语言',
+        'Language / زبان': 'Language / 语言',
         General: '常规',
         'Copy & Paste': '复制与粘贴',
         Appearance: '外观',

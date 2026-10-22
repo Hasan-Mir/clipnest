@@ -6,6 +6,8 @@ export const ru: LocaleDefinition = {
     englishName: 'Russian',
     dir: 'ltr',
     translations: {
+        Language: 'Language / Язык',
+        'Language / زبان': 'Language / Язык',
         General: 'Общие',
         'Copy & Paste': 'Копирование и вставка',
         Appearance: 'Внешний вид',

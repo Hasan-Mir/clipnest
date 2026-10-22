@@ -6,6 +6,8 @@ export const ar: LocaleDefinition = {
     englishName: 'Arabic',
     dir: 'rtl',
     translations: {
+        Language: '‎Language / ‎اللغة',
+        'Language / زبان': '‎Language / ‎اللغة',
         General: 'عام',
         'Copy & Paste': 'النسخ واللصق',
         Appearance: 'المظهر',

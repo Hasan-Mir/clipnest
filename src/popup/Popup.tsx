@@ -1371,7 +1371,7 @@ export default function Popup() {
             </div>
 
             <footer className="foot">
-                <span>
+                <span className="foot-count">
                     {t(res.total === 1 ? '{n} item' : '{n} items', { n: num(res.total) })}
                     {multi.length > 1 ? ` · ${t('{n} selected', { n: num(multi.length) })}` : ''}
                 </span>
@@ -1385,9 +1385,18 @@ export default function Popup() {
                 </button>
                 <span className="spacer" />
                 <span className="hints">
-                    <kbd>↵</kbd> {t('Paste')} <kbd>⇧↵</kbd>{' '}
-                    {cur?.kind === 'file' ? t('File path') : t('Plain text')} <kbd>Del</kbd>{' '}
-                    {tab === null ? t('Delete') : t('Unpin')}
+                    <span className="hint-item">
+                        <kbd>↵</kbd>
+                        <span>{t('Paste')}</span>
+                    </span>
+                    <span className="hint-item">
+                        <kbd>⇧↵</kbd>
+                        <span>{cur?.kind === 'file' ? t('File path') : t('Plain text')}</span>
+                    </span>
+                    <span className="hint-item">
+                        <kbd>Del</kbd>
+                        <span>{tab === null ? t('Delete') : t('Unpin')}</span>
+                    </span>
                 </span>
             </footer>
 

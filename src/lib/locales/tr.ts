@@ -6,6 +6,8 @@ export const tr: LocaleDefinition = {
     englishName: 'Turkish',
     dir: 'ltr',
     translations: {
+        Language: 'Language / Dil',
+        'Language / زبان': 'Language / Dil',
         General: 'Genel',
         'Copy & Paste': 'Kopyala ve Yapıştır',
         Appearance: 'Görünüm',

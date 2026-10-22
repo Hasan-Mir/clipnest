@@ -720,6 +720,7 @@ export default function SettingsView() {
             <main className="spane">
                 {showTab('general', [
                     'General',
+                    'Language',
                     'Language / زبان',
                     'Start with Windows',
                     'Windows File Explorer context menu',
@@ -736,7 +737,7 @@ export default function SettingsView() {
                             s={s}
                             searchQuery={q}
                             onGearMenu={openGearMenu}
-                            label="Language / زبان"
+                            label="Language"
                             hint="Choose the UI language and text direction (LTR / RTL)."
                         >
                             <CustomSelect

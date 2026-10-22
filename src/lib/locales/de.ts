@@ -6,6 +6,8 @@ export const de: LocaleDefinition = {
     englishName: 'German',
     dir: 'ltr',
     translations: {
+        Language: 'Language / Sprache',
+        'Language / زبان': 'Language / Sprache',
         General: 'Allgemein',
         'Copy & Paste': 'Kopieren & Einfügen',
         Appearance: 'Darstellung',

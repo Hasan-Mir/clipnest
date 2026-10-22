@@ -7,6 +7,9 @@
     font-weight: 100 900;
     font-style: normal;
     font-display: swap;
+    ascent-override: 107.42%;
+    descent-override: 26.37%;
+    line-gap-override: 0%;
 }
 
 @font-face {
@@ -15,6 +18,9 @@
     font-weight: 500;
     font-style: normal;
     font-display: swap;
+    ascent-override: 107.42%;
+    descent-override: 26.37%;
+    line-gap-override: 0%;
 }
 
 @font-face {
@@ -23,6 +29,9 @@
     font-weight: 600;
     font-style: normal;
     font-display: swap;
+    ascent-override: 107.42%;
+    descent-override: 26.37%;
+    line-gap-override: 0%;
 }
 
 @font-face {
@@ -31,6 +40,9 @@
     font-weight: 700;
     font-style: normal;
     font-display: swap;
+    ascent-override: 107.42%;
+    descent-override: 26.37%;
+    line-gap-override: 0%;
 }
 
 :root {
@@ -180,14 +192,14 @@ button {
     cursor: pointer;
     border: 0;
     background: none;
-    line-height: 1.15;
+    line-height: 1;
     vertical-align: middle;
 }
 
 button > span {
     display: inline-flex;
     align-items: center;
-    line-height: 1.15;
+    line-height: 1;
 }
 
 .icon {
@@ -216,10 +228,12 @@ button > span {
 }
 
 kbd {
-    font: inherit;
+    font-family: 'Vazirmatn', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
     font-size: 0.84em;
     line-height: 1;
-    padding: 2px 5px;
+    height: 18px;
+    min-width: 18px;
+    padding: 0 5px;
     border-radius: 4px;
     background: var(--bg2);
     border: 1px solid var(--border);
@@ -367,7 +381,7 @@ mark.shl {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 7px 10px 4px;
+    padding: 6px 10px;
     cursor: default;
     min-height: 36px;
 }
@@ -489,7 +503,16 @@ input.search-bare,
     color: var(--text);
     user-select: text;
     min-width: 0;
-    line-height: 1.2;
+    line-height: 1;
+}
+
+input.search-bare::placeholder,
+.searchrow input::placeholder,
+.snav-search input::placeholder,
+.cselect-search input::placeholder {
+    color: var(--muted);
+    opacity: 1;
+    line-height: 1;
 }
 
 .mini {
@@ -499,7 +522,7 @@ input.search-bare,
     border-radius: 6px;
     color: var(--muted);
     border: 1px solid transparent;
-    font-family: Consolas, monospace;
+    font-family: 'Vazirmatn', Consolas, monospace;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -540,7 +563,7 @@ input.search-bare,
 }
 
 .tab {
-    height: 27px;
+    height: 28px;
     padding: 0 10px;
     border-radius: 7px;
     color: var(--muted);
@@ -584,23 +607,24 @@ input.search-bare,
 }
 
 .tab.plus {
-    width: 27px;
+    width: 28px;
     padding: 0;
 }
 
 .tab-count {
-    font-size: 0.75em;
+    font-size: 0.74em;
     font-weight: 600;
     line-height: 1;
-    height: 16px;
-    min-width: 16px;
-    padding: 0 5px;
-    border-radius: 99px;
+    height: 17px;
+    min-width: 21px;
+    padding: 0 6px;
+    border-radius: 5px;
     background: color-mix(in srgb, var(--text) 10%, var(--bg2));
     color: var(--muted);
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    font-variant-numeric: tabular-nums;
 }
 
 .tab.active .tab-count {
@@ -1051,18 +1075,44 @@ input.search-bare,
 .foot {
     display: flex;
     align-items: center;
-    padding: 6px 12px;
+    min-height: 36px;
+    padding: 4px 12px;
     border-top: 1px solid var(--border);
     color: var(--muted);
     font-size: 0.8em;
+    line-height: 1;
     background: var(--bg);
+}
+
+.foot-count {
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
 }
 
 .foot .hints {
     display: inline-flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 2px;
+    gap: 10px;
+    line-height: 1;
+}
+
+.foot .hint-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    line-height: 1;
+}
+
+.foot .hint-item kbd {
+    margin: 0;
+}
+
+.foot .hint-item > span {
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
 }
 
 .toast {
@@ -1954,7 +2004,7 @@ textarea.editor {
 
 .snav {
     width: 224px;
-    padding: 14px 10px;
+    padding: 12px 10px;
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
@@ -1966,12 +2016,21 @@ textarea.editor {
 .sbrand {
     display: flex;
     align-items: center;
-    gap: 11px;
+    justify-content: center;
+    gap: 10px;
     font-weight: 800;
-    padding: 8px 10px 14px;
+    padding: 6px 10px;
+    margin-bottom: 8px;
     font-size: 1.38em;
+    line-height: 1;
     letter-spacing: -0.015em;
     color: var(--text);
+}
+
+.sbrand > span {
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
 }
 
 .sbrand .logo-img {
