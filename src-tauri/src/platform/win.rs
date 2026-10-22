@@ -166,6 +166,7 @@ unsafe fn get_bytes(fmt: u32) -> Option<Vec<u8>> {
     if h == 0 {
         return None;
     }
+    let h = h as HGLOBAL;
     let size = GlobalSize(h);
     if size == 0 {
         return None;
@@ -302,7 +303,7 @@ pub fn write_clipboard(items: &[(u32, String, Vec<u8>)]) -> Result<u32, String> 
                 continue;
             }
             let h = GlobalAlloc(GMEM_MOVEABLE, data.len().max(1));
-            if h == 0 {
+            if h.is_null() {
                 continue;
             }
             let p = GlobalLock(h);
@@ -312,7 +313,7 @@ pub fn write_clipboard(items: &[(u32, String, Vec<u8>)]) -> Result<u32, String> 
             }
             std::ptr::copy_nonoverlapping(data.as_ptr(), p as *mut u8, data.len());
             GlobalUnlock(h);
-            if SetClipboardData(fmt, h) == 0 {
+            if SetClipboardData(fmt, h as HANDLE) == 0 {
                 GlobalFree(h);
             }
         }
