@@ -1,9 +1,9 @@
-//! Clipboard capture: OS event → read every format → filter → classify → write-through to SQLite.
+//! Clipboard capture: OS event -> read every format -> filter -> classify -> write-through to SQLite.
 
 use crate::classify;
-use crate::rules;
 use crate::db::{self, NewClip, StoredFormat};
 use crate::platform::win::{self, RawFormat};
+use crate::rules;
 use crate::state::{AppState, Settings};
 use std::io::Cursor;
 use std::panic::AssertUnwindSafe;
@@ -50,6 +50,17 @@ fn find<'a>(fmts: &'a [RawFormat], name: &str) -> Option<&'a RawFormat> {
     fmts.iter().find(|f| f.name == name)
 }
 
+/// Checks if the "Preferred DropEffect" clipboard format indicates a Cut (DROPEFFECT_MOVE = 2).
+fn is_cut_drop_effect(fmts: &[RawFormat]) -> bool {
+    if let Some(f) = fmts.iter().find(|f| f.name.eq_ignore_ascii_case("Preferred DropEffect")) {
+        if f.data.len() >= 4 {
+            let val = u32::from_le_bytes([f.data[0], f.data[1], f.data[2], f.data[3]]);
+            return (val & 2) != 0;
+        }
+    }
+    false
+}
+
 fn process(app: &AppHandle) -> Result<(), String> {
     let st = app.state::<AppState>();
     if win::sequence_number() == st.self_seq.load(Ordering::SeqCst) {
@@ -68,6 +79,7 @@ fn process(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
     let app_name = classify::friendly_app_name(&snap.exe);
+    let is_cut = is_cut_drop_effect(&snap.formats);
 
     let (mut clip, mut fmts) = match build_from_snapshot(&snap.formats, &app_name, &snap.exe, &s)? {
         Some(b) => b,
@@ -80,50 +92,77 @@ fn process(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    let (id, is_new) = {
-        let mut conn = st.db.lock();
-        let (id, new) = db::insert_clip(&mut conn, &clip, &fmts)?;
-        if new {
-            if let Some(b) = outcome.board {
-                let _ = db::set_pinboard(&conn, &[id], Some(b));
-            }
-            if !outcome.tags.is_empty() {
-                let _ = db::set_tags(&conn, id, &outcome.tags.join(" "));
-            }
-        }
-        let _ = db::apply_limits(&conn, &s);
-        (id, new)
-    };
-    let _ = app.emit("items-changed", ());
-
-    // Real application icon (extracted once per executable).
+    // Real application icon (extracted once per executable before emitting items-changed).
     if !snap.exe.is_empty() && !snap.exe_path.is_empty() && !db::has_icon(&st.db.lock(), &snap.exe) {
         if let Some((w, h, rgba)) = win::extract_icon_rgba(&snap.exe_path) {
             if let Some(img) = image::RgbaImage::from_raw(w, h, rgba) {
                 if let Some(png) = encode_png(&image::DynamicImage::ImageRgba8(img)) {
                     db::put_icon(&st.db.lock(), &snap.exe, &png);
-                    let _ = app.emit("items-changed", ());
+                    let _ = app.emit("icon-changed", ());
                 }
             }
         }
     }
 
-    if is_new {
-        for action in outcome.run {
-            let app2 = app.clone();
-            std::thread::spawn(move || {
-                let _ = crate::commands::exec_action(&app2, id, &action);
-            });
+    let kind_str = clip.kind.clone();
+    let id = {
+        let mut conn = st.db.lock();
+        let (id, is_new) = db::insert_clip(&mut conn, &clip, &fmts)?;
+        let target_board = outcome.board.or(if is_new { s.active_pinboard } else { None });
+        if let Some(b) = target_board {
+            let _ = db::set_pinboard(&conn, &[id], Some(b));
         }
+        if !outcome.tags.is_empty() {
+            let _ = db::set_tags(&conn, id, &outcome.tags.join(" "));
+        }
+        let _ = db::apply_limits(&conn, &s);
+        id
+    };
+    let _ = app.emit("items-changed", ());
+
+    for action in outcome.run {
+        let app2 = app.clone();
+        std::thread::spawn(move || {
+            let _ = crate::commands::exec_action(&app2, id, &action);
+        });
     }
+
     let queue_active = st.queue.lock().active;
     if queue_active {
-        crate::queue::push(app, id);
+        crate::queue::push_captured(app, id, &kind_str, is_cut);
     }
     Ok(())
 }
 
 type Built = (NewClip, Vec<StoredFormat>);
+
+fn extract_file_thumb(path: &str) -> Option<Vec<u8>> {
+    let lower = path.to_lowercase();
+    let is_media = [
+        ".png", ".bmp", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".tif", ".tiff", ".heic",
+        ".mp4", ".mkv", ".mov", ".avi", ".webm", ".wmv", ".m4v", ".pdf",
+    ]
+    .iter()
+    .any(|ext| lower.ends_with(ext));
+    if !is_media {
+        return None;
+    }
+    if lower.ends_with(".png") || lower.ends_with(".bmp") {
+        if let Ok(img) = image::open(path) {
+            let t = img.thumbnail(400, 220);
+            if let Some(png) = encode_png(&t) {
+                return Some(png);
+            }
+        }
+    }
+    if let Some((w, h, rgba)) = win::extract_shell_thumbnail_rgba(path, 320) {
+        if let Some(img) = image::RgbaImage::from_raw(w, h, rgba) {
+            let dyn_img = image::DynamicImage::ImageRgba8(img).thumbnail(400, 220);
+            return encode_png(&dyn_img);
+        }
+    }
+    None
+}
 
 fn build_from_snapshot(fmts: &[RawFormat], app_name: &str, app_exe: &str, s: &Settings) -> Result<Option<Built>, String> {
     let text_raw = fmts.iter().find(|f| f.id == win::CF_UNICODETEXT_ID).map(|f| decode_utf16(&f.data)).unwrap_or_default();
@@ -137,6 +176,7 @@ fn build_from_snapshot(fmts: &[RawFormat], app_name: &str, app_exe: &str, s: &Se
     if let Some(h) = hdrop {
         let paths = parse_hdrop(&h.data);
         if !paths.is_empty() {
+            let thumb = extract_file_thumb(&paths[0]);
             let plain = paths.join("\n");
             let preview: String = plain.chars().take(800).collect();
             let hash = hash_of(b"f\0", plain.as_bytes());
@@ -157,7 +197,7 @@ fn build_from_snapshot(fmts: &[RawFormat], app_name: &str, app_exe: &str, s: &Se
                 sensitive: false,
                 has_rich: false,
                 expires_at: None,
-                thumb: None,
+                thumb,
             };
             return Ok(Some((clip, stored(fmts, |_| true))));
         }
@@ -281,8 +321,8 @@ pub fn text_format(text: &str) -> StoredFormat {
     StoredFormat { fmt_id: win::CF_UNICODETEXT_ID, name: "CF_UNICODETEXT".into(), data: utf16_bytes(text) }
 }
 
-/// CF_HDROP → list of paths (DROPFILES header: u32 offset at 0, u32 fWide at 16).
-fn parse_hdrop(d: &[u8]) -> Vec<String> {
+/// CF_HDROP -> list of paths (DROPFILES header: u32 offset at 0, u32 fWide at 16).
+pub fn parse_hdrop(d: &[u8]) -> Vec<String> {
     if d.len() < 20 {
         return vec![];
     }
@@ -308,6 +348,24 @@ fn parse_hdrop(d: &[u8]) -> Vec<String> {
         }
     }
     out
+}
+
+/// Builds a combined CF_HDROP payload from a slice of file/folder paths.
+pub fn build_hdrop(paths: &[String]) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(20 + paths.len() * 64);
+    buf.extend_from_slice(&20u32.to_le_bytes()); // pFiles = 20
+    buf.extend_from_slice(&0i32.to_le_bytes()); // pt.x = 0
+    buf.extend_from_slice(&0i32.to_le_bytes()); // pt.y = 0
+    buf.extend_from_slice(&0u32.to_le_bytes()); // fNC = FALSE
+    buf.extend_from_slice(&1u32.to_le_bytes()); // fWide = TRUE (UTF-16LE)
+    for p in paths {
+        for u in p.encode_utf16() {
+            buf.extend_from_slice(&u.to_le_bytes());
+        }
+        buf.extend_from_slice(&0u16.to_le_bytes());
+    }
+    buf.extend_from_slice(&0u16.to_le_bytes()); // terminating double-NUL
+    buf
 }
 
 // ───────────────────────────── images ─────────────────────────────
@@ -359,7 +417,7 @@ fn decode_image(png: Option<&[u8]>, dib: Option<&[u8]>) -> Option<image::Dynamic
     Some(image::DynamicImage::ImageRgba8(rgba))
 }
 
-/// PNG → 24-bit bottom-up CF_DIB, understood by every Windows app (Paint, Word, Office…).
+/// PNG -> 24-bit bottom-up CF_DIB, understood by every Windows app (Paint, Word, Office…).
 pub fn png_to_dib(png: &[u8]) -> Option<Vec<u8>> {
     let img = image::load_from_memory(png).ok()?.to_rgb8();
     let (w, h) = (img.width() as usize, img.height() as usize);

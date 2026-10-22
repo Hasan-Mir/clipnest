@@ -9,7 +9,7 @@ fn cached(cell: &'static OnceLock<Regex>, pattern: &str) -> &'static Regex {
 }
 
 /// Lower-case + unify Persian/Arabic variants + drop half-spaces, tatweel and diacritics
-/// + map Persian/Arabic-Indic digits to ASCII, so "کتاب‌ها" matches "کتابها", "ي" matches "ی".
+/// + map Persian/Arabic-Indic digits to ASCII, so "کتاب\u{200c}ها" matches "کتابها", "ي" matches "ی".
 pub fn normalize(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {
@@ -218,7 +218,7 @@ mod tests {
 
     #[test]
     fn normalizes_persian_and_arabic() {
-        assert_eq!(normalize("كتاب‌ها"), normalize("کتابها"));
+        assert_eq!(normalize("كتاب\u{200c}ها"), normalize("کتابها"));
         assert_eq!(normalize("علي"), normalize("علی"));
         assert_eq!(normalize("۱۲۳٤٥"), "12345");
         assert_eq!(normalize("HeLLo"), "hello");

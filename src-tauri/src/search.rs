@@ -2,10 +2,8 @@
 //!
 //! "smart" mode: whitespace separated tokens.
 //!   * a token equal to a type word (text, code, link, image, file, color …) filters by kind;
-//!   * a token that is a prefix (≥3 chars) of a known source-app name/exe matches that app
-//!     OR the content (so normal words are never swallowed by the app filter);
 //!   * "quoted words" are always literal content terms;
-//!   * every remaining token must appear in the text, title, app name or tags.
+//!   * every remaining token must appear in the text, title, app name, app exe or tags.
 //! "fuzzy" mode: the characters of the query must appear in order.
 //! "regex" mode: case-insensitive regular expression over the (normalised) text.
 
@@ -32,7 +30,6 @@ pub struct ListResult {
 
 struct Parsed {
     kinds: Vec<&'static str>,
-    apps: Vec<String>,
     terms: Vec<String>,
     regex: Option<Regex>,
     fuzzy: Option<String>,
@@ -74,8 +71,8 @@ fn tokenize(q: &str) -> Vec<(String, bool)> {
     out
 }
 
-fn parse(query: &str, mode: &str, known_apps: &[String], use_apps: bool) -> Result<Parsed, String> {
-    let mut p = Parsed { kinds: vec![], apps: vec![], terms: vec![], regex: None, fuzzy: None };
+fn parse(query: &str, mode: &str) -> Result<Parsed, String> {
+    let mut p = Parsed { kinds: vec![], terms: vec![], regex: None, fuzzy: None };
     let q = query.trim();
     if q.is_empty() {
         return Ok(p);
@@ -99,10 +96,6 @@ fn parse(query: &str, mode: &str, known_apps: &[String], use_apps: bool) -> Resu
                 if !p.kinds.contains(&k) {
                     p.kinds.push(k);
                 }
-                continue;
-            }
-            if use_apps && n.chars().count() >= 3 && known_apps.iter().any(|a| a.starts_with(&n)) {
-                p.apps.push(n);
                 continue;
             }
         }
@@ -165,7 +158,7 @@ struct Fields<'a> {
 }
 
 fn exact_term(f: &Fields, t: &str) -> bool {
-    f.search.contains(t) || f.title_n.contains(t) || f.app_n.contains(t) || f.tags_n.contains(t)
+    f.search.contains(t) || f.title_n.contains(t) || f.app_n.contains(t) || f.exe_n.contains(t) || f.tags_n.contains(t)
 }
 
 /// `typos`: when true a term may also match with spelling mistakes (second, slower tier).
@@ -173,16 +166,11 @@ fn matches(p: &Parsed, row: &ClipRow, f: &Fields, typos: bool) -> bool {
     if !p.kinds.is_empty() && !p.kinds.contains(&row.kind.as_str()) {
         return false;
     }
-    // A word that looks like an app name matches the source app (name or exe) OR the content,
-    // so ordinary words such as "note" or "word" are never swallowed by the app filter.
-    if !p.apps.iter().all(|a| exact_term(f, a.as_str()) || f.exe_n.contains(a.as_str())) {
-        return false;
-    }
     if let Some(re) = &p.regex {
         return re.is_match(f.search) || re.is_match(f.title_n);
     }
     if let Some(fz) = &p.fuzzy {
-        return subsequence(f.search, fz) || subsequence(f.title_n, fz) || subsequence(f.app_n, fz);
+        return subsequence(f.search, fz) || subsequence(f.title_n, fz) || subsequence(f.app_n, fz) || subsequence(f.exe_n, fz);
     }
     let mut hay: Option<Vec<char>> = None;
     p.terms.iter().all(|t| {
@@ -198,25 +186,8 @@ fn matches(p: &Parsed, row: &ClipRow, f: &Fields, typos: bool) -> bool {
         approx_contains(h, &tc, k)
             || approx_contains(&f.title_n.chars().collect::<Vec<_>>(), &tc, k)
             || approx_contains(&f.app_n.chars().collect::<Vec<_>>(), &tc, k)
+            || approx_contains(&f.exe_n.chars().collect::<Vec<_>>(), &tc, k)
     })
-}
-
-fn known_apps(conn: &Connection) -> Vec<String> {
-    let mut v = vec![];
-    if let Ok(mut st) = conn.prepare("SELECT DISTINCT lower(app_name), lower(app_exe) FROM clips") {
-        if let Ok(rows) = st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))) {
-            for (n, e) in rows.flatten() {
-                v.push(normalize(&n));
-                let e = e.trim_end_matches(".exe").to_string();
-                if !e.is_empty() {
-                    v.push(normalize(&e));
-                }
-            }
-        }
-    }
-    v.sort();
-    v.dedup();
-    v
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -236,7 +207,7 @@ fn scan(conn: &Connection, a: &ListArgs, p: &Parsed, tier: Tier, limit: usize) -
     let mut total = 0usize;
     while let Some(r) = rows.next().map_err(|e| e.to_string())? {
         let row = row_from(r).map_err(|e| e.to_string())?;
-        let search: String = r.get(19).map_err(|e| e.to_string())?;
+        let search: String = r.get(20).map_err(|e| e.to_string())?;
         let app_n = normalize(&row.app_name);
         let exe_n = normalize(&row.app_exe);
         let title_n = row.title.as_deref().map(normalize).unwrap_or_default();
@@ -279,8 +250,7 @@ pub fn list(conn: &Connection, a: &ListArgs) -> ListResult {
         return ListResult { items, total, error: None };
     }
 
-    let apps = known_apps(conn);
-    let parsed = match parse(&a.query, &a.mode, &apps, true) {
+    let parsed = match parse(&a.query, &a.mode) {
         Ok(p) => p,
         Err(e) => return ListResult { items: vec![], total: 0, error: Some(e) },
     };
@@ -289,7 +259,7 @@ pub fn list(conn: &Connection, a: &ListArgs) -> ListResult {
         Err(e) => return ListResult { items: vec![], total: 0, error: Some(e) },
     };
     // Full-text results first; if there are few, add typo-tolerant (fuzzy) matches after them.
-    if a.mode == "smart" && !parsed.terms.is_empty() && total < 30 {
+    if a.mode == "smart" && parsed.terms.iter().any(|t| max_typos(t.chars().count()) > 0) && total < 30 {
         let room = a.limit.saturating_sub(items.len());
         if let Ok((more, n)) = scan(conn, a, &parsed, Tier::Typos, room) {
             items.extend(more);

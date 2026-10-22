@@ -203,8 +203,10 @@ pub async fn update_pinboard(
     color: String,
     max_items: i64,
     list_style: String,
+    paste_mode: Option<String>,
 ) -> Res<()> {
-    db::update_pinboard(&state.db.lock(), id, &name, &color, max_items, &list_style)?;
+    let pmode = paste_mode.unwrap_or_else(|| "inherit".into());
+    db::update_pinboard(&state.db.lock(), id, &name, &color, max_items, &list_style, &pmode)?;
     changed(&app);
     Ok(())
 }
@@ -212,6 +214,11 @@ pub async fn update_pinboard(
 #[tauri::command]
 pub async fn delete_pinboard(app: AppHandle, state: State<'_, AppState>, id: i64) -> Res<()> {
     db::delete_pinboard(&state.db.lock(), id)?;
+    let mut s = state.settings.read().clone();
+    if s.active_pinboard == Some(id) {
+        s.active_pinboard = None;
+        crate::apply_settings(&app, s);
+    }
     changed(&app);
     Ok(())
 }
@@ -328,7 +335,9 @@ pub struct Status {
     pub paused_until: i64,
     pub plain_default: bool,
     pub queue_active: bool,
+    pub queue_mode: String,
     pub queue_len: usize,
+    pub popup_pinned: bool,
 }
 
 #[tauri::command]
@@ -345,12 +354,22 @@ pub async fn set_settings(app: AppHandle, settings: Settings) -> Res<()> {
 #[tauri::command]
 pub async fn app_status(state: State<'_, AppState>) -> Res<Status> {
     let q = state.queue.lock();
+    let len = if q.mode == "basket" { q.basket.len() } else { q.items.len() };
     Ok(Status {
         paused_until: if state.is_paused() { state.paused_until.load(Ordering::SeqCst) } else { 0 },
         plain_default: state.settings.read().default_mode == "plain",
         queue_active: q.active,
-        queue_len: q.items.len(),
+        queue_mode: q.mode.clone(),
+        queue_len: len,
+        popup_pinned: state.popup_pinned.load(Ordering::SeqCst),
     })
+}
+
+#[tauri::command]
+pub async fn set_popup_pinned(app: AppHandle, state: State<'_, AppState>, pinned: bool) -> Res<bool> {
+    state.popup_pinned.store(pinned, Ordering::SeqCst);
+    let _ = app.emit("status-changed", ());
+    Ok(pinned)
 }
 
 #[tauri::command]
@@ -378,9 +397,14 @@ pub async fn queue_toggle(app: AppHandle) -> Res<()> {
 }
 
 #[tauri::command]
+pub async fn queue_set_mode(app: AppHandle, mode: String) -> Res<()> {
+    crate::queue::set_mode(&app, &mode);
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn queue_get(state: State<'_, AppState>) -> Res<Vec<ClipRow>> {
-    let ids = state.queue.lock().items.clone();
-    Ok(db::get_rows(&state.db.lock(), &ids))
+    Ok(crate::queue::get_items(&state))
 }
 
 #[tauri::command]
@@ -404,8 +428,48 @@ pub async fn queue_set_fifo(app: AppHandle, fifo: bool) -> Res<()> {
 }
 
 #[tauri::command]
+pub async fn basket_toggle_cut(app: AppHandle, id: i64) -> Res<()> {
+    crate::queue::toggle_cut(&app, id);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn basket_paste_here(app: AppHandle) -> Res<usize> {
+    crate::queue::basket_paste_here(&app)
+}
+
+#[tauri::command]
+pub async fn basket_paste_to_folder(app: AppHandle) -> Res<Option<usize>> {
+    crate::queue::basket_paste_to_folder(&app)
+}
+
+#[tauri::command]
+pub async fn show_popup_cmd(app: AppHandle) -> Res<()> {
+    crate::windowing::hide_tray(&app);
+    crate::windowing::spawn_show_popup(app, Some("center".into()), true);
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn hide_popup(app: AppHandle) -> Res<()> {
     crate::windowing::hide_popup(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn hide_tray(app: AppHandle) -> Res<()> {
+    crate::windowing::hide_tray(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn request_erase_from_tray(app: AppHandle) -> Res<()> {
+    crate::windowing::hide_tray(&app);
+    std::thread::spawn(move || {
+        crate::windowing::show_popup(&app, Some("center"), true);
+        std::thread::sleep(std::time::Duration::from_millis(350));
+        let _ = app.emit("erase-request", ());
+    });
     Ok(())
 }
 

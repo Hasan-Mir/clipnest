@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Permissions for all ClipNest windows",
-  "windows": ["popup", "settings", "queue"],
+  "windows": ["popup", "settings", "queue", "tray"],
   "permissions": ["core:default", "core:window:allow-start-dragging"]
 }

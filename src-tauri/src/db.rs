@@ -37,9 +37,12 @@ pub struct ClipRow {
     pub has_rich: bool,
     pub ts: i64,
     pub created_at: i64,
+    pub has_thumb: bool,
+    #[serde(default)]
+    pub cut: bool,
 }
 
-pub const ROW_COLS: &str = "id,kind,title,preview,app_name,app_exe,tags,lang,img_w,img_h,color,chars,file_count,pinboard_id,pinned,sensitive,has_rich,ts,created_at";
+pub const ROW_COLS: &str = "id,kind,title,preview,app_name,app_exe,tags,lang,img_w,img_h,color,chars,file_count,pinboard_id,pinned,sensitive,has_rich,ts,created_at,(thumb IS NOT NULL)";
 
 pub fn row_from(r: &Row) -> rusqlite::Result<ClipRow> {
     Ok(ClipRow {
@@ -62,6 +65,8 @@ pub fn row_from(r: &Row) -> rusqlite::Result<ClipRow> {
         has_rich: r.get::<_, i64>(16)? != 0,
         ts: r.get(17)?,
         created_at: r.get(18)?,
+        has_thumb: r.get::<_, i64>(19)? != 0,
+        cut: false,
     })
 }
 
@@ -74,6 +79,7 @@ pub struct Pinboard {
     pub count: i64,
     pub max_items: i64,
     pub list_style: String,
+    pub paste_mode: String,
 }
 
 #[derive(Serialize, Clone, Debug)]
@@ -141,6 +147,7 @@ CREATE TABLE IF NOT EXISTS pinboards (
   position INTEGER NOT NULL DEFAULT 0,
   max_items INTEGER NOT NULL DEFAULT 0,
   list_style TEXT NOT NULL DEFAULT 'inherit',
+  paste_mode TEXT NOT NULL DEFAULT 'inherit',
   created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS app_icons (exe TEXT PRIMARY KEY, png BLOB NOT NULL);
@@ -198,13 +205,16 @@ fn has_column(conn: &Connection, table: &str, col: &str) -> bool {
 }
 
 /// Upgrades a database created by an older build (no-op for fresh databases).
-fn migrate(conn: &Connection) {
+pub fn migrate(conn: &Connection) {
     let clips_exist: i64 = conn
         .query_row("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='clips'", [], |r| r.get(0))
         .unwrap_or(0);
     if clips_exist > 0 && !has_column(conn, "clips", "sort_ts") {
         let _ = conn.execute_batch(
-            "ALTER TABLE clips ADD COLUMN sort_ts REAL NOT NULL DEFAULT 0; UPDATE clips SET sort_ts=ts;",
+            "DROP INDEX IF EXISTS idx_clips_order;
+             DROP INDEX IF EXISTS idx_clips_board;
+             ALTER TABLE clips ADD COLUMN sort_ts REAL NOT NULL DEFAULT 0;
+             UPDATE clips SET sort_ts=ts;",
         );
     }
     let pb_exist: i64 = conn
@@ -214,6 +224,11 @@ fn migrate(conn: &Connection) {
         let _ = conn.execute_batch(
             "ALTER TABLE pinboards ADD COLUMN max_items INTEGER NOT NULL DEFAULT 0;
              ALTER TABLE pinboards ADD COLUMN list_style TEXT NOT NULL DEFAULT 'inherit';",
+        );
+    }
+    if pb_exist > 0 && !has_column(conn, "pinboards", "paste_mode") {
+        let _ = conn.execute_batch(
+            "ALTER TABLE pinboards ADD COLUMN paste_mode TEXT NOT NULL DEFAULT 'inherit';",
         );
     }
 }
@@ -368,8 +383,8 @@ pub fn insert_clip(conn: &mut Connection, c: &NewClip, fmts: &[StoredFormat]) ->
         .map_err(|e| e.to_string())?;
     if let Some(id) = existing {
         conn.execute(
-            "UPDATE clips SET ts=?1, sort_ts=?1, app_name=?2, app_exe=?3 WHERE id=?4",
-            params![now, c.app_name, c.app_exe, id],
+            "UPDATE clips SET ts=?1, sort_ts=?1, app_name=?2, app_exe=?3, sensitive=?4, expires_at=?5, thumb=COALESCE(?6, thumb) WHERE id=?7",
+            params![now, c.app_name, c.app_exe, c.sensitive as i64, c.expires_at, c.thumb, id],
         )
         .map_err(|e| e.to_string())?;
         // Same text copied again, now WITH styling (HTML/RTF/VS Code): upgrade the stored formats.
@@ -426,6 +441,17 @@ pub fn get_plain(conn: &Connection, id: i64) -> Option<(String, String)> {
         .optional()
         .ok()
         .flatten()
+}
+
+pub fn get_board_paste_mode(conn: &Connection, clip_id: i64) -> Option<String> {
+    conn.query_row(
+        "SELECT p.paste_mode FROM clips c JOIN pinboards p ON p.id = c.pinboard_id WHERE c.id = ?1",
+        params![clip_id],
+        |r| r.get(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
 }
 
 pub fn get_formats(conn: &Connection, id: i64) -> Vec<StoredFormat> {
@@ -532,12 +558,23 @@ pub fn list_pinboards(conn: &Connection) -> Result<Vec<Pinboard>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT p.id,p.name,p.color,p.position,(SELECT COUNT(*) FROM clips c WHERE c.pinboard_id=p.id),
-                    p.max_items,p.list_style
+                    p.max_items,p.list_style,p.paste_mode
              FROM pinboards p ORDER BY p.position, p.id",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map([], |r| Ok(Pinboard { id: r.get(0)?, name: r.get(1)?, color: r.get(2)?, position: r.get(3)?, count: r.get(4)?, max_items: r.get(5)?, list_style: r.get(6)? }))
+        .query_map([], |r| {
+            Ok(Pinboard {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                color: r.get(2)?,
+                position: r.get(3)?,
+                count: r.get(4)?,
+                max_items: r.get(5)?,
+                list_style: r.get(6)?,
+                paste_mode: r.get(7)?,
+            })
+        })
         .map_err(|e| e.to_string())?;
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
@@ -554,11 +591,20 @@ pub fn create_pinboard(conn: &Connection, name: &str, color: &str) -> Result<i64
     Ok(conn.last_insert_rowid())
 }
 
-pub fn update_pinboard(conn: &Connection, id: i64, name: &str, color: &str, max_items: i64, list_style: &str) -> Result<(), String> {
+pub fn update_pinboard(
+    conn: &Connection,
+    id: i64,
+    name: &str,
+    color: &str,
+    max_items: i64,
+    list_style: &str,
+    paste_mode: &str,
+) -> Result<(), String> {
     let style = if matches!(list_style, "rich" | "plain") { list_style } else { "inherit" };
+    let pmode = if matches!(paste_mode, "rich" | "plain") { paste_mode } else { "inherit" };
     conn.execute(
-        "UPDATE pinboards SET name=?1,color=?2,max_items=?3,list_style=?4 WHERE id=?5",
-        params![name.trim(), color, max_items.max(0), style, id],
+        "UPDATE pinboards SET name=?1,color=?2,max_items=?3,list_style=?4,paste_mode=?5 WHERE id=?6",
+        params![name.trim(), color, max_items.max(0), style, pmode, id],
     )
     .map_err(|e| e.to_string())?;
     trim_board(conn, id);
@@ -595,7 +641,7 @@ pub fn apply_limits(conn: &Connection, s: &Settings) -> Result<(), String> {
         conn.execute(
             "DELETE FROM clips WHERE id IN (
                SELECT id FROM clips WHERE pinned=0 AND pinboard_id IS NULL
-               ORDER BY ts DESC LIMIT -1 OFFSET ?1)",
+               ORDER BY sort_ts DESC LIMIT -1 OFFSET ?1)",
             params![s.max_items as i64],
         )
         .map_err(|e| e.to_string())?;
@@ -683,6 +729,9 @@ pub fn get_icon(conn: &Connection, exe: &str) -> Option<Vec<u8>> {
 /// Merges another ClipNest database (an export or a daily backup, already decompressed) into this one.
 /// Non-destructive: items whose content hash already exists are skipped. Returns the number of new items.
 pub fn merge_from(conn: &Connection, imp: &Path) -> Result<usize, String> {
+    if let Ok(imp_conn) = Connection::open(imp) {
+        migrate(&imp_conn);
+    }
     conn.execute("ATTACH DATABASE ?1 AS imp", params![imp.to_string_lossy().to_string()])
         .map_err(|e| e.to_string())?;
     let result = (|| -> Result<usize, String> {

@@ -64,6 +64,12 @@ pub struct Settings {
     pub direct_paste: bool,
     pub move_to_top: bool,
     pub app_rules: Vec<AppRule>,
+    pub card_paste_click: String,
+    pub ctrl_click_action: String,
+    pub ctrl_shift_click_action: String,
+    pub auto_save_edit: bool,
+    pub basket_allow_cut: bool,
+    pub active_pinboard: Option<i64>,
     // Privacy
     pub ignore_apps: Vec<String>,
     pub ignore_confidential: bool,
@@ -80,7 +86,15 @@ pub struct Settings {
     pub popup_width: u32,
     pub popup_height: u32,
     pub popup_position: String,
+    pub remember_popup_size: bool,
     pub show_toolbar: bool,
+    pub animations: bool,
+    pub show_thumbnails: bool,
+    pub thumbnail_size: String,
+    pub virtual_scroll: bool,
+    pub highlight_matches: bool,
+    pub highlight_color: String,
+    pub highlight_bg: String,
     // Shortcuts
     pub shortcut_open: String,
     pub shortcut_queue: String,
@@ -123,6 +137,12 @@ impl Default for Settings {
                 rule("conhost.exe", "plain", "ctrl+v"),
                 rule("mintty.exe", "plain", "shift+insert"),
             ],
+            card_paste_click: "double".into(),
+            ctrl_click_action: "multi_select".into(),
+            ctrl_shift_click_action: "paste_plain".into(),
+            auto_save_edit: true,
+            basket_allow_cut: true,
+            active_pinboard: None,
             ignore_apps: vec![
                 "keepass.exe".into(),
                 "keepassxc.exe".into(),
@@ -144,8 +164,16 @@ impl Default for Settings {
             popup_width: 400,
             popup_height: 560,
             popup_position: "caret".into(),
+            remember_popup_size: true,
             show_toolbar: false,
-            shortcut_open: "Ctrl+Alt+V".into(),
+            animations: true,
+            show_thumbnails: true,
+            thumbnail_size: "medium".into(),
+            virtual_scroll: true,
+            highlight_matches: true,
+            highlight_color: "#2ea8ff".into(),
+            highlight_bg: "transparent".into(),
+            shortcut_open: "Super+V".into(),
             shortcut_queue: "Ctrl+Alt+Q".into(),
             shortcut_plain_toggle: "Ctrl+Alt+P".into(),
             shortcut_pause: String::new(),
@@ -181,11 +209,31 @@ pub enum HotAction {
     TogglePause,
 }
 
-#[derive(Default)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct BasketEntry {
+    pub id: i64,
+    pub cut: bool,
+}
+
 pub struct Queue {
     pub active: bool,
-    /// Clip ids waiting to be pasted.
+    /// "queue" | "basket"
+    pub mode: String,
+    /// Clip ids waiting to be pasted in sequential Queue mode.
     pub items: Vec<i64>,
+    /// File and image items collected in Drop Basket mode.
+    pub basket: Vec<BasketEntry>,
+}
+
+impl Default for Queue {
+    fn default() -> Self {
+        Queue {
+            active: false,
+            mode: "queue".into(),
+            items: Vec::new(),
+            basket: Vec::new(),
+        }
+    }
 }
 
 pub struct AppState {
@@ -206,6 +254,7 @@ pub struct AppState {
     pub queue_sc: Mutex<Option<Shortcut>>,
     pub popup_shown_at: AtomicI64,
     pub suppress_blur: AtomicBool,
+    pub popup_pinned: AtomicBool,
     pub last_pos: Mutex<Option<(i32, i32)>>,
 }
 
@@ -225,6 +274,7 @@ impl AppState {
             queue_sc: Mutex::new(None),
             popup_shown_at: AtomicI64::new(0),
             suppress_blur: AtomicBool::new(false),
+            popup_pinned: AtomicBool::new(false),
             last_pos: Mutex::new(None),
         }
     }

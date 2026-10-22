@@ -12,7 +12,6 @@ mod windowing;
 
 use state::{AppState, HotAction, Settings};
 use std::sync::atomic::Ordering;
-use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, WindowEvent};
 use tauri_plugin_autostart::ManagerExt as _;
@@ -21,6 +20,14 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutEvent, S
 // ───────────────────────────── hotkeys ─────────────────────────────
 
 static HOOK_INIT: std::sync::Once = std::sync::Once::new();
+
+fn is_valid_fkey(s: &str) -> bool {
+    s.strip_prefix('F')
+        .or_else(|| s.strip_prefix('f'))
+        .and_then(|n| n.parse::<u32>().ok())
+        .map(|n| (1..=24).contains(&n))
+        .unwrap_or(false)
+}
 
 fn register_hotkeys(app: &AppHandle) {
     let st = app.state::<AppState>();
@@ -38,12 +45,13 @@ fn register_hotkeys(app: &AppHandle) {
         (s.shortcut_pause.clone(), HotAction::TogglePause),
     ];
     for (idx, (text, action)) in wanted.into_iter().enumerate() {
-        if text.trim().is_empty() {
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
             continue;
         }
-        if platform::win::is_win_shortcut(&text) {
+        if platform::win::is_win_shortcut(trimmed) {
             // Shortcuts with the Windows key (e.g. Win+V) need the keyboard hook.
-            match platform::win::parse_shortcut(&text) {
+            match platform::win::parse_shortcut(trimmed) {
                 Some((mods, vk)) => {
                     hook.push((mods, vk, idx as u32));
                     hook_actions.push((idx as u32, action));
@@ -52,7 +60,12 @@ fn register_hotkeys(app: &AppHandle) {
             }
             continue;
         }
-        match text.parse::<Shortcut>() {
+        // Reject any non-Win shortcut that has neither a '+' modifier nor is a valid F-key (F1..F24).
+        if !trimmed.contains('+') && !is_valid_fkey(trimmed) {
+            eprintln!("clipnest: rejecting bare single-key shortcut {text}");
+            continue;
+        }
+        match trimmed.parse::<Shortcut>() {
             Ok(sc) => match gs.register(sc.clone()) {
                 Ok(_) => list.push((sc, action)),
                 Err(e) => eprintln!("clipnest: cannot register {text}: {e}"),
@@ -180,92 +193,37 @@ pub fn apply_settings(app: &AppHandle, new: Settings) {
         let _ = db::apply_limits(&st.db.lock(), &new);
         let _ = app.emit("items-changed", ());
     }
-    if old.language != new.language {
-        if let (Some(t), Ok(m)) = (app.tray_by_id("main"), build_menu(app, &new.language)) {
-            let _ = t.set_menu(Some(m));
-        }
-    }
     refresh_tray_tooltip(app);
     let _ = app.emit("settings-changed", ());
 }
 
 // ───────────────────────────── tray ─────────────────────────────
 
-fn tr(lang: &str, key: &str) -> &'static str {
-    let fa = lang == "fa";
-    match (key, fa) {
-        ("open", false) => "Open ClipNest",
-        ("open", true) => "باز کردن ClipNest",
-        ("queue", false) => "Paste Queue (on/off)",
-        ("queue", true) => "صف Paste (روشن/خاموش)",
-        ("plain", false) => "Toggle plain-text mode",
-        ("plain", true) => "حالت متن ساده (روشن/خاموش)",
-        ("p15", false) => "Pause 15 minutes",
-        ("p15", true) => "توقف ۱۵ دقیقه‌ای",
-        ("p60", false) => "Pause 1 hour",
-        ("p60", true) => "توقف ۱ ساعته",
-        ("p480", false) => "Pause 8 hours",
-        ("p480", true) => "توقف ۸ ساعته",
-        ("pinf", false) => "Pause until resumed",
-        ("pinf", true) => "توقف تا ازسرگیری",
-        ("resume", false) => "Resume capture",
-        ("resume", true) => "ازسرگیری ثبت",
-        ("erase", false) => "Erase history…",
-        ("erase", true) => "پاک کردن تاریخچه…",
-        ("settings", false) => "Settings…",
-        ("settings", true) => "تنظیمات…",
-        ("quit", false) => "Quit ClipNest",
-        _ => "خروج از ClipNest",
-    }
-}
-
-fn build_menu(app: &AppHandle, lang: &str) -> tauri::Result<Menu<tauri::Wry>> {
-    let mk = |id: &str| MenuItem::with_id(app, id, tr(lang, id), true, None::<&str>);
-    let (open, queue_i, plain) = (mk("open")?, mk("queue")?, mk("plain")?);
-    let (p15, p60, p480, pinf, res) = (mk("p15")?, mk("p60")?, mk("p480")?, mk("pinf")?, mk("resume")?);
-    let (erase, set, quit) = (mk("erase")?, mk("settings")?, mk("quit")?);
-    let s1 = PredefinedMenuItem::separator(app)?;
-    let s2 = PredefinedMenuItem::separator(app)?;
-    let s3 = PredefinedMenuItem::separator(app)?;
-    let items: Vec<&dyn IsMenuItem<tauri::Wry>> =
-        vec![&open, &queue_i, &plain, &s1, &p15, &p60, &p480, &pinf, &res, &s2, &erase, &set, &s3, &quit];
-    Menu::with_items(app, &items)
-}
-
 fn build_tray(app: &AppHandle) -> tauri::Result<()> {
-    let lang = app.state::<AppState>().settings.read().language.clone();
-    let menu = build_menu(app, &lang)?;
-    let mut builder = TrayIconBuilder::with_id("main").tooltip("ClipNest").menu(&menu).show_menu_on_left_click(false);
+    let mut builder = TrayIconBuilder::with_id("main")
+        .tooltip("ClipNest")
+        .show_menu_on_left_click(false);
     if let Some(icon) = app.default_window_icon() {
         builder = builder.icon(icon.clone());
     }
     builder
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "open" => windowing::spawn_show_popup(app.clone(), Some("center".into()), true),
-            "queue" => queue::toggle(app),
-            "plain" => toggle_plain(app),
-            "p15" => set_pause(app, Some(15)),
-            "p60" => set_pause(app, Some(60)),
-            "p480" => set_pause(app, Some(480)),
-            "pinf" => set_pause(app, None),
-            "resume" => resume(app),
-            "erase" => {
-                // The popup asks for confirmation (never erase from a tray click alone).
-                let app2 = app.clone();
-                std::thread::spawn(move || {
-                    windowing::show_popup(&app2, Some("center"), true);
-                    std::thread::sleep(std::time::Duration::from_millis(350));
-                    let _ = app2.emit("erase-request", ());
-                });
-            }
-            "settings" => windowing::open_settings(app),
-            "quit" => app.exit(0),
-            _ => {}
-        })
-        .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+        .on_tray_icon_event(|tray, event| match event {
+            TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } => {
+                windowing::hide_tray(tray.app_handle());
                 windowing::spawn_show_popup(tray.app_handle().clone(), Some("mouse".into()), true);
             }
+            TrayIconEvent::Click {
+                button: MouseButton::Right,
+                button_state: MouseButtonState::Up,
+                ..
+            } => {
+                windowing::show_tray(tray.app_handle());
+            }
+            _ => {}
         })
         .build(app)?;
     Ok(())
@@ -336,18 +294,60 @@ pub fn run() {
             let label = window.label().to_string();
             match event {
                 WindowEvent::Focused(false) if label == "popup" => {
-                    let app = window.app_handle();
-                    let st = app.state::<AppState>();
-                    let since = db::now_ms() - st.popup_shown_at.load(Ordering::SeqCst);
-                    if !st.suppress_blur.load(Ordering::SeqCst) && since > 300 {
-                        windowing::hide_popup(app);
-                    }
+                    let app = window.app_handle().clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(45));
+                        let st = app.state::<AppState>();
+                        let fg = platform::win::foreground();
+                        if fg != 0 && !platform::win::is_own_window(fg) {
+                            st.target_hwnd.store(fg, Ordering::SeqCst);
+                        }
+                        if st.popup_pinned.load(Ordering::SeqCst) {
+                            return;
+                        }
+                        if st.suppress_blur.load(Ordering::SeqCst) {
+                            return;
+                        }
+                        if platform::win::is_down(0x01) {
+                            return;
+                        }
+                        if fg != 0 && platform::win::is_own_window(fg) {
+                            return;
+                        }
+                        let since = db::now_ms() - st.popup_shown_at.load(Ordering::SeqCst);
+                        if since > 300 {
+                            windowing::hide_popup(&app);
+                        }
+                    });
+                }
+                WindowEvent::Focused(false) if label == "tray" => {
+                    windowing::hide_tray(window.app_handle());
                 }
                 WindowEvent::Moved(pos) if label == "popup" => {
                     let app = window.app_handle();
                     *app.state::<AppState>().last_pos.lock() = Some((pos.x, pos.y));
                 }
-                WindowEvent::CloseRequested { api, .. } if label == "settings" || label == "queue" => {
+                WindowEvent::Resized(phys) if label == "popup" => {
+                    if window.is_visible().unwrap_or(false) && phys.width > 0 && phys.height > 0 {
+                        let scale = window.scale_factor().unwrap_or(1.0);
+                        let lw = ((phys.width as f64) / scale).round() as u32;
+                        let lh = ((phys.height as f64) / scale).round() as u32;
+                        if (320..=1200).contains(&lw) && (360..=1200).contains(&lh) {
+                            let app = window.app_handle();
+                            let st = app.state::<AppState>();
+                            let remember = st.settings.read().remember_popup_size;
+                            if remember {
+                                let mut s = st.settings.write();
+                                if s.popup_width != lw || s.popup_height != lh {
+                                    s.popup_width = lw;
+                                    s.popup_height = lh;
+                                    let _ = s.save(&st.settings_path);
+                                }
+                            }
+                        }
+                    }
+                }
+                WindowEvent::CloseRequested { api, .. } if label == "settings" || label == "queue" || label == "tray" => {
                     // keep the window alive (hidden) so re-opening is instant
                     api.prevent_close();
                     let _ = window.hide();
@@ -389,15 +389,23 @@ pub fn run() {
             commands::get_settings,
             commands::set_settings,
             commands::app_status,
+            commands::set_popup_pinned,
             commands::pause_capture,
             commands::resume_capture,
             commands::toggle_plain_mode,
             commands::queue_toggle,
+            commands::queue_set_mode,
             commands::queue_get,
             commands::queue_remove,
             commands::queue_clear,
             commands::queue_set_fifo,
+            commands::basket_toggle_cut,
+            commands::basket_paste_here,
+            commands::basket_paste_to_folder,
+            commands::show_popup_cmd,
             commands::hide_popup,
+            commands::hide_tray,
+            commands::request_erase_from_tray,
             commands::open_settings,
             commands::erase_history,
             commands::backup_now,

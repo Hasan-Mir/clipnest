@@ -23,32 +23,122 @@ export interface ClipRow {
   has_rich: boolean;
   ts: number;
   created_at: number;
+  has_thumb: boolean;
+  cut: boolean;
 }
-export interface ListResult { items: ClipRow[]; total: number; error: string | null }
-export interface Pinboard { id: number; name: string; color: string; position: number; count: number; max_items: number; list_style: "inherit" | "rich" | "plain" }
+
+export interface ListResult {
+  items: ClipRow[];
+  total: number;
+  error: string | null;
+}
+
+export interface Pinboard {
+  id: number;
+  name: string;
+  color: string;
+  position: number;
+  count: number;
+  max_items: number;
+  list_style: "inherit" | "rich" | "plain";
+  paste_mode: "inherit" | "rich" | "plain";
+}
+
 export interface AutoRule {
-  id: string; name: string; enabled: boolean; apps: string; kinds: string[]; pattern: string;
+  id: string;
+  name: string;
+  enabled: boolean;
+  apps: string;
+  kinds: string[];
+  pattern: string;
   action: "ignore" | "to_board" | "tag" | "plain_only" | "trim" | "expire" | "run_action";
-  board: number; value: string;
+  board: number;
+  value: string;
 }
-export interface FormatMeta { name: string; mime: string; size: number }
-export interface AppInfo { exe: string; name: string }
-export interface AppRule { exe: string; mode: "default" | "rich" | "plain"; keys: string }
-export interface CustomAction { id: string; name: string; command: string; output: "new_item" | "clipboard" | "none" }
-export interface Status { paused_until: number; plain_default: boolean; queue_active: boolean; queue_len: number }
+
+export interface FormatMeta {
+  name: string;
+  mime: string;
+  size: number;
+}
+
+export interface AppInfo {
+  exe: string;
+  name: string;
+}
+
+export interface AppRule {
+  exe: string;
+  mode: "default" | "rich" | "plain";
+  keys: string;
+}
+
+export interface CustomAction {
+  id: string;
+  name: string;
+  command: string;
+  output: "new_item" | "clipboard" | "none";
+}
+
+export interface Status {
+  paused_until: number;
+  plain_default: boolean;
+  queue_active: boolean;
+  queue_mode: "queue" | "basket";
+  queue_len: number;
+  popup_pinned: boolean;
+}
 
 export interface Settings {
-  language: "en" | "fa"; store_rich: boolean; list_style: "rich" | "plain"; rules: AutoRule[];
-  autostart: boolean; max_items: number; retention_days: number; max_image_mb: number;
-  default_mode: "rich" | "plain"; direct_paste: boolean; move_to_top: boolean; app_rules: AppRule[];
-  ignore_apps: string[]; ignore_confidential: boolean; detect_sensitive: boolean;
-  sensitive_action: "mask" | "mask_delete" | "skip"; sensitive_ttl_min: number;
+  language: string;
+  store_rich: boolean;
+  list_style: "rich" | "plain";
+  rules: AutoRule[];
+  autostart: boolean;
+  max_items: number;
+  retention_days: number;
+  max_image_mb: number;
+  default_mode: "rich" | "plain";
+  direct_paste: boolean;
+  move_to_top: boolean;
+  app_rules: AppRule[];
+  card_paste_click: "double" | "single";
+  ctrl_click_action: "multi_select" | "paste" | "paste_plain" | "copy_only";
+  ctrl_shift_click_action: "paste_plain" | "paste" | "copy_only";
+  auto_save_edit: boolean;
+  basket_allow_cut: boolean;
+  active_pinboard: number | null;
+  ignore_apps: string[];
+  ignore_confidential: boolean;
+  detect_sensitive: boolean;
+  sensitive_action: "mask" | "mask_delete" | "skip";
+  sensitive_ttl_min: number;
   capture_protection: "off" | "black" | "hidden";
-  theme: "dark" | "light" | "oled"; accent: string; density: "compact" | "comfortable";
-  font_size: number; card_lines: number; popup_width: number; popup_height: number;
-  popup_position: "caret" | "mouse" | "center" | "last"; show_toolbar: boolean;
-  shortcut_open: string; shortcut_queue: string; shortcut_plain_toggle: string; shortcut_pause: string;
-  queue_fifo: boolean; queue_intercept: boolean; auto_backup: boolean; backup_keep: number;
+  theme: "dark" | "light" | "oled";
+  accent: string;
+  density: "compact" | "comfortable";
+  font_size: number;
+  card_lines: number;
+  popup_width: number;
+  popup_height: number;
+  popup_position: "caret" | "mouse" | "center" | "last";
+  remember_popup_size: boolean;
+  show_toolbar: boolean;
+  animations: boolean;
+  show_thumbnails: boolean;
+  thumbnail_size: "small" | "medium" | "large";
+  virtual_scroll: boolean;
+  highlight_matches: boolean;
+  highlight_color: string;
+  highlight_bg: string;
+  shortcut_open: string;
+  shortcut_queue: string;
+  shortcut_plain_toggle: string;
+  shortcut_pause: string;
+  queue_fifo: boolean;
+  queue_intercept: boolean;
+  auto_backup: boolean;
+  backup_keep: number;
   actions: CustomAction[];
 }
 
@@ -74,8 +164,14 @@ export const api = {
   mergeItems: (ids: number[], sep: string) => invoke<number>("merge_items", { ids, sep }),
   updateItemText: (id: number, text: string) => invoke<void>("update_item_text", { id, text }),
   createPinboard: (name: string, color: string) => invoke<number>("create_pinboard", { name, color }),
-  updatePinboard: (id: number, name: string, color: string, maxItems: number, listStyle: string) =>
-    invoke<void>("update_pinboard", { id, name, color, maxItems, listStyle }),
+  updatePinboard: (
+    id: number,
+    name: string,
+    color: string,
+    maxItems: number,
+    listStyle: string,
+    pasteMode: string = "inherit"
+  ) => invoke<void>("update_pinboard", { id, name, color, maxItems, listStyle, pasteMode }),
   getHtml: (id: number) => invoke<string | null>("get_html", { id }),
   getAppIcon: (exe: string) => invoke<string | null>("get_app_icon", { exe }),
   moveItem: (id: number, target: number, after: boolean, scope: number | null) =>
@@ -91,15 +187,23 @@ export const api = {
   getSettings: () => invoke<Settings>("get_settings"),
   setSettings: (settings: Settings) => invoke<void>("set_settings", { settings }),
   status: () => invoke<Status>("app_status"),
+  setPopupPinned: (pinned: boolean) => invoke<boolean>("set_popup_pinned", { pinned }),
   pause: (minutes: number | null) => invoke<void>("pause_capture", { minutes }),
   resume: () => invoke<void>("resume_capture"),
   togglePlain: () => invoke<void>("toggle_plain_mode"),
   queueToggle: () => invoke<void>("queue_toggle"),
+  queueSetMode: (mode: "queue" | "basket") => invoke<void>("queue_set_mode", { mode }),
   queueGet: () => invoke<ClipRow[]>("queue_get"),
   queueRemove: (id: number) => invoke<void>("queue_remove", { id }),
   queueClear: () => invoke<void>("queue_clear"),
   queueSetFifo: (fifo: boolean) => invoke<void>("queue_set_fifo", { fifo }),
+  basketToggleCut: (id: number) => invoke<void>("basket_toggle_cut", { id }),
+  basketPasteHere: () => invoke<number>("basket_paste_here"),
+  basketPasteToFolder: () => invoke<number | null>("basket_paste_to_folder"),
+  showPopup: () => invoke<void>("show_popup_cmd"),
   hidePopup: () => invoke<void>("hide_popup"),
+  hideTray: () => invoke<void>("hide_tray"),
+  requestEraseFromTray: () => invoke<void>("request_erase_from_tray"),
   openSettings: () => invoke<void>("open_settings"),
   eraseHistory: () => invoke<void>("erase_history"),
   backupNow: () => invoke<string>("backup_now"),

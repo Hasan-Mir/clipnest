@@ -1,16 +1,22 @@
 import { useEffect, useState } from "react";
-import { FA } from "./fa";
+import { LOCALE_MAP, LOCALES, LocaleDefinition } from "./locales";
 
-export type Lang = "en" | "fa";
+export { LOCALES, LOCALE_MAP };
+export type { LocaleDefinition };
+export type Lang = string;
+
 let current: Lang = "en";
 const listeners = new Set<() => void>();
 
 /** Switches the UI language (and the text direction of the whole window). */
 export function setLang(l: Lang) {
-  if (l === current) return;
-  current = l;
-  document.documentElement.lang = l;
-  document.documentElement.dir = l === "fa" ? "rtl" : "ltr";
+  const def = LOCALE_MAP[l] ?? LOCALE_MAP.en;
+  if (def.code === current && document.documentElement.dir === def.dir) {
+    return;
+  }
+  current = def.code;
+  document.documentElement.lang = def.code;
+  document.documentElement.dir = def.dir;
   listeners.forEach((f) => f());
 }
 
@@ -18,15 +24,29 @@ export function getLang(): Lang {
   return current;
 }
 
-/** English text is the key. Persian comes from the FA dictionary; `{name}` placeholders are filled from `vars`. */
+export function isRtl(l: Lang = current): boolean {
+  const def = LOCALE_MAP[l] ?? LOCALE_MAP.en;
+  return def.dir === "rtl";
+}
+
+/** English text is the key. Translations come from the active locale; `{name}` placeholders are filled from `vars`. */
 export function t(s: string, vars?: Record<string, string | number>): string {
-  let out = current === "fa" ? FA[s] ?? s : s;
-  if (vars) out = out.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ""));
+  const dict = LOCALE_MAP[current]?.translations;
+  let out = dict ? dict[s] ?? s : s;
+  if (vars) {
+    out = out.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ""));
+  }
   return out;
 }
 
 export function num(n: number): string {
-  return n.toLocaleString(current === "fa" ? "fa-IR" : "en-US");
+  if (current === "fa") {
+    return n.toLocaleString("fa-IR");
+  }
+  if (current === "ar") {
+    return n.toLocaleString("ar-EG");
+  }
+  return n.toLocaleString("en-US");
 }
 
 /** Re-renders the calling component when the language changes. */
@@ -35,7 +55,9 @@ export function useLang(): Lang {
   useEffect(() => {
     const l = () => force((x) => x + 1);
     listeners.add(l);
-    return () => { listeners.delete(l); };
+    return () => {
+      listeners.delete(l);
+    };
   }, []);
   return current;
 }

@@ -7,10 +7,7 @@ pub mod win;
 #[cfg(all(windows, feature = "uia"))]
 pub mod uia;
 
-#[cfg(windows)]
-pub use win::*;
-
-/// Where to anchor the popup: the text caret → UI Automation → the mouse pointer.
+/// Where to anchor the popup: the text caret -> UI Automation -> the mouse pointer.
 /// Returns (x, top, bottom) in physical pixels.
 #[cfg(windows)]
 pub fn locate_anchor() -> (i32, i32, i32) {

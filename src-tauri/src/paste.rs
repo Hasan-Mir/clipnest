@@ -9,22 +9,27 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
 /// Decides plain vs rich and which key combination to send.
-/// `mode`: "auto" (settings + per-app rules) | "plain" | "rich".
-pub fn resolve(app: &AppHandle, mode: &str, target_exe: &str) -> (bool, String) {
+/// `mode`: "auto" (settings + per-app rules + per-pinboard paste_mode) | "plain" | "rich".
+pub fn resolve(app: &AppHandle, mode: &str, target_exe: &str, item_id: Option<i64>) -> (bool, String) {
     let st = app.state::<AppState>();
-    let s = st.settings.read();
+    let s = st.settings.read().clone();
     let exe = target_exe.to_lowercase();
     let rule = s.app_rules.iter().find(|r| r.exe.eq_ignore_ascii_case(&exe));
     let keys = rule
         .map(|r| if r.keys.is_empty() { "ctrl+v".to_string() } else { r.keys.clone() })
         .unwrap_or_else(|| "ctrl+v".into());
+    let board_pmode = item_id.and_then(|id| db::get_board_paste_mode(&st.db.lock(), id));
     let plain = match mode {
         "plain" => true,
         "rich" => false,
         _ => match rule.map(|r| r.mode.as_str()) {
             Some("plain") => true,
             Some("rich") => false,
-            _ => s.default_mode == "plain",
+            _ => match board_pmode.as_deref() {
+                Some("plain") => true,
+                Some("rich") => false,
+                _ => s.default_mode == "plain",
+            },
         },
     };
     (plain, keys)
@@ -81,15 +86,17 @@ fn bump(app: &AppHandle, id: i64) {
     }
 }
 
-/// Copy to the clipboard, hide the popup, and (if enabled) send the paste keystroke to the target app.
+/// Copy to the clipboard, hide the popup (unless pinned), and (if enabled) send the paste keystroke to the target app.
 pub fn paste(app: &AppHandle, id: i64, mode: &str) -> Result<(), String> {
     let st = app.state::<AppState>();
     let target = st.target_hwnd.load(Ordering::SeqCst);
     let exe = win::exe_of_hwnd(target);
-    let (plain, keys) = resolve(app, mode, &exe);
+    let (plain, keys) = resolve(app, mode, &exe, Some(id));
     write_item(app, id, plain)?;
     bump(app, id);
-    crate::windowing::hide_popup(app);
+    if !st.popup_pinned.load(Ordering::SeqCst) {
+        crate::windowing::hide_popup(app);
+    }
     // Opened from the tray there is no target window: only copy, never fire Ctrl+V at random windows.
     let direct = st.settings.read().direct_paste && target != 0;
     if direct {
@@ -99,10 +106,13 @@ pub fn paste(app: &AppHandle, id: i64, mode: &str) -> Result<(), String> {
 }
 
 pub fn copy_only(app: &AppHandle, id: i64, mode: &str) -> Result<(), String> {
-    let (plain, _) = resolve(app, mode, "");
+    let st = app.state::<AppState>();
+    let (plain, _) = resolve(app, mode, "", Some(id));
     write_item(app, id, plain)?;
     bump(app, id);
-    crate::windowing::hide_popup(app);
+    if !st.popup_pinned.load(Ordering::SeqCst) {
+        crate::windowing::hide_popup(app);
+    }
     Ok(())
 }
 

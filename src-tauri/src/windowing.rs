@@ -1,4 +1,4 @@
-//! Popup / settings / queue windows: positioning at the caret, focus handling, capture protection.
+//! Popup / settings / queue / tray windows: positioning at the caret, focus handling, capture protection.
 
 use crate::platform::{self, win};
 use crate::state::AppState;
@@ -130,10 +130,20 @@ fn ensure_window(app: &AppHandle, label: &str) -> Option<WebviewWindow> {
     }
     let base = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into()));
     let built = if label == "settings" {
-        base.title("ClipNest Settings").inner_size(860.0, 660.0).min_inner_size(720.0, 540.0).center().build()
+        base.title("ClipNest Settings").inner_size(880.0, 680.0).min_inner_size(720.0, 540.0).center().build()
+    } else if label == "tray" {
+        base.title("ClipNest Menu")
+            .inner_size(240.0, 340.0)
+            .decorations(false)
+            .resizable(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .focused(true)
+            .visible(false)
+            .build()
     } else {
         base.title("Paste Queue")
-            .inner_size(280.0, 340.0)
+            .inner_size(310.0, 380.0)
             .decorations(false)
             .resizable(false)
             .always_on_top(true)
@@ -155,7 +165,10 @@ fn ensure_window(app: &AppHandle, label: &str) -> Option<WebviewWindow> {
 }
 
 pub fn open_settings(app: &AppHandle) {
-    hide_popup(app);
+    hide_tray(app);
+    if !app.state::<AppState>().popup_pinned.load(Ordering::SeqCst) {
+        hide_popup(app);
+    }
     let w = ensure_window(app, "settings");
     if let Some(w) = w {
         let _ = w.unminimize();
@@ -171,7 +184,7 @@ pub fn show_queue(app: &AppHandle) {
         win::make_no_activate(h);
         let (x, y) = win::cursor_pos();
         let (_, t, r, _) = win::work_area_at(x, y);
-        let width = w.outer_size().map(|s| s.width as i32).unwrap_or(300);
+        let width = w.outer_size().map(|s| s.width as i32).unwrap_or(310);
         let _ = w.set_position(PhysicalPosition::new(r - width - 16, t + 16));
         win::show_no_activate(h);
     }
@@ -179,6 +192,39 @@ pub fn show_queue(app: &AppHandle) {
 
 pub fn hide_queue(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("queue") {
+        if let Some(h) = hwnd_of(&w) {
+            win::hide_window(h);
+        }
+        let _ = w.hide();
+    }
+}
+
+pub fn show_tray(app: &AppHandle) {
+    let Some(w) = ensure_window(app, "tray") else { return };
+    let (cx, cy) = win::cursor_pos();
+    let (l, t, r, b) = win::work_area_at(cx, cy);
+    let size = w.outer_size().map(|s| (s.width as i32, s.height as i32)).unwrap_or((240, 340));
+    let mut x = cx - size.0 / 2;
+    let mut y = cy - size.1 - 8;
+    if y < t + 8 {
+        y = cy + 8;
+    }
+    x = x.min(r - size.0 - 8).max(l + 8);
+    y = y.min(b - size.1 - 8).max(t + 8);
+    let _ = w.set_position(PhysicalPosition::new(x, y));
+    let _ = w.show();
+    if let Some(h) = hwnd_of(&w) {
+        win::focus_window(h);
+    }
+    let _ = w.set_focus();
+    let _ = app.emit("tray-shown", ());
+}
+
+pub fn hide_tray(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("tray") {
+        if let Some(h) = hwnd_of(&w) {
+            win::hide_window(h);
+        }
         let _ = w.hide();
     }
 }

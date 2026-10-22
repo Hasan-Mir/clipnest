@@ -12,8 +12,8 @@ use windows_sys::Win32::System::DataExchange::*;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::System::Memory::*;
 use windows_sys::Win32::System::Threading::*;
-use windows_sys::Win32::UI::Shell::ExtractIconExW;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
+use windows_sys::Win32::UI::Shell::ExtractIconExW;
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
 pub const CF_UNICODETEXT_ID: u32 = 13;
@@ -25,6 +25,10 @@ const WM_CLIPBOARDUPDATE_MSG: u32 = 0x031D;
 
 pub fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+pub fn register_format(name: &str) -> u32 {
+    unsafe { RegisterClipboardFormatW(wide(name).as_ptr()) }
 }
 
 // ───────────────────────────── clipboard listener ─────────────────────────────
@@ -385,7 +389,7 @@ fn send(inputs: &[INPUT]) {
     }
 }
 
-fn is_down(vk: u16) -> bool {
+pub fn is_down(vk: u16) -> bool {
     unsafe { (GetAsyncKeyState(vk as i32) as u16) & 0x8000 != 0 }
 }
 
@@ -490,8 +494,8 @@ pub fn work_area_at(x: i32, y: i32) -> (i32, i32, i32, i32) {
 // ───────────────────────────── window styles ─────────────────────────────
 
 /// mode: "off" | "black" | "hidden"
-///  black  → WDA_MONITOR (0x1): the window shows as a black rectangle in screenshots/recordings
-///  hidden → WDA_EXCLUDEFROMCAPTURE (0x11, Win10 2004+): the window is invisible in captures
+///  black  -> WDA_MONITOR (0x1): the window shows as a black rectangle in screenshots/recordings
+///  hidden -> WDA_EXCLUDEFROMCAPTURE (0x11, Win10 2004+): the window is invisible in captures
 pub fn set_capture_protection(hwnd: isize, mode: &str) -> bool {
     let affinity: u32 = match mode {
         "black" => 0x1,
@@ -515,10 +519,35 @@ pub fn show_no_activate(hwnd: isize) {
     }
 }
 
+pub fn hide_window(hwnd: isize) {
+    unsafe {
+        ShowWindow(hwnd, SW_HIDE);
+    }
+}
+
 #[allow(dead_code)]
 pub fn _unused(_: *const c_void) {}
 
-// ───────────────────────────── application icons ─────────────────────────────
+// ───────────────────────────── application & shell thumbnails ─────────────────────────────
+
+#[repr(C)]
+struct Bmi {
+    header: BITMAPINFOHEADER,
+    colors: [u32; 256],
+}
+
+impl Bmi {
+    fn new_top_down(w: i32, h: i32) -> Self {
+        let mut bi: Bmi = unsafe { std::mem::zeroed() };
+        bi.header.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+        bi.header.biWidth = w;
+        bi.header.biHeight = -h; // top-down
+        bi.header.biPlanes = 1;
+        bi.header.biBitCount = 32;
+        bi.header.biCompression = 0; // BI_RGB
+        bi
+    }
+}
 
 /// Extracts the 32×32 icon of an executable as RGBA pixels.
 pub fn extract_icon_rgba(path: &str) -> Option<(u32, u32, Vec<u8>)> {
@@ -555,33 +584,23 @@ unsafe fn icon_to_rgba(hicon: isize) -> Option<(u32, u32, Vec<u8>)> {
         let (w, h) = (bm.bmWidth, bm.bmHeight);
         if w > 0 && h > 0 {
             let hdc = GetDC(0);
-            let make_bi = || {
-                let mut bi: BITMAPINFO = std::mem::zeroed();
-                bi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
-                bi.bmiHeader.biWidth = w;
-                bi.bmiHeader.biHeight = -h; // top-down
-                bi.bmiHeader.biPlanes = 1;
-                bi.bmiHeader.biBitCount = 32;
-                bi.bmiHeader.biCompression = 0; // BI_RGB
-                bi
-            };
             let n = (w * h) as usize;
             let mut px = vec![0u8; n * 4];
-            let mut bi = make_bi();
-            let got = GetDIBits(hdc, hc, 0, h as u32, px.as_mut_ptr() as *mut c_void, &mut bi, 0);
+            let mut bi = Bmi::new_top_down(w, h);
+            let got = GetDIBits(hdc, hc, 0, h as u32, px.as_mut_ptr() as *mut c_void, &mut bi as *mut Bmi as *mut BITMAPINFO, 0);
             if got != 0 {
                 // Old icons carry no alpha channel: derive it from the AND mask.
                 if px.chunks_exact(4).all(|p| p[3] == 0) && hm != 0 {
                     let mut mask = vec![0u8; n * 4];
-                    let mut bi2 = make_bi();
-                    if GetDIBits(hdc, hm, 0, h as u32, mask.as_mut_ptr() as *mut c_void, &mut bi2, 0) != 0 {
+                    let mut bi2 = Bmi::new_top_down(w, h);
+                    if GetDIBits(hdc, hm, 0, h as u32, mask.as_mut_ptr() as *mut c_void, &mut bi2 as *mut Bmi as *mut BITMAPINFO, 0) != 0 {
                         for i in 0..n {
                             px[i * 4 + 3] = if mask[i * 4] == 0 { 255 } else { 0 };
                         }
                     }
                 }
                 for p in px.chunks_exact_mut(4) {
-                    p.swap(0, 2); // BGRA → RGBA
+                    p.swap(0, 2); // BGRA -> RGBA
                 }
                 result = Some((w as u32, h as u32, px));
             }
@@ -595,6 +614,120 @@ unsafe fn icon_to_rgba(hicon: isize) -> Option<(u32, u32, Vec<u8>)> {
         DeleteObject(hm);
     }
     result
+}
+
+unsafe fn hbitmap_to_rgba(hbmp: isize) -> Option<(u32, u32, Vec<u8>)> {
+    if hbmp == 0 {
+        return None;
+    }
+    let mut bm: BITMAP = std::mem::zeroed();
+    if GetObjectW(hbmp, std::mem::size_of::<BITMAP>() as i32, &mut bm as *mut BITMAP as *mut c_void) == 0 {
+        return None;
+    }
+    let (w, h) = (bm.bmWidth, bm.bmHeight.abs());
+    if w <= 0 || h <= 0 {
+        return None;
+    }
+    let hdc = GetDC(0);
+    let n = (w * h) as usize;
+    let mut px = vec![0u8; n * 4];
+    let mut bi = Bmi::new_top_down(w, h);
+    let got = GetDIBits(hdc, hbmp, 0, h as u32, px.as_mut_ptr() as *mut c_void, &mut bi as *mut Bmi as *mut BITMAPINFO, 0);
+    ReleaseDC(0, hdc);
+    if got == 0 {
+        return None;
+    }
+    if px.chunks_exact(4).all(|p| p[3] == 0) {
+        for p in px.chunks_exact_mut(4) {
+            p[3] = 255;
+        }
+    }
+    for p in px.chunks_exact_mut(4) {
+        p.swap(0, 2); // BGRA -> RGBA
+    }
+    Some((w as u32, h as u32, px))
+}
+
+#[repr(C)]
+struct Guid {
+    data1: u32,
+    data2: u16,
+    data3: u16,
+    data4: [u8; 8],
+}
+
+#[repr(C)]
+struct IShellItemImageFactoryVtbl {
+    query_interface: unsafe extern "system" fn(*mut c_void, *const Guid, *mut *mut c_void) -> i32,
+    add_ref: unsafe extern "system" fn(*mut c_void) -> u32,
+    release: unsafe extern "system" fn(*mut c_void) -> u32,
+    get_image: unsafe extern "system" fn(*mut c_void, POINT, i32, *mut isize) -> i32,
+}
+
+#[repr(C)]
+struct IShellItemImageFactoryRaw {
+    lp_vtbl: *const IShellItemImageFactoryVtbl,
+}
+
+#[link(name = "shell32")]
+extern "system" {
+    fn SHCreateItemFromParsingName(
+        psz_path: *const u16,
+        pbc: *mut c_void,
+        riid: *const Guid,
+        ppv: *mut *mut c_void,
+    ) -> i32;
+}
+
+#[link(name = "ole32")]
+extern "system" {
+    fn CoInitializeEx(pv_reserved: *mut c_void, dw_co_init: u32) -> i32;
+    fn CoUninitialize();
+}
+
+/// Extracts a thumbnail for an image, video, or media file via IShellItemImageFactory.
+pub fn extract_shell_thumbnail_rgba(path: &str, max_side: i32) -> Option<(u32, u32, Vec<u8>)> {
+    const IID_ISHELL_ITEM_IMAGE_FACTORY: Guid = Guid {
+        data1: 0xbcc18b79,
+        data2: 0xba16,
+        data3: 0x442f,
+        data4: [0x80, 0xc4, 0x8a, 0x59, 0xc3, 0x0c, 0x46, 0x3b],
+    };
+    // SIIGBF_BIGGERSIZEOK (0x01) | SIIGBF_THUMBNAILONLY (0x08)
+    const SIIGBF_THUMBNAIL: i32 = 0x01 | 0x08;
+    const SIIGBF_RESIZETOFIT: i32 = 0x00;
+
+    unsafe {
+        let hr_init = CoInitializeEx(std::ptr::null_mut(), 0); // COINIT_MULTITHREADED
+        let should_uninit = hr_init >= 0;
+        let wpath = wide(path);
+        let mut factory_ptr: *mut c_void = std::ptr::null_mut();
+        let hr = SHCreateItemFromParsingName(
+            wpath.as_ptr(),
+            std::ptr::null_mut(),
+            &IID_ISHELL_ITEM_IMAGE_FACTORY,
+            &mut factory_ptr,
+        );
+        let mut out = None;
+        if hr >= 0 && !factory_ptr.is_null() {
+            let factory = &*(factory_ptr as *const IShellItemImageFactoryRaw);
+            let mut hbmp: isize = 0;
+            let sz = POINT { x: max_side, y: max_side };
+            let mut hr_img = ((*factory.lp_vtbl).get_image)(factory_ptr, sz, SIIGBF_THUMBNAIL, &mut hbmp);
+            if hr_img < 0 || hbmp == 0 {
+                hr_img = ((*factory.lp_vtbl).get_image)(factory_ptr, sz, SIIGBF_RESIZETOFIT, &mut hbmp);
+            }
+            if hr_img >= 0 && hbmp != 0 {
+                out = hbitmap_to_rgba(hbmp);
+                DeleteObject(hbmp);
+            }
+            ((*factory.lp_vtbl).release)(factory_ptr);
+        }
+        if should_uninit {
+            CoUninitialize();
+        }
+        out
+    }
 }
 
 // ───────────────────────────── low-level keyboard hook (Win-key shortcuts) ─────────────────────────────
@@ -617,7 +750,7 @@ pub fn is_win_shortcut(s: &str) -> bool {
     s.split('+').any(|p| matches!(p.trim().to_lowercase().as_str(), "super" | "win" | "meta" | "cmd" | "command"))
 }
 
-/// "Super+V" / "Ctrl+Alt+F5" → (modifier mask, virtual-key code)
+/// "Super+V" / "Ctrl+Alt+F5" -> (modifier mask, virtual-key code)
 pub fn parse_shortcut(s: &str) -> Option<(u8, u32)> {
     let mut mods = 0u8;
     let mut vk: Option<u32> = None;
@@ -698,6 +831,9 @@ unsafe extern "system" fn ll_keyboard_proc(code: i32, wp: WPARAM, lp: LPARAM) ->
             let msg = wp as u32;
             let vk = kb.vkCode;
             if msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN {
+                if SWALLOWED_VK.load(Ordering::SeqCst) == vk {
+                    return 1;
+                }
                 let mods = current_mods();
                 let hit = BINDINGS.lock().iter().find(|b| b.1 == vk && b.0 == mods).copied();
                 if let Some((m, _, id)) = hit {
