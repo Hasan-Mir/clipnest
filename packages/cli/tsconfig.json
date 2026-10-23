@@ -10,7 +10,10 @@
         "esModuleInterop": true,
         "skipLibCheck": true,
         "forceConsistentCasingInFileNames": true,
-        "types": ["node"]
+        "types": ["node"],
+        "paths": {
+            "@seymi/clipnest-core": ["../core/dist/index.d.ts", "../core/src/index.ts"]
+        }
     },
     "include": ["src"]
 }

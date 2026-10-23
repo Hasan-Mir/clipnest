@@ -1,0 +1,49 @@
+[package]
+name = "clipnest-core"
+version = "0.2.0"
+description = "ClipNest Core — Native Rust engine (SQLite, search, rules, transforms, Win32 clipboard, IPC, and N-API addon) shared by ClipNest GUI and CLI"
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "clipnest_core"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "clipnest-cli"
+path = "src/bin/clipnest-cli.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+blake3 = "1"
+image = { version = "0.25", default-features = false, features = ["png", "bmp"] }
+base64 = "0.22"
+regex = "1"
+flate2 = "1"
+parking_lot = "0.12"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "=0.52.0", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_System_DataExchange",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Memory",
+  "Win32_System_Threading",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+] }
+windows = { version = "=0.58.0", optional = true, features = [
+  "Win32_Foundation",
+  "Win32_System_Com",
+  "Win32_System_Ole",
+  "Win32_System_Variant",
+  "Win32_UI_Accessibility",
+] }
+
+[features]
+default = ["uia"]
+uia = ["dep:windows"]

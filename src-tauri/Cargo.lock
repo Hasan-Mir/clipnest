@@ -535,6 +535,7 @@ version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "blake3",
+ "clipnest-core",
  "flate2",
  "image",
  "parking_lot",
@@ -548,6 +549,22 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-global-shortcut",
  "tauri-plugin-single-instance",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "clipnest-core"
+version = "0.2.0"
+dependencies = [
+ "base64 0.22.1",
+ "blake3",
+ "flate2",
+ "image",
+ "parking_lot",
+ "regex",
+ "rusqlite",
+ "serde",
+ "serde_json",
  "windows 0.58.0",
  "windows-sys 0.52.0",
 ]

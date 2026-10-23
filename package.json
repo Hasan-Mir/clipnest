@@ -4,23 +4,26 @@
     "version": "0.2.0",
     "type": "module",
     "workspaces": [
-        "packages/*"
+        "packages/core",
+        "packages/cli"
     ],
     "scripts": {
         "dev": "vite",
-        "build": "vite build && npm run build:cli",
-        "build:cli": "npm run build --workspace @seymi/clipnest-cli",
-        "typecheck": "tsc --noEmit && npm run typecheck --workspace @seymi/clipnest-cli",
+        "build": "npm run build:core && vite build && npm run build:cli",
+        "build:core": "npm run build --workspace @seymi/clipnest-core",
+        "build:core:native": "npm run build:native --workspace @seymi/clipnest-core",
+        "build:cli": "npm run build --workspace @seymi/clipnest-core && npm run build --workspace @seymi/clipnest-cli",
+        "typecheck": "tsc --noEmit && npm run typecheck --workspace @seymi/clipnest-core && npm run typecheck --workspace @seymi/clipnest-cli",
         "test": "vitest run",
         "test:watch": "vitest",
-        "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
-        "test:all": "vitest run && cargo test --manifest-path src-tauri/Cargo.toml",
-        "format": "prettier --write \"**/*.{ts,tsx,css,json}\" && cargo fmt --manifest-path src-tauri/Cargo.toml --all",
-        "format:check": "prettier --check \"**/*.{ts,tsx,css,json}\" && cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
+        "test:rust": "cargo test --manifest-path packages/core/Cargo.toml && cargo test --manifest-path src-tauri/Cargo.toml",
+        "test:all": "vitest run && npm run test:rust",
+        "format": "prettier --write \"**/*.{ts,tsx,css,json}\" && cargo fmt --manifest-path packages/core/Cargo.toml --all && cargo fmt --manifest-path src-tauri/Cargo.toml --all",
+        "format:check": "prettier --check \"**/*.{ts,tsx,css,json}\" && cargo fmt --manifest-path packages/core/Cargo.toml --all -- --check && cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
         "prepare": "husky",
         "tauri": "tauri dev",
-        "tauri:build": "tauri build && cargo build --release --manifest-path src-tauri/Cargo.toml --bin clipnest-cli && node scripts/build-portable.mjs",
-        "tauri:portable": "tauri build --no-bundle && cargo build --release --manifest-path src-tauri/Cargo.toml --bin clipnest-cli && node scripts/build-portable.mjs"
+        "tauri:build": "tauri build && cargo build --release --manifest-path packages/core/Cargo.toml --bin clipnest-cli && node scripts/build-portable.mjs",
+        "tauri:portable": "tauri build --no-bundle && cargo build --release --manifest-path packages/core/Cargo.toml --bin clipnest-cli && node scripts/build-portable.mjs"
     },
     "dependencies": {
         "@floating-ui/dom": "^1.8.0",
@@ -48,6 +51,9 @@
     "lint-staged": {
         "*.{ts,tsx,css,json}": [
             "prettier --write"
+        ],
+        "packages/core/**/*.rs": [
+            "cargo fmt --manifest-path packages/core/Cargo.toml --all --"
         ],
         "src-tauri/**/*.rs": [
             "cargo fmt --manifest-path src-tauri/Cargo.toml --all --"

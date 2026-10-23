@@ -17,6 +17,7 @@ export interface MenuEntry {
     hint?: string;
     icon?: IconName | string;
     onClick?: (ctrlKey: boolean) => void;
+    disabled?: boolean;
     sep?: boolean;
     header?: boolean;
     /** On the main Clipboard tab: always shows Copy icon + "Copy to" */
@@ -32,15 +33,15 @@ function renderAccentCopyHeader() {
     const full = t('Copy to');
     const copyWord = t('Copy');
     if (full.toLowerCase().startsWith(copyWord.toLowerCase())) {
-        const rest = full.slice(copyWord.length);
+        const rest = full.slice(copyWord.length).replace(/^\s+/, '');
         return (
-            <span>
+            <span className="inline-label">
                 <span className="menu-copy-accent">{full.slice(0, copyWord.length)}</span>
-                {rest}
+                {rest ? `\u00A0${rest}` : ''}
             </span>
         );
     }
-    return <span className="menu-copy-accent">{full}</span>;
+    return <span className="inline-label menu-copy-accent">{full}</span>;
 }
 
 export function ContextMenu({
@@ -66,7 +67,7 @@ export function ContextMenu({
     const actionableIndices = useMemo(() => {
         const out: number[] = [];
         entries.forEach((e, idx) => {
-            if (!e.sep && !e.header) {
+            if (!e.sep && !e.header && !e.disabled) {
                 out.push(idx);
             }
         });
@@ -206,7 +207,7 @@ export function ContextMenu({
             }
         } else if (e.key === 'Enter' || e.key === ' ') {
             const entry = entries[focusIdx];
-            if (!entry) {
+            if (!entry || entry.disabled) {
                 return;
             }
             if (entry.submenu) {
@@ -367,13 +368,21 @@ export function ContextMenu({
                             key={i}
                             data-menu-idx={i}
                             role="menuitem"
+                            aria-disabled={e.disabled ? 'true' : undefined}
                             tabIndex={-1}
-                            className={`menu-item${e.danger ? ' danger' : ''}${focusIdx === i ? ' focused' : ''}`}
+                            className={`menu-item${e.danger ? ' danger' : ''}${e.disabled ? ' disabled' : ''}${
+                                focusIdx === i ? ' focused' : ''
+                            }`}
                             onMouseEnter={() => {
-                                setFocusIdx(i);
-                                setOpenSub(null);
+                                if (!e.disabled) {
+                                    setFocusIdx(i);
+                                    setOpenSub(null);
+                                }
                             }}
                             onClick={(ev) => {
+                                if (e.disabled) {
+                                    return;
+                                }
                                 e.onClick?.(ev.ctrlKey || ev.metaKey || ctrlHeld);
                                 onClose();
                             }}
@@ -461,102 +470,116 @@ function SubMenu({
                 };
             },
         });
-    }, [anchor, parentRect, refs]);
+    }, [parentRect, anchor, refs]);
 
     return (
         <div
             role="menu"
-            className={`menu sub${isPositioned ? ' menu-ready' : ''}`}
             ref={refs.setFloating}
+            className={`menu sub${isPositioned ? ' menu-ready' : ''}`}
             style={{
                 ...floatingStyles,
                 visibility: isPositioned ? 'visible' : 'hidden',
             }}
         >
-            {entries.map((s, j) => (
+            {entries.map((s, k) => (
                 <div
-                    key={j}
+                    key={k}
                     role="menuitem"
-                    tabIndex={-1}
-                    className="menu-item"
+                    className={`menu-item${s.disabled ? ' disabled' : ''}`}
                     onClick={(ev) => {
-                        ev.stopPropagation();
+                        if (s.disabled) {
+                            return;
+                        }
                         s.onClick?.(ev.ctrlKey || ev.metaKey || ctrlHeld);
                         onPick();
                     }}
                 >
-                    <span className="menu-item-label">{s.label}</span>
+                    <span className="menu-item-label">
+                        {s.icon && <Icon name={s.icon} size={13} />}
+                        <span>{s.label}</span>
+                    </span>
                 </div>
             ))}
         </div>
     );
 }
 
-// ───────────── prompt dialog ─────────────
+// ───────────── prompt / confirmation modal ─────────────
 export interface PromptState {
     title: string;
     message?: string;
     initial?: string;
     placeholder?: string;
-    confirm?: boolean; // confirm-only (no text field)
-    checkLabel?: string; // primary checkbox (e.g. "Also erase pinned items")
+    confirm?: boolean;
+    checkLabel?: string;
     defaultChecked?: boolean;
-    checkLabel2?: string; // secondary checkbox (e.g. "Also erase all categories and main clipboard")
+    checkLabel2?: string;
     defaultChecked2?: boolean;
     okLabel?: string;
     danger?: boolean;
-    onSubmit: (value: string, checked: boolean, checked2: boolean) => void;
+    onSubmit: (v: string, checked: boolean, checked2: boolean) => void;
 }
 
 export function Prompt({ p, onClose }: { p: PromptState; onClose: () => void }) {
     const [v, setV] = useState(p.initial ?? '');
-    const [checked, setChecked] = useState(Boolean(p.defaultChecked));
-    const [checked2, setChecked2] = useState(Boolean(p.defaultChecked2));
-    const ref = useRef<HTMLInputElement>(null);
-    const dialogRef = useRef<HTMLDivElement>(null);
+    const [checked, setChecked] = useState(p.defaultChecked ?? false);
+    const [checked2, setChecked2] = useState(p.defaultChecked2 ?? false);
+    const okBtnRef = useRef<HTMLButtonElement>(null);
+
     useEffect(() => {
         if (p.confirm) {
-            dialogRef.current?.focus();
-        } else {
-            ref.current?.focus();
-            ref.current?.select();
+            okBtnRef.current?.focus();
         }
     }, [p.confirm]);
+
     const submit = () => {
         p.onSubmit(v, checked, checked2);
         onClose();
     };
+
     return (
-        <div className="overlay" onMouseDown={onClose}>
+        <div
+            className="overlay"
+            onMouseDown={onClose}
+            onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onClose();
+                } else if (e.key === 'Enter' && p.confirm) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    submit();
+                }
+            }}
+        >
             <div
-                className="dialog"
                 role="dialog"
                 aria-modal="true"
                 aria-label={p.title}
-                ref={dialogRef}
-                tabIndex={-1}
+                className="dialog"
                 onMouseDown={(e) => e.stopPropagation()}
-                onKeyDown={(e) => {
-                    e.stopPropagation();
-                    if (e.key === 'Escape') {
-                        e.preventDefault();
-                        onClose();
-                    }
-                    if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'BUTTON') {
-                        e.preventDefault();
-                        submit();
-                    }
-                }}
             >
                 <div className="dialog-title">{p.title}</div>
                 {p.message && <p className="dialog-msg muted small">{p.message}</p>}
                 {!p.confirm && (
                     <input
-                        ref={ref}
-                        aria-label={p.title}
+                        autoFocus
                         value={v}
                         placeholder={p.placeholder}
+                        dir="auto"
                         onChange={(e) => setV(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                submit();
+                            }
+                            if (e.key === 'Escape') {
+                                e.preventDefault();
+                                onClose();
+                            }
+                        }}
                     />
                 )}
                 {p.checkLabel && (
@@ -573,15 +596,15 @@ export function Prompt({ p, onClose }: { p: PromptState; onClose: () => void }) 
                 )}
                 <div className="dialog-actions">
                     <button type="button" className="btn" onClick={onClose}>
-                        {t('Cancel')}
+                        <span>{t('Cancel')}</span>
                     </button>
                     <button
+                        ref={okBtnRef}
                         type="button"
                         className={`btn ${p.danger ? 'danger-solid' : 'primary'}`}
-                        autoFocus={p.confirm}
                         onClick={submit}
                     >
-                        {p.okLabel ?? t('OK')}
+                        <span>{p.okLabel ?? t('OK')}</span>
                     </button>
                 </div>
             </div>
@@ -589,8 +612,8 @@ export function Prompt({ p, onClose }: { p: PromptState; onClose: () => void }) 
     );
 }
 
-// ───────────── category settings dialog (per-tab settings) ─────────────
-export const BOARD_COLORS = ['#4f8cff', '#34c759', '#ff9f0a', '#ff453a', '#bf5af2', '#64d2ff', '#ffd60a', '#8e8e93'];
+// ───────────── category (pinboard) settings modal ─────────────
+export const BOARD_COLORS = ['#4f8cff', '#34c759', '#ff9f0a', '#ff453a', '#bf5af2', '#64d2ff', '#ff375f', '#ffd60a'];
 
 export function BoardDialog({
     board,
@@ -611,120 +634,122 @@ export function BoardDialog({
     onClose: () => void;
 }) {
     const [name, setName] = useState(board.name);
-    const [color, setColor] = useState(board.color);
+    const [color, setColor] = useState(board.color || BOARD_COLORS[0]);
     const [max, setMax] = useState(board.max_items);
-    const [style, setStyle] = useState<string>(board.list_style || 'inherit');
-    const [pasteMode, setPasteMode] = useState<string>(board.paste_mode || 'inherit');
-    const [active, setActive] = useState<boolean>(isActive);
-    const dialogRef = useRef<HTMLDivElement>(null);
+    const [style, setStyle] = useState(board.list_style || 'inherit');
+    const [pasteMode, setPasteMode] = useState(board.paste_mode || 'inherit');
+    const [active, setActive] = useState(isActive);
 
-    const save = () => {
-        if (name.trim()) {
-            onSave(name, color, max, style, pasteMode, active);
-            onClose();
+    const submit = () => {
+        if (!name.trim()) {
+            return;
         }
+        onSave(name.trim(), color, max, style, pasteMode, active);
+        onClose();
     };
+
+    const styleOpts = [
+        { value: 'inherit', label: t('Same as global setting') },
+        { value: 'rich', label: t('Original style') },
+        { value: 'plain', label: t('Plain text') },
+    ];
+
+    const pasteOpts = [
+        { value: 'inherit', label: t('Same as global setting') },
+        { value: 'rich', label: t('Keep formatting') },
+        { value: 'plain', label: t('Plain text only') },
+    ];
+
     return (
-        <div className="overlay" onMouseDown={onClose}>
+        <div
+            className="overlay"
+            onMouseDown={onClose}
+            onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onClose();
+                }
+            }}
+        >
             <div
-                className="dialog"
                 role="dialog"
                 aria-modal="true"
                 aria-label={t('Category settings')}
-                ref={dialogRef}
-                tabIndex={-1}
+                className="dialog board-dlg"
                 onMouseDown={(e) => e.stopPropagation()}
-                onKeyDown={(e) => {
-                    e.stopPropagation();
-                    if (e.key === 'Escape') {
-                        e.preventDefault();
-                        onClose();
-                    }
-                    if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'BUTTON') {
-                        e.preventDefault();
-                        save();
-                    }
-                }}
             >
                 <div className="dialog-title">{t('Category settings')}</div>
+
                 <label className="field">
                     <span>{t('Name')}</span>
-                    <input autoFocus value={name} onChange={(e) => setName(e.target.value)} />
+                    <input
+                        autoFocus
+                        value={name}
+                        dir="auto"
+                        onChange={(e) => setName(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                submit();
+                            }
+                            if (e.key === 'Escape') {
+                                onClose();
+                            }
+                        }}
+                    />
                 </label>
+
                 <div className="field">
                     <span>{t('Color')}</span>
-                    <div className="swatches" role="radiogroup" aria-label={t('Color')}>
+                    <div className="swatches">
                         {BOARD_COLORS.map((c) => (
                             <button
                                 key={c}
                                 type="button"
-                                role="radio"
-                                aria-checked={c === color}
                                 aria-label={c}
-                                className={`sw${c === color ? ' on' : ''}`}
+                                className={`swatch-pick${color === c ? ' on' : ''}`}
                                 style={{ background: c }}
                                 onClick={() => setColor(c)}
                             />
                         ))}
                     </div>
                 </div>
-                <div className="field field-row">
-                    <div>
-                        <div>{t('Active category (new copies go here)')}</div>
-                        <div className="muted small">
-                            {t('New copies are automatically placed in this category and the popup opens on this tab')}
-                        </div>
-                    </div>
-                    <button
-                        type="button"
-                        className={`switch${active ? ' on' : ''}`}
-                        role="switch"
-                        aria-checked={active}
-                        aria-label={t('Active category (new copies go here)')}
-                        onClick={() => setActive((v) => !v)}
-                    >
-                        <span />
-                    </button>
-                </div>
-                <div className="field">
-                    <span>{t('Show items as')}</span>
-                    <CustomSelect
-                        value={style}
-                        onChange={(v) => setStyle(v)}
-                        options={[
-                            { value: 'inherit', label: t('Same as global setting') },
-                            { value: 'rich', label: t('Original style') },
-                            { value: 'plain', label: t('Plain text') },
-                        ]}
-                    />
-                </div>
-                <div className="field">
-                    <span>{t('Default paste mode')}</span>
-                    <CustomSelect
-                        value={pasteMode}
-                        onChange={(v) => setPasteMode(v)}
-                        options={[
-                            { value: 'inherit', label: t('Same as global setting') },
-                            { value: 'rich', label: t('Keep formatting') },
-                            { value: 'plain', label: t('Plain text only') },
-                        ]}
-                    />
-                </div>
+
                 <label className="field">
                     <span>{t('Maximum items (0 = unlimited, oldest are deleted)')}</span>
                     <input
                         type="number"
                         min={0}
+                        max={100000}
+                        step={10}
                         value={max}
                         onChange={(e) => setMax(Math.max(0, Number(e.target.value) || 0))}
                     />
                 </label>
+
+                <div className="field">
+                    <span>{t('Show items as')}</span>
+                    <CustomSelect value={style} onChange={setStyle} options={styleOpts} />
+                </div>
+
+                <div className="field">
+                    <span>{t('Default paste mode')}</span>
+                    <CustomSelect value={pasteMode} onChange={setPasteMode} options={pasteOpts} />
+                </div>
+
+                <label className="dialog-check">
+                    <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
+                    <span>
+                        {t('New copies are automatically placed in this category and the popup opens on this tab')}
+                    </span>
+                </label>
+
                 <div className="dialog-actions">
                     <button type="button" className="btn" onClick={onClose}>
-                        {t('Cancel')}
+                        <span>{t('Cancel')}</span>
                     </button>
-                    <button type="button" className="btn primary" onClick={save}>
-                        {t('Save')}
+                    <button type="button" className="btn primary" onClick={submit}>
+                        <span>{t('Save')}</span>
                     </button>
                 </div>
             </div>

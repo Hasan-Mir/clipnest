@@ -115,7 +115,7 @@ interface Props {
     onContext: (it: ClipRow, x: number, y: number) => void;
     onDragStart: (it: ClipRow, e: React.DragEvent) => void;
     onDragOver: (it: ClipRow, after: boolean) => void;
-    onDrop: (it: ClipRow, after: boolean) => void;
+    onDrop: (it: ClipRow, after: boolean, droppedId?: number) => void;
     onDragEnd: () => void;
 }
 
@@ -268,7 +268,6 @@ function CardImpl(p: Props) {
         <div
             id={`card-${item.id}`}
             role="option"
-            tabIndex={selected ? 0 : -1}
             aria-selected={selected || multi}
             aria-label={srSummary}
             className={`card${selected ? ' sel' : ''}${multi ? ' multi' : ''}${item.sensitive ? ' sensitive' : ''}${
@@ -288,13 +287,15 @@ function CardImpl(p: Props) {
             }}
             onDragOver={(e) => {
                 e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
                 const r = e.currentTarget.getBoundingClientRect();
                 p.onDragOver(item, e.clientY > r.top + r.height / 2);
             }}
             onDrop={(e) => {
                 e.preventDefault();
                 const r = e.currentTarget.getBoundingClientRect();
-                p.onDrop(item, e.clientY > r.top + r.height / 2);
+                const droppedId = Number(e.dataTransfer.getData('text/clip-id')) || undefined;
+                p.onDrop(item, e.clientY > r.top + r.height / 2, droppedId);
             }}
             onDragEnd={p.onDragEnd}
         >

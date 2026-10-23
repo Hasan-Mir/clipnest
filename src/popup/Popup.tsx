@@ -15,24 +15,38 @@ import { Preview } from './Preview';
 
 const PAGE = 100;
 
-function renderDropTabLabel(isCopy: boolean, accentCopy: boolean, name: string) {
-    if (!isCopy) {
-        return <span>{t('Move to {name}', { name })}</span>;
-    }
-    const full = t('Copy to {name}', { name });
+function renderCopyAccentText(full: string, accentCopy: boolean) {
     if (!accentCopy) {
-        return <span>{full}</span>;
+        return <span className="inline-label">{full}</span>;
     }
     const copyWord = t('Copy');
     if (full.toLowerCase().startsWith(copyWord.toLowerCase())) {
+        const prefix = full.slice(0, copyWord.length);
+        const rest = full.slice(copyWord.length).replace(/^\s+/, '');
         return (
-            <span>
-                <span className="menu-copy-accent">{full.slice(0, copyWord.length)}</span>
-                {full.slice(copyWord.length)}
+            <span className="inline-label">
+                <span className="menu-copy-accent">{prefix}</span>
+                {rest ? `\u00A0${rest}` : ''}
             </span>
         );
     }
-    return <span className="menu-copy-accent">{full}</span>;
+    return <span className="inline-label menu-copy-accent">{full}</span>;
+}
+
+function renderDropTabLabel(isCopy: boolean, accentCopy: boolean, name: string) {
+    if (!isCopy) {
+        return <span className="inline-label">{t('Move to {name}', { name })}</span>;
+    }
+    return renderCopyAccentText(t('Copy to {name}', { name }), accentCopy);
+}
+
+function renderDragPillLabel(isCopy: boolean, accentCopy: boolean, count: number) {
+    if (!isCopy) {
+        const moveText = count > 1 ? t('Move {n} items', { n: count }) : t('Move item');
+        return <span className="drag-pill-text inline-label">{moveText}</span>;
+    }
+    const copyText = count > 1 ? t('Copy {n} items', { n: count }) : t('Copy item');
+    return <span className="drag-pill-text inline-label">{renderCopyAccentText(copyText, accentCopy)}</span>;
 }
 
 export default function Popup() {
@@ -57,17 +71,21 @@ export default function Popup() {
     const [now, setNow] = useState(Date.now());
     const [iconRev, setIconRev] = useState(0);
     const [draggingId, setDraggingId] = useState<number | null>(null);
-    const [dragLabel, setDragLabel] = useState('');
+    const [dragCount, setDragCount] = useState(1);
+    const [dragPos, setDragPos] = useState<{ x: number; y: number }>({ x: -1000, y: -1000 });
+    const [dragInTabs, setDragInTabs] = useState(false);
     const [dragOverTabId, setDragOverTabId] = useState<number | null>(null);
     const [dragCtrl, setDragCtrl] = useState(false);
     const [dropMark, setDropMark] = useState<{ id: number; mark: DropMark } | null>(null);
     const [explorerTarget, setExplorerTarget] = useState<string | null>(null);
     const [tabsGrabbing, setTabsGrabbing] = useState(false);
+    const [tabsHasScroll, setTabsHasScroll] = useState(false);
 
     const anchor = useRef(0);
     const seq = useRef(0);
     const hiddenAt = useRef(0);
     const dragId = useRef<number | null>(null);
+    const followIdRef = useRef<number | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
     const vlistRef = useRef<VListHandle>(null);
@@ -78,7 +96,7 @@ export default function Popup() {
         startScroll: 0,
         moved: false,
     });
-    const dragPillRef = useRef<HTMLDivElement>(null);
+    const emptyDragRef = useRef<HTMLDivElement>(null);
     const toastTimer = useRef<number | undefined>(undefined);
     const settingsRef = useRef(settings);
     settingsRef.current = settings;
@@ -98,6 +116,12 @@ export default function Popup() {
     }, []);
     const fail = useCallback((e: unknown) => showToast(errText(e)), [showToast]);
 
+    const focusSearchQuietly = useCallback(() => {
+        if (!menu && !preview && !prompt && !boardDlg) {
+            inputRef.current?.focus({ preventScroll: true });
+        }
+    }, [menu, preview, prompt, boardDlg]);
+
     // ───────────── data ─────────────
     const reload = useCallback(async () => {
         const my = ++seq.current;
@@ -108,6 +132,15 @@ export default function Popup() {
             }
             setRes(r);
             setBoards(b);
+            if (followIdRef.current !== null) {
+                const movedIdx = r.items.findIndex((x) => x.id === followIdRef.current);
+                followIdRef.current = null;
+                if (movedIdx >= 0) {
+                    setSel(movedIdx);
+                    anchor.current = movedIdx;
+                    return;
+                }
+            }
             setSel((s) => Math.min(s, Math.max(0, r.items.length - 1)));
         } catch (e) {
             fail(e);
@@ -194,6 +227,8 @@ export default function Popup() {
                 hiddenAt.current = Date.now();
                 setCtrl(false);
                 setDragCtrl(false);
+                setDraggingId(null);
+                setDragInTabs(false);
             }),
             on('popup-shown', () => {
                 if (Date.now() - hiddenAt.current > 60_000) {
@@ -210,6 +245,8 @@ export default function Popup() {
                 setBoardDlg(null);
                 setCtrl(false);
                 setDragCtrl(false);
+                setDraggingId(null);
+                setDragInTabs(false);
                 syncExplorerTarget();
                 reloadRef.current();
                 loadStatus();
@@ -256,6 +293,72 @@ export default function Popup() {
             window.removeEventListener('clipnest-focus-search', onFocusSearch);
         };
     }, [loadStatus, syncExplorerTarget]);
+
+    // Live cursor & Ctrl modifier tracking while dragging a card
+    // Note: Do NOT register a capture-phase 'drop' listener here that clears dragId.current before Card's onDrop!
+    useEffect(() => {
+        if (draggingId === null) {
+            return;
+        }
+        const onWindowDragOver = (e: DragEvent) => {
+            if (e.clientX > 0 || e.clientY > 0) {
+                setDragPos({ x: e.clientX, y: e.clientY });
+                if (tabsRef.current) {
+                    const r = tabsRef.current.getBoundingClientRect();
+                    const insideTabs =
+                        e.clientX >= r.left - 4 &&
+                        e.clientX <= r.right + 4 &&
+                        e.clientY >= r.top - 6 &&
+                        e.clientY <= r.bottom + 8;
+                    setDragInTabs((prev) => (prev === insideTabs ? prev : insideTabs));
+                }
+            }
+            const ctrlNow = e.ctrlKey || e.metaKey;
+            setDragCtrl((prev) => (prev === ctrlNow ? prev : ctrlNow));
+        };
+        const onWindowDragEnd = () => {
+            window.setTimeout(() => {
+                dragId.current = null;
+                setDraggingId(null);
+                setDragInTabs(false);
+                setDragOverTabId(null);
+                setDropMark(null);
+            }, 0);
+        };
+        window.addEventListener('dragover', onWindowDragOver, true);
+        window.addEventListener('drag', onWindowDragOver, true);
+        window.addEventListener('dragend', onWindowDragEnd);
+        return () => {
+            window.removeEventListener('dragover', onWindowDragOver, true);
+            window.removeEventListener('drag', onWindowDragOver, true);
+            window.removeEventListener('dragend', onWindowDragEnd);
+        };
+    }, [draggingId]);
+
+    // Dynamic detection of horizontal scrollbar on the category tabs bar
+    const wrapCategories = settings?.wrap_categories ?? false;
+    useEffect(() => {
+        const el = tabsRef.current;
+        if (!el) {
+            return;
+        }
+        const updateOverflow = () => {
+            if (wrapCategories) {
+                setTabsHasScroll(false);
+                return;
+            }
+            setTabsHasScroll(el.scrollWidth > el.clientWidth + 1);
+        };
+        updateOverflow();
+        const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updateOverflow) : null;
+        ro?.observe(el);
+        Array.from(el.children).forEach((child) => ro?.observe(child));
+        window.addEventListener('resize', updateOverflow);
+        return () => {
+            ro?.disconnect();
+            window.removeEventListener('resize', updateOverflow);
+        };
+    }, [boards.length, wrapCategories, dragOverTabId, settings?.show_pinboard_counts]);
 
     // Click-and-drag scrolling on the category tabs bar
     useEffect(() => {
@@ -312,7 +415,7 @@ export default function Popup() {
 
     useEffect(() => {
         if (!menu && !preview && !prompt && !boardDlg) {
-            inputRef.current?.focus();
+            inputRef.current?.focus({ preventScroll: true });
         } else if (preview || prompt || boardDlg) {
             setCtrl(false);
         }
@@ -436,6 +539,7 @@ export default function Popup() {
                 await api.deleteItems(ids);
             }
             setMulti([]);
+            focusSearchQuietly();
         } catch (e) {
             fail(e);
         }
@@ -579,13 +683,34 @@ export default function Popup() {
         }
     };
 
-    /** Keyboard / drag reordering. Only meaningful when no search is active. */
+    /** Keyboard / drag / menu / toolbar reordering. Only meaningful when no search is active. */
     const reorder = (id: number, target: number, after: boolean) => {
         if (query) {
             showToast(t('Clear the search to reorder items'));
             return;
         }
-        api.moveItem(id, target, after, tab).catch(fail);
+        followIdRef.current = id;
+        api.moveItem(id, target, after, tab)
+            .then(() => reloadRef.current())
+            .catch(fail);
+    };
+
+    const moveCardStep = (it: ClipRow, dir: -1 | 1) => {
+        if (query) {
+            showToast(t('Clear the search to reorder items'));
+            return;
+        }
+        const idx = items.findIndex((x) => x.id === it.id);
+        if (idx < 0) {
+            return;
+        }
+        const targetIdx = idx + dir;
+        if (targetIdx < 0 || targetIdx >= items.length) {
+            return;
+        }
+        reorder(it.id, items[targetIdx].id, dir > 0);
+        setSel(targetIdx);
+        anchor.current = targetIdx;
     };
 
     const openMenu = (it: ClipRow, x: number, y: number) => {
@@ -647,11 +772,27 @@ export default function Popup() {
             onClick: () => openPreview(it, false, true),
         });
         e.push({ sep: true });
-        e.push({
-            label: it.pinned ? t('Unpin from top') : t('Pin on top'),
-            hint: 'Ctrl+P',
-            onClick: () => togglePin(it),
-        });
+        e.push(
+            {
+                label: it.pinned ? t('Unpin from top') : t('Pin on top'),
+                hint: 'Ctrl+P',
+                onClick: () => togglePin(it),
+            },
+            {
+                label: t('Move up'),
+                icon: 'up',
+                hint: 'Alt+↑',
+                disabled: Boolean(query) || idx <= 0,
+                onClick: () => moveCardStep(it, -1),
+            },
+            {
+                label: t('Move down'),
+                icon: 'chevronDown',
+                hint: 'Alt+↓',
+                disabled: Boolean(query) || idx < 0 || idx >= items.length - 1,
+                onClick: () => moveCardStep(it, 1),
+            }
+        );
         const isMainTab = tab === null;
         const targetBoards = isMainTab ? boards : boards.filter((b) => b.id !== tab);
         e.push({
@@ -795,7 +936,7 @@ export default function Popup() {
     };
 
     // ───────────── keyboard ─────────────
-    const onKey = (e: React.KeyboardEvent) => {
+    const onKey = (e: React.KeyboardEvent | KeyboardEvent) => {
         if (prompt || boardDlg || preview) {
             return;
         }
@@ -838,16 +979,7 @@ export default function Popup() {
         }
         if (e.altKey && (k === 'ArrowUp' || k === 'ArrowDown') && cur) {
             e.preventDefault();
-            if (k === 'ArrowUp' && sel > 0) {
-                reorder(cur.id, items[sel - 1].id, false);
-                setSel(sel - 1);
-                anchor.current = sel - 1;
-            }
-            if (k === 'ArrowDown' && sel < items.length - 1) {
-                reorder(cur.id, items[sel + 1].id, true);
-                setSel(sel + 1);
-                anchor.current = sel + 1;
-            }
+            moveCardStep(cur, k === 'ArrowUp' ? -1 : 1);
             return;
         }
         if (ck && (isKey(e, ']') || isKey(e, '['))) {
@@ -969,11 +1101,34 @@ export default function Popup() {
         }
     };
 
+    const onKeyRef = useRef(onKey);
+    onKeyRef.current = onKey;
+
+    // Fallback window keydown listener so if DOM focus ever lands on document.body (e.g. after virtual list
+    // unmounts a scrolled card or after deleting an item), ArrowUp / ArrowDown / Delete still navigate cleanly.
+    useEffect(() => {
+        const onGlobalKeyDown = (e: KeyboardEvent) => {
+            if (e.defaultPrevented) {
+                return;
+            }
+            const popupEl = document.querySelector('.popup');
+            const active = document.activeElement;
+            if (!popupEl || !active || !popupEl.contains(active)) {
+                onKeyRef.current(e);
+            }
+        };
+        window.addEventListener('keydown', onGlobalKeyDown);
+        return () => {
+            window.removeEventListener('keydown', onGlobalKeyDown);
+        };
+    }, []);
+
     const onCardClick = (it: ClipRow, e: React.MouseEvent) => {
         const idx = items.findIndex((i) => i.id === it.id);
         if (idx < 0) {
             return;
         }
+        focusSearchQuietly();
         const ck = e.ctrlKey || e.metaKey;
         if (ck && e.shiftKey) {
             setSel(idx);
@@ -1033,7 +1188,7 @@ export default function Popup() {
         menu: openMenu,
         dragStart: (_: ClipRow, __: React.DragEvent) => {},
         dragOver: (_: ClipRow, __: boolean) => {},
-        drop: (_: ClipRow, __: boolean) => {},
+        drop: (_: ClipRow, __: boolean, ___?: number) => {},
     });
     handlers.current = {
         click: onCardClick,
@@ -1041,30 +1196,21 @@ export default function Popup() {
         menu: openMenu,
         dragStart: (it, e) => {
             dragId.current = it.id;
-            setDraggingId(it.id);
-            setDragCtrl(e.ctrlKey || e.metaKey);
             const count = multi.includes(it.id) && multi.length > 1 ? multi.length : 1;
-            const isCopy = tab === null || e.ctrlKey || e.metaKey;
-            const label = isCopy
-                ? count > 1
-                    ? t('Copy {n} items', { n: count })
-                    : t('Copy item')
-                : count > 1
-                  ? t('Move {n} items', { n: count })
-                  : t('Move item');
-            setDragLabel(label);
-            if (dragPillRef.current) {
-                const span = dragPillRef.current.querySelector('.drag-pill-text');
-                if (span) {
-                    span.textContent = label;
-                }
-                e.dataTransfer.setDragImage(dragPillRef.current, 14, 14);
+            setDragCount(count);
+            setDragPos({ x: e.clientX, y: e.clientY });
+            setDragInTabs(false);
+            setDragCtrl(e.ctrlKey || e.metaKey);
+            setDraggingId(it.id);
+            if (emptyDragRef.current) {
+                e.dataTransfer.setDragImage(emptyDragRef.current, 0, 0);
             }
         },
         dragOver: (it, after) => {
             if (dragId.current === null || dragId.current === it.id || query) {
                 return;
             }
+            setDragInTabs(false);
             setDragOverTabId(null);
             setDropMark((m) =>
                 m && m.id === it.id && m.mark === (after ? 'after' : 'before')
@@ -1072,10 +1218,11 @@ export default function Popup() {
                     : { id: it.id, mark: after ? 'after' : 'before' }
             );
         },
-        drop: (it, after) => {
-            const id = dragId.current;
+        drop: (it, after, droppedId) => {
+            const id = droppedId ?? dragId.current;
             dragId.current = null;
             setDraggingId(null);
+            setDragInTabs(false);
             setDragOverTabId(null);
             setDropMark(null);
             if (id !== null && id !== it.id) {
@@ -1091,10 +1238,14 @@ export default function Popup() {
     const stableMenu = useCallback((it: ClipRow, x: number, y: number) => handlers.current.menu(it, x, y), []);
     const stableDragStart = useCallback((it: ClipRow, e: React.DragEvent) => handlers.current.dragStart(it, e), []);
     const stableDragOver = useCallback((it: ClipRow, after: boolean) => handlers.current.dragOver(it, after), []);
-    const stableDrop = useCallback((it: ClipRow, after: boolean) => handlers.current.drop(it, after), []);
+    const stableDrop = useCallback(
+        (it: ClipRow, after: boolean, droppedId?: number) => handlers.current.drop(it, after, droppedId),
+        []
+    );
     const stableDragEnd = useCallback(() => {
         dragId.current = null;
         setDraggingId(null);
+        setDragInTabs(false);
         setDragOverTabId(null);
         setDropMark(null);
     }, []);
@@ -1107,7 +1258,9 @@ export default function Popup() {
     const useVirtual = s?.virtual_scroll !== false;
     const toolbar = s?.show_toolbar && cur;
     const showCounts = s?.show_pinboard_counts ?? true;
-    const wrapCategories = s?.wrap_categories ?? false;
+    const isCopyDrag = tab === null || dragCtrl;
+    const accentCopyDrag = tab !== null && dragCtrl;
+    const showDragPill = draggingId !== null && (dragInTabs || dragOverTabId !== null) && dragPos.x > -500;
 
     const renderCard = (it: ClipRow, i: number) => (
         <Card
@@ -1159,11 +1312,20 @@ export default function Popup() {
                     })}
             </div>
 
-            {/* Offscreen custom drag preview pill */}
-            <div ref={dragPillRef} className="drag-ghost-pill" aria-hidden>
-                <Icon name={tab === null || dragCtrl ? 'copy' : 'arrowRight'} size={13} />
-                <span className="drag-pill-text">{dragLabel || t('Move item')}</span>
-            </div>
+            {/* 1x1 transparent element used to suppress native static drag snapshot */}
+            <div ref={emptyDragRef} className="drag-empty-img" aria-hidden />
+
+            {/* Live floating drag pill — shown ONLY when dragging over the Category tabs area */}
+            {showDragPill && (
+                <div
+                    className={`drag-ghost-pill live${isCopyDrag ? ' copy-mode' : ''}`}
+                    style={{ left: `${dragPos.x + 14}px`, top: `${dragPos.y + 14}px` }}
+                    aria-hidden
+                >
+                    <Icon name={isCopyDrag ? 'copy' : 'arrowRight'} size={13} />
+                    {renderDragPillLabel(isCopyDrag, accentCopyDrag, dragCount)}
+                </div>
+            )}
 
             <header
                 className="head"
@@ -1322,7 +1484,9 @@ export default function Popup() {
                 ref={tabsRef}
                 role="tablist"
                 aria-label={t('Categories')}
-                className={`tabs${wrapCategories ? ' wrap' : ''}${tabsGrabbing ? ' grabbing' : ''}`}
+                className={`tabs${wrapCategories ? ' wrap' : ''}${tabsGrabbing ? ' grabbing' : ''}${
+                    tabsHasScroll ? ' has-scroll' : ''
+                }`}
                 onWheel={(e) => {
                     if (!wrapCategories && tabsRef.current && e.deltaY !== 0 && e.deltaX === 0) {
                         tabsRef.current.scrollLeft += e.deltaY;
@@ -1345,6 +1509,24 @@ export default function Popup() {
                         tabDragState.current.moved = false;
                     }
                 }}
+                onDragEnter={() => {
+                    if (draggingId !== null) {
+                        setDragInTabs(true);
+                    }
+                }}
+                onDragOver={(e) => {
+                    if (draggingId !== null) {
+                        e.preventDefault();
+                        setDragInTabs(true);
+                    }
+                }}
+                onDragLeave={(e) => {
+                    const rel = e.relatedTarget as Node | null;
+                    if (!rel || !e.currentTarget.contains(rel)) {
+                        setDragInTabs(false);
+                        setDragOverTabId(null);
+                    }
+                }}
             >
                 <button
                     type="button"
@@ -1355,6 +1537,7 @@ export default function Popup() {
                     onClick={() => {
                         setTab(null);
                         resetView();
+                        focusSearchQuietly();
                     }}
                     onContextMenu={(e) => {
                         e.preventDefault();
@@ -1382,6 +1565,7 @@ export default function Popup() {
                             onClick={() => {
                                 setTab(b.id);
                                 resetView();
+                                focusSearchQuietly();
                             }}
                             onContextMenu={(e) => {
                                 e.preventDefault();
@@ -1389,6 +1573,7 @@ export default function Popup() {
                             }}
                             onDragEnter={(e) => {
                                 e.preventDefault();
+                                setDragInTabs(true);
                                 if (tab !== b.id) {
                                     setDragOverTabId(b.id);
                                     setDragCtrl(e.ctrlKey || e.metaKey);
@@ -1397,6 +1582,7 @@ export default function Popup() {
                             }}
                             onDragOver={(e) => {
                                 e.preventDefault();
+                                setDragInTabs(true);
                                 const wantCopy = tab === null || e.ctrlKey || e.metaKey;
                                 e.dataTransfer.dropEffect = wantCopy ? 'copy' : 'move';
                                 if (dragCtrl !== (e.ctrlKey || e.metaKey)) {
@@ -1418,6 +1604,7 @@ export default function Popup() {
                             onDrop={(e) => {
                                 e.preventDefault();
                                 const shouldCopy = tab === null || e.ctrlKey || e.metaKey || dragCtrl;
+                                setDragInTabs(false);
                                 setDragOverTabId(null);
                                 setDraggingId(null);
                                 setDropMark(null);
@@ -1565,6 +1752,24 @@ export default function Popup() {
                             onClick={() => togglePin()}
                         >
                             <Icon name="pin" size={16} />
+                        </button>
+                        <button
+                            type="button"
+                            aria-label={t('Move up (Alt+↑)')}
+                            data-tip={t('Move up (Alt+↑)')}
+                            disabled={Boolean(query) || sel <= 0}
+                            onClick={() => moveCardStep(cur, -1)}
+                        >
+                            <Icon name="up" size={16} />
+                        </button>
+                        <button
+                            type="button"
+                            aria-label={t('Move down (Alt+↓)')}
+                            data-tip={t('Move down (Alt+↓)')}
+                            disabled={Boolean(query) || sel >= items.length - 1}
+                            onClick={() => moveCardStep(cur, 1)}
+                        >
+                            <Icon name="chevronDown" size={16} />
                         </button>
                         <button type="button" aria-label={t('Tags…')} data-tip={t('Tags…')} onClick={() => tagItem()}>
                             <Icon name="tag" size={16} />

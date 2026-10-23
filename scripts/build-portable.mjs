@@ -21,8 +21,12 @@ fs.mkdirSync(path.join(stageDir, 'data'), { recursive: true });
 
 fs.copyFileSync(exePath, path.join(stageDir, 'ClipNest.exe'));
 
-const cliExe = path.join(relDir, 'clipnest-cli.exe');
-if (fs.existsSync(cliExe)) {
+const cliCandidates = [
+    path.join('packages', 'core', 'target', 'release', 'clipnest-cli.exe'),
+    path.join(relDir, 'clipnest-cli.exe'),
+];
+const cliExe = cliCandidates.find((p) => fs.existsSync(p));
+if (cliExe) {
     fs.copyFileSync(cliExe, path.join(stageDir, 'clipnest-cli.exe'));
 }
 

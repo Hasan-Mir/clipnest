@@ -1,0 +1,22 @@
+{
+    "name": "@seymi/clipnest-core",
+    "version": "0.2.0",
+    "description": "ClipNest Core — Native Rust engine (N-API .node addon + IPC client + SQLite/transforms) shared by ClipNest GUI and CLI.",
+    "license": "MIT",
+    "author": "SeyMi",
+    "type": "module",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "files": [
+        "dist",
+        "scripts"
+    ],
+    "scripts": {
+        "build": "tsc",
+        "build:native": "node scripts/build-native.mjs",
+        "typecheck": "tsc --noEmit --skipLibCheck"
+    },
+    "devDependencies": {
+        "@types/node": "^22.10.0"
+    }
+}

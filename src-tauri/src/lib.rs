@@ -1,15 +1,11 @@
+pub use clipnest_core::{classify, codec, db, ipc, models, platform, rules, search, transforms};
+
 mod capture;
-mod classify;
 pub mod cli;
 mod commands;
-mod db;
 mod paste;
-mod platform;
 mod queue;
-mod rules;
-mod search;
 mod state;
-pub mod transforms;
 mod windowing;
 
 use state::{AppState, HotAction, Settings};
@@ -392,8 +388,6 @@ pub fn run() {
                     let app = window.app_handle().clone();
                     let win_clone = window.clone();
                     std::thread::spawn(move || {
-                        // Wait for any active mouse click outside the window to finish so we do not
-                        // prematurely abort while the left mouse button is still held down.
                         for _ in 0..16 {
                             std::thread::sleep(std::time::Duration::from_millis(25));
                             if !platform::win::is_down(0x01) {
@@ -474,7 +468,6 @@ pub fn run() {
                     queue::close_queue(window.app_handle());
                 }
                 WindowEvent::CloseRequested { api, .. } if label == "settings" || label == "tray" => {
-                    // keep the window alive (hidden) so re-opening is instant
                     api.prevent_close();
                     let _ = window.hide();
                 }
@@ -549,7 +542,6 @@ pub fn run() {
         .expect("error while building ClipNest");
 
     app.run(|_app, event| {
-        // Keep running in the tray when every window is hidden/closed.
         if let tauri::RunEvent::ExitRequested { code, api, .. } = event {
             if code.is_none() {
                 api.prevent_exit();

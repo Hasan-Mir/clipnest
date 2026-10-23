@@ -209,7 +209,6 @@ button {
 }
 
 button:focus-visible,
-.card:focus-visible,
 .pv-colorrow:focus-visible,
 .menu-item:focus-visible {
     outline: 2px solid var(--accent);
@@ -219,6 +218,13 @@ button:focus-visible,
 button > span {
     display: inline-flex;
     align-items: center;
+    line-height: 1;
+}
+
+button > span.inline-label,
+.inline-label {
+    display: inline !important;
+    white-space: pre;
     line-height: 1;
 }
 
@@ -575,24 +581,36 @@ input.search-bare::placeholder,
     flex-shrink: 0;
     gap: 5px;
     padding: 0 10px 6px;
+    margin-bottom: 4px;
     overflow-x: auto;
     overflow-y: hidden;
     align-items: center;
     cursor: grab;
-    scrollbar-width: thin;
+    transition:
+        margin-bottom 0.14s ease,
+        padding-bottom 0.14s ease;
+}
+
+.tabs.has-scroll {
+    padding-bottom: 7px;
+    margin-bottom: 8px;
 }
 
 .tabs::-webkit-scrollbar {
-    height: 4px;
+    height: 6px;
+}
+
+.tabs::-webkit-scrollbar-track {
+    background: transparent;
 }
 
 .tabs::-webkit-scrollbar-thumb {
-    background: transparent;
-    border-radius: 4px;
+    background: var(--border);
+    border-radius: 8px;
 }
 
-.tabs:hover::-webkit-scrollbar-thumb {
-    background: var(--border);
+.tabs::-webkit-scrollbar-thumb:hover {
+    background: var(--muted);
 }
 
 .tabs.grabbing {
@@ -759,6 +777,16 @@ input.search-bare::placeholder,
 }
 
 /* ───────── Claude-style drag preview pill & card states ───────── */
+.drag-empty-img {
+    position: fixed;
+    top: -1000px;
+    left: -1000px;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
 .drag-ghost-pill {
     position: fixed;
     top: -1000px;
@@ -776,6 +804,16 @@ input.search-bare::placeholder,
     font-weight: 600;
     box-shadow: var(--shadow);
     white-space: nowrap;
+}
+
+.drag-ghost-pill.live {
+    z-index: 10000;
+    opacity: 0.88;
+}
+
+.drag-ghost-pill.live.copy-mode .icon,
+.tab.drop-target .icon {
+    color: var(--accent);
 }
 
 /* ───────── cards ───────── */
@@ -1114,9 +1152,15 @@ input.search-bare::placeholder,
     justify-content: center;
 }
 
-.toolbar button:hover {
+.toolbar button:hover:not(:disabled) {
     background: var(--bg2);
     color: var(--text);
+}
+
+.toolbar button:disabled {
+    opacity: 0.35;
+    cursor: default;
+    pointer-events: none;
 }
 
 .toolbar button.danger:hover {
@@ -1416,6 +1460,11 @@ input.search-bare::placeholder,
 .menu-item:hover .hint,
 .menu-item.focused .hint {
     color: color-mix(in srgb, var(--accent-fg) 75%, transparent);
+}
+
+.menu-item.disabled {
+    opacity: 0.4;
+    pointer-events: none;
 }
 
 .menu-item.danger {
