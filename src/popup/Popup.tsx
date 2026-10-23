@@ -1895,7 +1895,9 @@ export default function Popup() {
                             ) : (
                                 <span>{b.name}</span>
                             )}
-                            {showCounts && !isDropTarget && <span className="tab-count">{num(b.count)}</span>}
+                            {showCounts && b.count > 0 && !isDropTarget && (
+                                <span className="tab-count">{num(b.count)}</span>
+                            )}
                         </button>
                     );
                 })}

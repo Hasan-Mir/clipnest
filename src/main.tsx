@@ -105,6 +105,12 @@ window.addEventListener(
     (e) => {
         const ck = e.ctrlKey || e.metaKey;
 
+        // In development mode (tauri dev), allow quick refresh with F5 or Ctrl+Shift+R
+        if (import.meta.env.DEV && (e.key === 'F5' || (ck && e.shiftKey && isKey(e, 'r')))) {
+            window.location.reload();
+            return;
+        }
+
         // Prevent Ctrl+A from selecting all UI text across the window when focus is not inside a text input/textarea.
         if (ck && isKey(e, 'a') && !isEditableInput(document.activeElement)) {
             e.preventDefault();
