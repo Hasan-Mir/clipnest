@@ -539,6 +539,27 @@ pub fn set_capture_protection(hwnd: isize, mode: &str) -> bool {
 /// Marks a frameless Tauri window as non-activating (`WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW`)
 /// without stripping `WS_THICKFRAME` from `GWL_STYLE` (preserving Tauri's `WM_NCCALCSIZE` client rect
 /// so no unpainted white Win32 border appears around the WebView).
+#[link(name = "dwmapi")]
+extern "system" {
+    fn DwmSetWindowAttribute(hwnd: isize, dwattribute: u32, pvattribute: *const c_void, cbattribute: u32) -> i32;
+}
+
+/// Applies native Windows 11 DWM rounded corners (`DWMWA_WINDOW_CORNER_PREFERENCE = 33`, `DWMWCP_ROUND = 2`)
+/// so frameless windows (`tray`, `popup`, `queue`) have smooth OS-composited rounded corners and shadow
+/// without a sharp rectangular outer box sticking out behind the rounded CSS surface.
+pub fn round_window_corners(hwnd: isize) {
+    if hwnd == 0 {
+        return;
+    }
+    unsafe {
+        if IsWindow(hwnd) == 0 {
+            return;
+        }
+        let pref: u32 = 2; // DWMWCP_ROUND
+        let _ = DwmSetWindowAttribute(hwnd, 33, &pref as *const u32 as *const c_void, 4);
+    }
+}
+
 pub fn make_no_activate(hwnd: isize) {
     unsafe {
         if hwnd == 0 || IsWindow(hwnd) == 0 {

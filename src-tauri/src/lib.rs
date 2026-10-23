@@ -216,6 +216,9 @@ pub fn apply_settings(app: &AppHandle, new: Settings) {
     if old.capture_protection != new.capture_protection {
         windowing::apply_capture_protection(app);
     }
+    if old.theme != new.theme {
+        windowing::init_startup_windows(app);
+    }
     if old.autostart != new.autostart {
         let al = app.autolaunch();
         let _ = if new.autostart { al.enable() } else { al.disable() };
@@ -352,6 +355,7 @@ pub fn run() {
             let _ = db::apply_limits(&conn, &settings);
             app.manage(AppState::new(conn, settings.clone(), data_dir, settings_path));
 
+            windowing::init_startup_windows(&handle);
             register_hotkeys(&handle);
             build_tray(&handle)?;
             capture::spawn(handle.clone());

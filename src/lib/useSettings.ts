@@ -107,10 +107,12 @@ export function useSettings(): [Settings | null, (s: Settings) => void] {
         const r = document.documentElement;
         const mql = window.matchMedia('(prefers-color-scheme: light)');
         const applyResolvedTheme = () => {
-            if (s.theme === 'system') {
-                r.dataset.theme = mql.matches ? 'light' : 'dark';
-            } else {
-                r.dataset.theme = s.theme;
+            const resolved = s.theme === 'system' ? (mql.matches ? 'light' : 'dark') : s.theme;
+            r.dataset.theme = resolved;
+            try {
+                localStorage.setItem('clipnest_theme', resolved);
+            } catch {
+                // ignore
             }
         };
         applyResolvedTheme();

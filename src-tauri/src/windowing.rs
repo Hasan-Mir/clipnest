@@ -8,10 +8,51 @@ use tauri::{
     WebviewWindowBuilder,
 };
 
+const BG_LIGHT: Color = Color(0xf6, 0xf6, 0xf8, 0xff);
+const BG_OLED: Color = Color(0x00, 0x00, 0x00, 0xff);
 const BG_DARK: Color = Color(0x1d, 0x1e, 0x21, 0xff);
+const BG_CARD_DARK: Color = Color(0x2a, 0x2b, 0x30, 0xff);
+const BG_CARD_LIGHT: Color = Color(0xff, 0xff, 0xff, 0xff);
+const BG_CARD_OLED: Color = Color(0x14, 0x14, 0x16, 0xff);
 
 pub fn hwnd_of(w: &WebviewWindow) -> Option<isize> {
     w.hwnd().ok().map(|h| h.0 as isize)
+}
+
+fn window_bg_for_theme(theme: &str) -> Color {
+    match theme {
+        "light" => BG_LIGHT,
+        "oled" => BG_OLED,
+        _ => BG_DARK,
+    }
+}
+
+fn card_bg_for_theme(theme: &str) -> Color {
+    match theme {
+        "light" => BG_CARD_LIGHT,
+        "oled" => BG_CARD_OLED,
+        _ => BG_CARD_DARK,
+    }
+}
+
+/// Configures native DWM rounded corners on startup for pre-created frameless windows (`popup` and `tray`).
+pub fn init_startup_windows(app: &AppHandle) {
+    let theme = app.state::<AppState>().settings.read().theme.clone();
+    for label in ["popup", "tray"] {
+        if let Some(w) = app.get_webview_window(label) {
+            if label == "tray" {
+                let _ = w.set_background_color(Some(card_bg_for_theme(&theme)));
+            } else {
+                let _ = w.set_background_color(Some(window_bg_for_theme(&theme)));
+            }
+            if let Some(h) = hwnd_of(&w) {
+                win::round_window_corners(h);
+            }
+        }
+    }
+    if let Some(w) = app.get_webview_window("settings") {
+        let _ = w.set_background_color(Some(window_bg_for_theme(&theme)));
+    }
 }
 
 pub fn apply_protection_to(app: &AppHandle, w: &WebviewWindow) {
@@ -129,6 +170,9 @@ pub fn show_popup(app: &AppHandle, mode: Option<&str>, from_tray: bool) {
         }
     }
     st.popup_shown_at.store(crate::db::now_ms(), Ordering::SeqCst);
+    if let Some(h) = hwnd_of(&w) {
+        win::round_window_corners(h);
+    }
     let _ = w.show();
     apply_protection_to(app, &w);
     if let Some(h) = hwnd_of(&w) {
@@ -143,14 +187,17 @@ fn ensure_window(app: &AppHandle, label: &str) -> Option<WebviewWindow> {
     if let Some(w) = app.get_webview_window(label) {
         return Some(w);
     }
-    let base = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into())).background_color(BG_DARK);
+    let theme = app.state::<AppState>().settings.read().theme.clone();
+    let bg = if label == "tray" { card_bg_for_theme(&theme) } else { BG_DARK };
+    let base = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into())).background_color(bg);
     let built = if label == "settings" {
         base.title("ClipNest Settings").inner_size(900.0, 680.0).min_inner_size(740.0, 520.0).center().build()
     } else if label == "tray" {
         base.title("ClipNest Menu")
-            .inner_size(246.0, 276.0)
+            .inner_size(246.0, 268.0)
             .decorations(false)
             .resizable(false)
+            .shadow(true)
             .always_on_top(true)
             .skip_taskbar(true)
             .focused(false)
@@ -162,6 +209,7 @@ fn ensure_window(app: &AppHandle, label: &str) -> Option<WebviewWindow> {
             .min_inner_size(280.0, 280.0)
             .decorations(false)
             .resizable(true)
+            .shadow(true)
             .always_on_top(true)
             .skip_taskbar(true)
             .focused(false)
@@ -170,8 +218,11 @@ fn ensure_window(app: &AppHandle, label: &str) -> Option<WebviewWindow> {
     };
     match built {
         Ok(w) => {
-            if label == "queue" {
-                if let Some(h) = hwnd_of(&w) {
+            if let Some(h) = hwnd_of(&w) {
+                if label == "tray" || label == "queue" {
+                    win::round_window_corners(h);
+                }
+                if label == "queue" {
                     win::make_no_activate(h);
                 }
             }
@@ -202,6 +253,7 @@ pub fn show_queue(app: &AppHandle) {
     let w = ensure_window(app, "queue");
     let Some(w) = w else { return };
     if let Some(h) = hwnd_of(&w) {
+        win::round_window_corners(h);
         win::make_no_activate(h);
         let (x, y) = win::cursor_pos();
         let (_, t, r, _) = win::work_area_at(x, y);
@@ -224,11 +276,16 @@ pub fn hide_queue(app: &AppHandle) {
 pub fn show_tray(app: &AppHandle) {
     let Some(w) = ensure_window(app, "tray") else { return };
     let st = app.state::<AppState>();
+    let theme = st.settings.read().theme.clone();
+    let _ = w.set_background_color(Some(card_bg_for_theme(&theme)));
+    if let Some(h) = hwnd_of(&w) {
+        win::round_window_corners(h);
+    }
     st.tray_shown_at.store(crate::db::now_ms(), Ordering::SeqCst);
 
     let (cx, cy) = win::cursor_pos();
     let (l, t, r, b) = win::work_area_at(cx, cy);
-    let size = w.outer_size().map(|s| (s.width as i32, s.height as i32)).unwrap_or((246, 276));
+    let size = w.outer_size().map(|s| (s.width as i32, s.height as i32)).unwrap_or((246, 268));
     let mut x = cx - size.0 / 2;
     let mut y = cy - size.1 - 8;
     if y < t + 8 {
@@ -249,8 +306,11 @@ pub fn show_tray(app: &AppHandle) {
 
 pub fn resize_tray(app: &AppHandle, height: u32) {
     let Some(w) = app.get_webview_window("tray") else { return };
-    let clamped = height.clamp(180, 460) as f64;
+    let clamped = height.clamp(170, 460) as f64;
     let _ = w.set_size(LogicalSize::new(246.0, clamped));
+    if let Some(h) = hwnd_of(&w) {
+        win::round_window_corners(h);
+    }
     if w.is_visible().unwrap_or(false) {
         let st = app.state::<AppState>();
         st.tray_shown_at.store(crate::db::now_ms(), Ordering::SeqCst);

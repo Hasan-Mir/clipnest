@@ -44,8 +44,8 @@ export default function TrayMenu() {
             return;
         }
         const measureAndSync = () => {
-            const h = Math.ceil(el.scrollHeight) + 2;
-            if (h >= 180) {
+            const h = Math.ceil(el.getBoundingClientRect().height);
+            if (h >= 170) {
                 api.resizeTray(h).catch(() => {});
             }
         };

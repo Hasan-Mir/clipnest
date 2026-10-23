@@ -28,6 +28,34 @@
                 "shadow": true,
                 "focus": false,
                 "dragDropEnabled": false
+            },
+            {
+                "label": "settings",
+                "title": "ClipNest Settings",
+                "width": 900,
+                "height": 680,
+                "minWidth": 740,
+                "minHeight": 520,
+                "center": true,
+                "backgroundColor": "#1d1e21",
+                "visible": false,
+                "focus": false,
+                "dragDropEnabled": false
+            },
+            {
+                "label": "tray",
+                "title": "ClipNest Menu",
+                "width": 246,
+                "height": 268,
+                "backgroundColor": "#2a2b30",
+                "visible": false,
+                "decorations": false,
+                "resizable": false,
+                "alwaysOnTop": true,
+                "skipTaskbar": true,
+                "shadow": true,
+                "focus": false,
+                "dragDropEnabled": false
             }
         ],
         "security": { "csp": null }

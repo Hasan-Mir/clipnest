@@ -11,6 +11,14 @@ import './styles.css';
 
 const label = getCurrentWindow().label;
 document.documentElement.dataset.view = label;
+try {
+    const cachedTheme = localStorage.getItem('clipnest_theme');
+    if (cachedTheme) {
+        document.documentElement.dataset.theme = cachedTheme;
+    }
+} catch {
+    // ignore storage errors
+}
 
 // Disable window.print() completely so WebView2 can never open the Chromium print dialog.
 window.print = () => {};
