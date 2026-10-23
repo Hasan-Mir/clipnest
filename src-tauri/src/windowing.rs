@@ -88,9 +88,9 @@ pub fn show_popup(app: &AppHandle, mode: Option<&str>, from_tray: bool) {
         anchor(&mode)
     };
 
-    let pw = s.popup_width.max(340) as f64;
-    let ph = s.popup_height.max(380) as f64;
-    let _ = w.set_min_size(Some(LogicalSize::new(340.0, 380.0)));
+    let pw = s.popup_width.max(260) as f64;
+    let ph = s.popup_height.max(320) as f64;
+    let _ = w.set_min_size(Some(LogicalSize::new(260.0, 320.0)));
     let _ = w.set_size(LogicalSize::new(pw, ph));
     let size = w.outer_size().map(|s| (s.width as i32, s.height as i32)).unwrap_or((420, 600));
     let (l, t, r, b) = win::work_area_at(ax, atop);

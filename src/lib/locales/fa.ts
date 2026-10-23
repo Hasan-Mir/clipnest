@@ -9,10 +9,13 @@ export const FA: Record<string, string> = {
     '(any)': '(همه)',
     '+ Add action': '+ افزودن اکشن',
     '+ Add rule': '+ افزودن قانون',
-    '+ New Pinboard': '+ Pinboard جدید',
+    '+ New Pinboard': '+ دسته‌بندی جدید',
+    '+ New Category': '+ دسته‌بندی جدید',
     '0 = forever.': '۰ = برای همیشه.',
     '0 = unlimited. Pinned and pinboard items are never removed.':
-        '۰ = نامحدود. آیتم‌های پین‌شده و داخل Pinboard ها هرگز حذف نمی‌شوند.',
+        '۰ = نامحدود. آیتم‌های پین‌شده و داخل دسته‌بندی‌ها هرگز حذف نمی‌شوند.',
+    '0 = unlimited. Pinned and category items are never removed.':
+        '۰ = نامحدود. آیتم‌های پین‌شده و داخل دسته‌بندی‌ها هرگز حذف نمی‌شوند.',
     '100% Local & Private': '۱۰۰٪ محلی و خصوصی',
     About: 'درباره برنامه',
     'Accent colour': 'رنگ تأکیدی',
@@ -24,9 +27,12 @@ export const FA: Record<string, string> = {
     'Actions ▸': 'اکشن‌ها',
     Active: 'فعال',
     'Active and available': 'فعال و بدون تداخل',
-    'Active pinboard (new copies go here)': 'Pinboard فعال (کپی‌های جدید به اینجا می‌روند)',
-    'Activate pinboard (new copies go here)': 'فعال‌سازی Pinboard (کپی‌های جدید به اینجا بروند)',
-    'Deactivate pinboard': 'غیرفعال‌سازی Pinboard',
+    'Active pinboard (new copies go here)': 'دسته‌بندی فعال (کپی‌های جدید به اینجا می‌روند)',
+    'Active category (new copies go here)': 'دسته‌بندی فعال (کپی‌های جدید به اینجا می‌روند)',
+    'Activate pinboard (new copies go here)': 'فعال‌سازی دسته‌بندی (کپی‌های جدید به اینجا بروند)',
+    'Activate category (new copies go here)': 'فعال‌سازی دسته‌بندی (کپی‌های جدید به اینجا بروند)',
+    'Deactivate pinboard': 'غیرفعال‌سازی دسته‌بندی',
+    'Deactivate category': 'غیرفعال‌سازی دسته‌بندی',
     Add: 'افزودن',
     'Add tag': 'افزودن برچسب',
     'Adds ClipNest to the right-click context menu of folders and files in Windows Explorer to view and paste copied files or collect files into the Drop Basket.':
@@ -36,15 +42,30 @@ export const FA: Record<string, string> = {
     'Already registered by another running application or Windows':
         'این میانبر توسط ویندوز یا برنامه‌ی دیگری اشغال شده است',
     'Also erase pinned items': 'آیتم‌های سنجاق‌شده (Pin) هم پاک شوند',
-    'Also erase all pinboards and main clipboard': 'همه‌ی Pinboard ها و کلیپ‌بورد اصلی هم پاک شوند',
-    'Also erase pinned items and pinboards': 'آیتم‌های سنجاق‌شده (Pin) و داخل Pinboard ها هم پاک شوند',
+    'Also erase all pinboards and main clipboard': 'همه‌ی دسته‌بندی‌ها و کلیپ‌بورد اصلی هم پاک شوند',
+    'Also erase all categories and main clipboard': 'همه‌ی دسته‌بندی‌ها و کلیپ‌بورد اصلی هم پاک شوند',
+    'Also erase pinned items and pinboards': 'آیتم‌های سنجاق‌شده (Pin) و داخل دسته‌بندی‌ها هم پاک شوند',
+    'Also erase pinned items and categories': 'آیتم‌های سنجاق‌شده (Pin) و داخل دسته‌بندی‌ها هم پاک شوند',
     'This will erase items in the active pinboard "{name}".':
-        'این عملیات آیتم‌های Pinboard فعال («{name}») را پاک می‌کند.',
+        'این عملیات آیتم‌های دسته‌بندی فعال («{name}») را پاک می‌کند.',
+    'This will erase items in the active category "{name}".':
+        'این عملیات آیتم‌های دسته‌بندی فعال («{name}») را پاک می‌کند.',
     'This will erase items in the main Clipboard tab (pinboards are kept unless you check the option below).':
-        'این عملیات آیتم‌های تب کلیپ‌بورد اصلی را پاک می‌کند (محتوای Pinboard ها حفظ می‌شود مگر گزینه‌ی زیر را تیک بزنید).',
-    'Show item count on pinboard tabs': 'نمایش تعداد آیتم‌ها کنار هر تب Pinboard',
+        'این عملیات آیتم‌های تب کلیپ‌بورد اصلی را پاک می‌کند (محتوای دسته‌بندی‌ها حفظ می‌شود مگر گزینه‌ی زیر را تیک بزنید).',
+    'This will erase items in the main Clipboard tab (categories are kept unless you check the option below).':
+        'این عملیات آیتم‌های تب کلیپ‌بورد اصلی را پاک می‌کند (محتوای دسته‌بندی‌ها حفظ می‌شود مگر گزینه‌ی زیر را تیک بزنید).',
+    'Show item count on pinboard tabs': 'نمایش تعداد آیتم‌ها کنار هر تب دسته‌بندی',
+    'Show item count on category tabs': 'نمایش تعداد آیتم‌ها کنار هر تب دسته‌بندی',
     'Displays a small badge with the number of items next to each pinboard tab in the popup.':
-        'یک شمارنده‌ی کوچک شامل تعداد آیتم‌ها در کنار نام هر Pinboard نمایش می‌دهد.',
+        'یک شمارنده‌ی کوچک شامل تعداد آیتم‌ها در کنار نام هر دسته‌بندی نمایش می‌دهد.',
+    'Displays a small badge with the number of items next to each category tab in the popup.':
+        'یک شمارنده‌ی کوچک شامل تعداد آیتم‌ها در کنار نام هر دسته‌بندی نمایش می‌دهد.',
+    'Wrap category tabs onto multiple lines': 'چندخطی شدن تب‌های دسته‌بندی (Wrap)',
+    'On: wraps category tabs into multiple rows (like VS Code wrapTabs). Off: scrolls category tabs horizontally with mouse wheel or click-and-drag.':
+        'روشن: تب‌های دسته‌بندی در چند خط چیده می‌شوند (مشابه VS Code wrapTabs). خاموش: تب‌ها به‌صورت افقی با چرخ ماوس یا کشیدن (Drag) اسکرول می‌شوند.',
+    'Independent pinning per category': 'سنجاق (Pin) مستقل برای هر دسته‌بندی',
+    'When enabled (default), pinning an item inside a category only pins it in that category, without pinning it in the main Clipboard tab.':
+        'در صورت فعال بودن (پیش‌فرض)، پین کردن یک کارت داخل یک دسته‌بندی فقط آن را در همان دسته‌بندی پین می‌کند و در تب کلیپ‌بورد اصلی پین نمی‌شود.',
     Appearance: 'ظاهر',
     'Applied instantly to the popup, queue and settings windows. Needs Windows 10 2004+ for “Invisible”. Does not work inside Remote Desktop sessions.':
         'فوراً روی پنجره‌ی اصلی، صف و تنظیمات اعمال می‌شود. حالت «نامرئی» به ویندوز ۱۰ نسخه‌ی 2004 به بالا نیاز دارد و در Remote Desktop کار نمی‌کند.',
@@ -72,6 +93,11 @@ export const FA: Record<string, string> = {
     'Card numbers (Luhn), API keys (sk-…, ghp_…, AKIA…), private keys, JWTs.':
         'شماره کارت (Luhn)، کلیدهای API (مثل sk-…، ghp_…، AKIA…)، کلیدهای خصوصی و JWT ها.',
     Case: 'حروف',
+    Category: 'دسته‌بندی',
+    Categories: 'دسته‌بندی‌ها',
+    'Category settings': 'تنظیمات دسته‌بندی',
+    'Category settings…': 'تنظیمات دسته‌بندی…',
+    'Categories & active tab': 'دسته‌بندی‌ها و تب فعال',
     'Choose any installed system font on your computer for rendering clipboard cards and previews.':
         'فونت دلخواه خود را از میان فونت‌های نصب‌شده روی ویندوز برای نمایش متن کارت‌ها و پیش‌نمایش انتخاب کنید.',
     'Choose how much vertical padding each card uses in the popup list.':
@@ -99,10 +125,14 @@ export const FA: Record<string, string> = {
     Comfortable: 'راحت',
     Compact: 'فشرده',
     CONSTANT_CASE: 'CONSTANT_CASE',
-    'Conflicts with Windows system shortcut (Alt+Tab / Alt+F4)':
-        'تداخل با کلیدهای سیستمی ویندوز (Alt+Tab / Alt+F4)',
+    'Conflicts with Windows system shortcut (Alt+Tab / Alt+F4)': 'تداخل با کلیدهای سیستمی ویندوز (Alt+Tab / Alt+F4)',
     'Copied {v}': 'کپی شد: {v}',
+    'Copied to {name}': 'به «{name}» کپی شد',
     Copy: 'کپی',
+    'Copy item': 'کپی آیتم',
+    'Copy {n} items': 'کپی {n} آیتم',
+    'Copy to': 'کپی به',
+    'Copy to {name}': 'کپی به {name}',
     'Copy & Paste': 'کپی و پیست',
     'Copy only': 'فقط کپی',
     'Copy Setting as JSON': 'کپی تنظیم به صورت JSON',
@@ -113,7 +143,9 @@ export const FA: Record<string, string> = {
         'همین لحظه یک نسخه‌ی پشتیبان فشرده از دیتابیس SQLite می‌سازد.',
     'Create backup': 'ساخت پشتیبان',
     'Create colour-coded Pinboards with + or Ctrl+N and drag cards onto any tab. Right-click a Pinboard tab and enable Active pinboard so all new copies go straight into that tab automatically.':
-        'با دکمه‌ی + یا Ctrl+N تب‌های Pinboard رنگی بسازید و کارت‌ها را روی آن‌ها بکشید. با راست‌کلیک روی هر تب و فعال‌سازی گزینه‌ی Pinboard فعال، تمام کپی‌های جدید مستقیماً وارد همان تب می‌شوند.',
+        'با دکمه‌ی + یا Ctrl+N دسته‌بندی‌های رنگی بسازید و کارت‌ها را روی آن‌ها بکشید. با راست‌کلیک روی هر تب و فعال‌سازی گزینه‌ی دسته‌بندی فعال، تمام کپی‌های جدید مستقیماً وارد همان تب می‌شوند.',
+    'Create colour-coded Categories with + or Ctrl+N and drag cards onto any tab (hold Ctrl while dragging from a category to copy instead of move). Right-click a Category tab and enable Active category so all new copies go straight into that tab automatically.':
+        'با دکمه‌ی + یا Ctrl+N دسته‌بندی‌های رنگی بسازید و کارت‌ها را روی هر تب بکشید (هنگام کشیدن کارت از یک دسته‌بندی، کلید Ctrl را نگه دارید تا به‌جای انتقال، کپی شود). با راست‌کلیک روی تب دسته‌بندی و فعال‌سازی «دسته‌بندی فعال»، تمام کپی‌های جدید مستقیماً وارد همان تب می‌شوند.',
     'Ctrl + Click on card': 'Ctrl + کلیک روی کارت',
     'Ctrl + Shift + Click on card': 'Ctrl + Shift + کلیک روی کارت',
     'Ctrl+S save · Esc cancel': 'Ctrl+S ذخیره · Esc انصراف',
@@ -131,8 +163,7 @@ export const FA: Record<string, string> = {
     'Decode JWT': 'رمزگشایی JWT',
     Default: 'پیش‌فرض',
     'Default (Vazirmatn / System)': 'پیش‌فرض (وزیرمتن / سیستم)',
-    'Default height of the popup window in logical pixels.':
-        'ارتفاع پیش‌فرض پنجره‌ی اصلی بر حسب پیکسل منطقی.',
+    'Default height of the popup window in logical pixels.': 'ارتفاع پیش‌فرض پنجره‌ی اصلی بر حسب پیکسل منطقی.',
     'Default height of the popup window in logical pixels (minimum 380 px).':
         'ارتفاع پیش‌فرض پنجره‌ی اصلی بر حسب پیکسل (حداقل ۳۸۰ پیکسل).',
     'Default paste (Enter)': 'پیست پیش‌فرض (Enter)',
@@ -142,16 +173,17 @@ export const FA: Record<string, string> = {
         'عرض پیش‌فرض پنجره‌ی اصلی بر حسب پیکسل (حداقل ۳۴۰ پیکسل).',
     Delete: 'حذف',
     'Delete "{name}" and its {n} item(s)?': '«{name}» و {n} آیتمِ آن حذف شود؟',
-    'Delete (or unpin inside a pinboard)': 'حذف (داخل Pinboard: برداشتن از آن)',
+    'Delete (or unpin inside a pinboard)': 'حذف (داخل دسته‌بندی: برداشتن از آن)',
+    'Delete (or remove inside a category)': 'حذف (داخل دسته‌بندی: برداشتن از آن)',
     'Delete permanently': 'حذف برای همیشه',
-    'Delete pinboard…': 'حذف Pinboard…',
+    'Delete pinboard…': 'حذف دسته‌بندی…',
+    'Delete category…': 'حذف دسته‌بندی…',
     'Delete {n} items': 'حذف {n} آیتم',
     'Detect sensitive data': 'تشخیص داده‌ی حساس',
     'Do not store': 'ذخیره نشود',
     'Double-click (single-click selects)': 'دوبار کلیک (تک‌کلیک فقط انتخاب می‌کند)',
     'Drop Basket': 'سبد فایل و تصویر',
-    'Drop Basket: allow Cut (move files after verified copy)':
-        'سبد فایل: اجازه‌ی Cut (انتقال فایل‌ها پس از تأیید کپی)',
+    'Drop Basket: allow Cut (move files after verified copy)': 'سبد فایل: اجازه‌ی Cut (انتقال فایل‌ها پس از تأیید کپی)',
     'When enabled, files cut with Ctrl+X are moved only after destination copy and exact byte size are verified on disk.':
         'در صورت فعال بودن، فایل‌های Cut شده با Ctrl+X فقط پس از کپی کامل و تأیید دقیق حجم فایل در مقصد، از مبدأ حذف می‌شوند.',
     'Edit (Ctrl+E)': 'ویرایش (Ctrl+E)',
@@ -188,10 +220,8 @@ export const FA: Record<string, string> = {
     'Formats (MIME inspector)': 'فرمت‌ها (بازرس MIME)',
     General: 'عمومی',
     'Getting started': 'شروع کار با برنامه',
-    'Global hotkey to pause or resume clipboard capturing.':
-        'کلید میانبر سراسری برای توقف یا ازسرگیری ثبت کلیپ‌بورد.',
-    'Globalhotkey to pause or resume clipboard capturing.':
-        'کلید میانبر سراسری برای توقف یا ازسرگیری ثبت کلیپ‌بورد.',
+    'Global hotkey to pause or resume clipboard capturing.': 'کلید میانبر سراسری برای توقف یا ازسرگیری ثبت کلیپ‌بورد.',
+    'Globalhotkey to pause or resume clipboard capturing.': 'کلید میانبر سراسری برای توقف یا ازسرگیری ثبت کلیپ‌بورد.',
     'Global hotkey to open or close the Paste Queue / Drop Basket window.':
         'کلید میانبر سراسری برای باز یا بسته کردن پنجره‌ی صف پیست / سبد فایل.',
     'Global hotkey to show or hide the main ClipNest popup.':
@@ -219,10 +249,10 @@ export const FA: Record<string, string> = {
     'Text colour applied to matched characters when searching (e.g. #2ea8ff for VS Code blue).':
         'رنگ متن حروف منطبق هنگام جستجو (مثلاً #2ea8ff برای آبی VS Code).',
     'History erased': 'تاریخچه پاک شد',
+    'Hold Ctrl to copy instead of move': 'برای کپی به جای انتقال، کلید Ctrl را نگه دارید',
     'HTML escape': 'کدگذاری HTML',
     'HTML unescape': 'رمزگشایی HTML',
-    'How Sensitive clips are handled when detected.':
-        'نحوه‌ی برخورد با آیتم‌های حاوی اطلاعات حساس هنگام تشخیص.',
+    'How Sensitive clips are handled when detected.': 'نحوه‌ی برخورد با آیتم‌های حاوی اطلاعات حساس هنگام تشخیص.',
     'How many lines of text are previewed on each card before truncating.':
         'تعداد خطوط متنی که در پیش‌نمایش هر کارت نمایش داده می‌شود.',
     'How many minutes before a masked sensitive clip is permanently deleted.':
@@ -285,7 +315,9 @@ export const FA: Record<string, string> = {
     'Move the card up / down': 'جابه‌جایی کارت به بالا / پایین',
     'Move to': 'انتقال به',
     'Move to {name}': 'انتقال به {name}',
-    'Move to pinboard': 'انتقال به Pinboard',
+    'Moved to {name}': 'به «{name}» منتقل شد',
+    'Move to pinboard': 'انتقال به دسته‌بندی',
+    'Move to category': 'انتقال به دسته‌بندی',
     'Move used item to the top': 'انتقال آیتم استفاده‌شده به بالا',
     'Moves a card to the top of the history list whenever you paste or copy it.':
         'هر بار که کارتی را پیست یا کپی می‌کنید، آن را به بالای لیست تاریخچه منتقل می‌کند.',
@@ -293,9 +325,13 @@ export const FA: Record<string, string> = {
     'My action': 'اکشن من',
     Name: 'نام',
     'New copies are automatically placed in this pinboard and the popup opens on this tab':
-        'کپی‌های جدید به‌طور خودکار در این Pinboard قرار می‌گیرند و پنجره روی این تب باز می‌شود',
-    'New pinboard': 'Pinboard جدید',
-    'New pinboard (Ctrl+N)': 'Pinboard جدید (Ctrl+N)',
+        'کپی‌های جدید به‌طور خودکار در این دسته‌بندی قرار می‌گیرند و پنجره روی این تب باز می‌شود',
+    'New copies are automatically placed in this category and the popup opens on this tab':
+        'کپی‌های جدید به‌طور خودکار در این دسته‌بندی قرار می‌گیرند و پنجره روی این تب باز می‌شود',
+    'New pinboard': 'دسته‌بندی جدید',
+    'New category': 'دسته‌بندی جدید',
+    'New pinboard (Ctrl+N)': 'دسته‌بندی جدید (Ctrl+N)',
+    'New category (Ctrl+N)': 'دسته‌بندی جدید (Ctrl+N)',
     'No change': 'تغییری نکرد',
     'No conflict detected': 'بدون تداخل در سیستم',
     'No raw formats stored.': 'فرمت خامی ذخیره نشده است.',
@@ -321,7 +357,8 @@ export const FA: Record<string, string> = {
     'Open in Explorer': 'باز کردن در Explorer',
     'Open in browser': 'باز کردن در مرورگر',
     'Open link': 'باز کردن لینک',
-    'Open link/file · new pinboard · settings': 'باز کردن لینک/فایل · Pinboard جدید · تنظیمات',
+    'Open link/file · new pinboard · settings': 'باز کردن لینک/فایل · دسته‌بندی جدید · تنظیمات',
+    'Open link/file · new category · settings': 'باز کردن لینک/فایل · دسته‌بندی جدید · تنظیمات',
     'Order (click to reverse)': 'ترتیب (کلیک = معکوس)',
     'Original style': 'استایل اصلی',
     'Output → clipboard': 'خروجی ← کلیپ‌بورد',
@@ -364,13 +401,13 @@ export const FA: Record<string, string> = {
     'Per-application rules': 'قوانین هر برنامه',
     Persian: 'فارسی',
     'Pin on top': 'سنجاق به بالا',
-    'Pin to': 'سنجاق به',
+    'Pin to': 'کپی به',
     'Pin window on top': 'سنجاق کردن پنجره روی صفحه',
-    Pinboard: 'Pinboard',
-    'Pinboard settings': 'تنظیمات Pinboard',
-    'Pinboard settings…': 'تنظیمات Pinboard…',
-    'Pinboards & active tab': 'Pinboard ها و تب فعال',
-    'Pinned to {name}': 'به «{name}» سنجاق شد',
+    Pinboard: 'دسته‌بندی',
+    'Pinboard settings': 'تنظیمات دسته‌بندی',
+    'Pinboard settings…': 'تنظیمات دسته‌بندی…',
+    'Pinboards & active tab': 'دسته‌بندی‌ها و تب فعال',
+    'Pinned to {name}': 'به «{name}» اضافه شد',
     'Plain text': 'متن ساده',
     'Plain text only': 'فقط متن ساده',
     'Plain-text mode': 'حالت متن ساده',
@@ -404,11 +441,14 @@ export const FA: Record<string, string> = {
     Remove: 'حذف',
     'Remove blank lines': 'حذف خطوط خالی',
     'Remove duplicate lines': 'حذف خطوط تکراری',
-    'Remove from pinboard': 'برداشتن از Pinboard',
+    'Remove from pinboard': 'برداشتن از دسته‌بندی',
+    'Remove from category': 'برداشتن از دسته‌بندی',
     'Removes everything except pinned items and pinboards.':
-        'همه‌چیز به‌جز آیتم‌های سنجاق‌شده و Pinboard ها پاک می‌شود.',
+        'همه‌چیز به‌جز آیتم‌های سنجاق‌شده و دسته‌بندی‌ها پاک می‌شود.',
     'Removes unpinned history, with an option in the confirmation dialog to also delete pinned items and pinboards.':
-        'تاریخچه‌ی پین‌نشده را پاک می‌کند و در پنجره‌ی تأیید گزینه‌ای برای پاک کردن پین‌ها و Pinboard ها نیز دارد.',
+        'تاریخچه‌ی پین‌نشده را پاک می‌کند و در پنجره‌ی تأیید گزینه‌ای برای پاک کردن پین‌ها و دسته‌بندی‌ها نیز دارد.',
+    'Removes unpinned history, with an option in the confirmation dialog to also delete pinned items and categories.':
+        'تاریخچه‌ی پین‌نشده را پاک می‌کند و در پنجره‌ی تأیید گزینه‌ای برای پاک کردن پین‌ها و دسته‌بندی‌ها نیز دارد.',
     'Rename item': 'تغییر نام آیتم',
     'Rename · tags · pin on top': 'تغییر نام · برچسب · سنجاق به بالا',
     'Rename…': 'تغییر نام…',
@@ -429,13 +469,17 @@ export const FA: Record<string, string> = {
     'Rule name': 'نام قانون',
     'Run custom action': 'اجرای اکشن سفارشی',
     'Run on every new copy, in order. A rule applies when ALL of its filled-in conditions match. Example: app “keepass”, action “Do not store”; or pattern “^https?://”, action “Move to pinboard”.':
-        'روی هر کپی جدید و به ترتیب اجرا می‌شوند. قانون وقتی اعمال می‌شود که همه‌ی شرط‌های پرشده برقرار باشند. مثال: برنامه «keepass» ← «ذخیره نشود»؛ یا الگوی «^https?://» ← «انتقال به Pinboard».',
+        'روی هر کپی جدید و به ترتیب اجرا می‌شوند. قانون وقتی اعمال می‌شود که همه‌ی شرط‌های پرشده برقرار باشند. مثال: برنامه «keepass» ← «ذخیره نشود»؛ یا الگوی «^https?://» ← «انتقال به دسته‌بندی».',
+    'Run on every new copy, in order. A rule applies when ALL of its filled-in conditions match. Example: app “keepass”, action “Do not store”; or pattern “^https?://”, action “Move to category”.':
+        'روی هر کپی جدید و به ترتیب اجرا می‌شوند. قانون وقتی اعمال می‌شود که همه‌ی شرط‌های پرشده برقرار باشند. مثال: برنامه «keepass» ← «ذخیره نشود»؛ یا الگوی «^https?://» ← «انتقال به دسته‌بندی».',
     'Same as global setting': 'مثل تنظیم سراسری',
     Save: 'ذخیره',
     'Saved (rich formatting dropped)': 'ذخیره شد (استایل حذف شد)',
     'Saved: {p}': 'ذخیره شد: {p}',
     'Saves everything (items, formats, pinboards) to a file you choose.':
-        'همه‌چیز (آیتم‌ها، فرمت‌ها، Pinboard ها) را در فایلی که انتخاب می‌کنید ذخیره می‌کند.',
+        'همه‌چیز (آیتم‌ها، فرمت‌ها، دسته‌بندی‌ها) را در فایلی که انتخاب می‌کنید ذخیره می‌کند.',
+    'Saves everything (items, formats, categories) to a file you choose.':
+        'همه‌چیز (آیتم‌ها، فرمت‌ها، دسته‌بندی‌ها) را در فایلی که انتخاب می‌کنید ذخیره می‌کند.',
     'Screen centre': 'مرکز صفحه',
     'Screen-capture protection': 'محافظت در برابر اسکرین‌شات',
     'Search settings…': 'جستجو در تنظیمات…',
@@ -445,8 +489,7 @@ export const FA: Record<string, string> = {
     'Settings (Ctrl+,)': 'تنظیمات (Ctrl+,)',
     'Settings imported': 'تنظیمات وارد شد',
     'Settings reset to defaults': 'تنظیمات به حالت پیش‌فرض بازگردانی شد',
-    'Settings, rules, actions and shortcuts as a JSON file.':
-        'تنظیمات، قوانین، اکشن‌ها و میانبرها به‌صورت فایل JSON.',
+    'Settings, rules, actions and shortcuts as a JSON file.': 'تنظیمات، قوانین، اکشن‌ها و میانبرها به‌صورت فایل JSON.',
     'Settings…': 'تنظیمات…',
     'Shell commands (run with cmd /C) that receive the item’s text on stdin. They appear under “Actions” in the item menu and can be used by automatic rules.':
         'دستورهای شل (با cmd /C) که متن آیتم را از stdin می‌گیرند. در منوی آیتم زیر «اکشن‌ها» دیده می‌شوند و قوانین خودکار هم می‌توانند از آن‌ها استفاده کنند.',
@@ -473,7 +516,8 @@ export const FA: Record<string, string> = {
     'Stored clipboard formats': 'فرمت‌های ذخیره‌شده‌ی کلیپ‌بورد',
     'Strict fuzzy: letters in order': 'فازی سخت‌گیرانه: حروف به ترتیب',
     'Switch between original style and plain text': 'جابه‌جایی بین استایل اصلی و متن ساده',
-    'Switch Clipboard ↔ pinboards': 'جابه‌جایی بین کلیپ‌بورد و Pinboard ها',
+    'Switch Clipboard ↔ pinboards': 'جابه‌جایی بین کلیپ‌بورد و دسته‌بندی‌ها',
+    'Switch Clipboard ↔ categories': 'جابه‌جایی بین کلیپ‌بورد و دسته‌بندی‌ها',
     'System (Auto)': 'سیستم (خودکار)',
     Tag: 'برچسب',
     'Tags (space separated)': 'برچسب‌ها (با فاصله جدا کنید)',
@@ -484,7 +528,8 @@ export const FA: Record<string, string> = {
     Theme: 'تم',
     Then: 'آنگاه',
     'Then press Ctrl+V repeatedly to paste in order.': 'سپس Ctrl+V را پشت‌سرهم بزنید تا به ترتیب پیست شوند.',
-    'This pinboard is empty — drag cards onto its tab': 'این Pinboard خالی است — کارت‌ها را روی تبش بکشید',
+    'This pinboard is empty — drag cards onto its tab': 'این دسته‌بندی خالی است — کارت‌ها را روی تبش بکشید',
+    'This category is empty — drag cards onto its tab': 'این دسته‌بندی خالی است — کارت‌ها را روی تبش بکشید',
     'Thumbnail size': 'اندازه‌ی پیش‌نمایش تصویر',
     'Title Case': 'حروف اول کلمات بزرگ',
     'Toggle multi-selection': 'تغییر وضعیت انتخاب چندتایی',
@@ -508,14 +553,12 @@ export const FA: Record<string, string> = {
     'Use Win+V': 'استفاده از Win+V',
     'Virtual list rendering': 'رندر مجازی لیست (برای سرعت بالا در هزاران آیتم)',
     'VS Code Blue': 'آبی VS Code',
-    'What happens when you hold Ctrl and click a card.':
-        'عملی که هنگام نگه داشتن Ctrl و کلیک روی کارت انجام می‌شود.',
+    'What happens when you hold Ctrl and click a card.': 'عملی که هنگام نگه داشتن Ctrl و کلیک روی کارت انجام می‌شود.',
     'What happens when you hold Ctrl + Shift and click a card.':
         'عملی که هنگام نگه داشتن Ctrl + Shift و کلیک روی کارت انجام می‌شود.',
     'When copied from app(s)': 'وقتی از این برنامه(ها) کپی شد',
     'When detected': 'وقتی تشخیص داده شد',
-    'While the queue has items, Ctrl+V pastes the next one.':
-        'تا وقتی صف آیتم دارد، Ctrl+V آیتم بعدی را پیست می‌کند.',
+    'While the queue has items, Ctrl+V pastes the next one.': 'تا وقتی صف آیتم دارد، Ctrl+V آیتم بعدی را پیست می‌کند.',
     Whitespace: 'فاصله‌ها',
     'Windows File Explorer context menu': 'منوی راست‌کلیک در File Explorer ویندوز',
     'Yellow Marker': 'ماژیک زرد',

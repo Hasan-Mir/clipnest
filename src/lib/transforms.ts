@@ -75,17 +75,14 @@ const b64enc = (s: string) => {
 };
 
 const b64dec = (s: string) => {
-    const bin = atob(s.trim().replace(/-/g, '+').replace(/_/g, '/'));
+    const raw = s.replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
+    const padded = raw.padEnd(raw.length + ((4 - (raw.length % 4)) % 4), '=');
+    const bin = atob(padded);
     return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
 };
 
 const htmlEsc = (s: string) =>
-    s
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 const htmlUnesc = (s: string) =>
     s

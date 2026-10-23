@@ -6,6 +6,7 @@ import { basename } from '../lib/format';
 import { SearchMode } from '../lib/highlightMatch';
 import { isRtl, num, t, useLang } from '../lib/i18n';
 import { Icon } from '../lib/icons';
+import { digitOfKey, isKey } from '../lib/shortcut';
 import { TRANSFORMS, Transform } from '../lib/transforms';
 import { useSettings } from '../lib/useSettings';
 import { Card, DropMark } from './Card';
@@ -13,6 +14,26 @@ import { BOARD_COLORS, BoardDialog, ContextMenu, MenuEntry, Prompt, PromptState 
 import { Preview } from './Preview';
 
 const PAGE = 100;
+
+function renderDropTabLabel(isCopy: boolean, accentCopy: boolean, name: string) {
+    if (!isCopy) {
+        return <span>{t('Move to {name}', { name })}</span>;
+    }
+    const full = t('Copy to {name}', { name });
+    if (!accentCopy) {
+        return <span>{full}</span>;
+    }
+    const copyWord = t('Copy');
+    if (full.toLowerCase().startsWith(copyWord.toLowerCase())) {
+        return (
+            <span>
+                <span className="menu-copy-accent">{full.slice(0, copyWord.length)}</span>
+                {full.slice(copyWord.length)}
+            </span>
+        );
+    }
+    return <span className="menu-copy-accent">{full}</span>;
+}
 
 export default function Popup() {
     const lang = useLang();
@@ -38,8 +59,10 @@ export default function Popup() {
     const [draggingId, setDraggingId] = useState<number | null>(null);
     const [dragLabel, setDragLabel] = useState('');
     const [dragOverTabId, setDragOverTabId] = useState<number | null>(null);
+    const [dragCtrl, setDragCtrl] = useState(false);
     const [dropMark, setDropMark] = useState<{ id: number; mark: DropMark } | null>(null);
     const [explorerTarget, setExplorerTarget] = useState<string | null>(null);
+    const [tabsGrabbing, setTabsGrabbing] = useState(false);
 
     const anchor = useRef(0);
     const seq = useRef(0);
@@ -48,6 +71,13 @@ export default function Popup() {
     const inputRef = useRef<HTMLInputElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
     const vlistRef = useRef<VListHandle>(null);
+    const tabsRef = useRef<HTMLDivElement>(null);
+    const tabDragState = useRef<{ active: boolean; startX: number; startScroll: number; moved: boolean }>({
+        active: false,
+        startX: 0,
+        startScroll: 0,
+        moved: false,
+    });
     const dragPillRef = useRef<HTMLDivElement>(null);
     const toastTimer = useRef<number | undefined>(undefined);
     const settingsRef = useRef(settings);
@@ -56,11 +86,10 @@ export default function Popup() {
     const items = res.items;
     const cur: ClipRow | undefined = items[sel];
     const curBoard = boards.find((b) => b.id === tab) ?? null;
-    // Display style: per-pinboard override, otherwise the global setting.
+    // Display style: per-category override, otherwise the global setting.
     const richOn =
-        (curBoard && curBoard.list_style !== 'inherit'
-            ? curBoard.list_style
-            : (settings?.list_style ?? 'rich')) === 'rich';
+        (curBoard && curBoard.list_style !== 'inherit' ? curBoard.list_style : (settings?.list_style ?? 'rich')) ===
+        'rich';
 
     const showToast = useCallback((s: string) => {
         setToast(s);
@@ -102,17 +131,18 @@ export default function Popup() {
     const askErase = useCallback(
         (explicitBoard?: Pinboard | null) => {
             setMenu(null);
+            setCtrl(false);
             const activeId = settingsRef.current?.active_pinboard ?? null;
             const targetBoard =
                 explicitBoard !== undefined
                     ? explicitBoard
                     : (curBoard ?? boards.find((b) => b.id === activeId) ?? null);
             const msg = targetBoard
-                ? t('This will erase items in the active pinboard "{name}".', {
+                ? t('This will erase items in the active category "{name}".', {
                       name: targetBoard.name,
                   })
                 : t(
-                      'This will erase items in the main Clipboard tab (pinboards are kept unless you check the option below).'
+                      'This will erase items in the main Clipboard tab (categories are kept unless you check the option below).'
                   );
             setPrompt({
                 title: t('Erase all history?'),
@@ -120,7 +150,7 @@ export default function Popup() {
                 confirm: true,
                 checkLabel: t('Also erase pinned items'),
                 defaultChecked: false,
-                checkLabel2: t('Also erase all pinboards and main clipboard'),
+                checkLabel2: t('Also erase all categories and main clipboard'),
                 defaultChecked2: false,
                 okLabel: t('Erase'),
                 danger: true,
@@ -162,6 +192,8 @@ export default function Popup() {
             on('explorer-files-mode', () => syncExplorerTarget()),
             on('popup-hidden', () => {
                 hiddenAt.current = Date.now();
+                setCtrl(false);
+                setDragCtrl(false);
             }),
             on('popup-shown', () => {
                 if (Date.now() - hiddenAt.current > 60_000) {
@@ -176,6 +208,8 @@ export default function Popup() {
                 setPreview(null);
                 setMenu(null);
                 setBoardDlg(null);
+                setCtrl(false);
+                setDragCtrl(false);
                 syncExplorerTarget();
                 reloadRef.current();
                 loadStatus();
@@ -188,7 +222,21 @@ export default function Popup() {
             }),
         ];
         const timer = window.setInterval(() => setNow(Date.now()), 30_000);
-        const clearCtrl = () => setCtrl(false);
+        const clearCtrl = () => {
+            setCtrl(false);
+            setDragCtrl(false);
+        };
+        const onWindowKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Control' || e.ctrlKey || e.metaKey) {
+                setDragCtrl(true);
+            }
+        };
+        const onWindowKeyUp = (e: KeyboardEvent) => {
+            if (e.key === 'Control' || (!e.ctrlKey && !e.metaKey)) {
+                setCtrl(false);
+                setDragCtrl(false);
+            }
+        };
         const onFocusSearch = () => {
             setPreview(null);
             setMenu(null);
@@ -196,14 +244,61 @@ export default function Popup() {
             inputRef.current?.select();
         };
         window.addEventListener('blur', clearCtrl);
+        window.addEventListener('keydown', onWindowKeyDown, true);
+        window.addEventListener('keyup', onWindowKeyUp, true);
         window.addEventListener('clipnest-focus-search', onFocusSearch);
         return () => {
             subs.forEach((p) => p.then((u) => u()));
             window.clearInterval(timer);
             window.removeEventListener('blur', clearCtrl);
+            window.removeEventListener('keydown', onWindowKeyDown, true);
+            window.removeEventListener('keyup', onWindowKeyUp, true);
             window.removeEventListener('clipnest-focus-search', onFocusSearch);
         };
     }, [loadStatus, syncExplorerTarget]);
+
+    // Click-and-drag scrolling on the category tabs bar
+    useEffect(() => {
+        const onMouseMove = (e: MouseEvent) => {
+            const st = tabDragState.current;
+            if (!st.active || !tabsRef.current) {
+                return;
+            }
+            const dx = e.clientX - st.startX;
+            if (!st.moved && Math.abs(dx) > 5) {
+                st.moved = true;
+                setTabsGrabbing(true);
+            }
+            if (st.moved) {
+                tabsRef.current.scrollLeft = st.startScroll - dx;
+            }
+        };
+        const onMouseUp = () => {
+            if (tabDragState.current.active) {
+                tabDragState.current.active = false;
+                setTabsGrabbing(false);
+                window.setTimeout(() => {
+                    tabDragState.current.moved = false;
+                }, 40);
+            }
+        };
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+        return () => {
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
+        };
+    }, []);
+
+    // Keep the active category tab scrolled into view when switching tabs via keyboard
+    useEffect(() => {
+        const container = tabsRef.current;
+        if (!container) {
+            return;
+        }
+        const activeEl = container.querySelector('.tab.active') as HTMLElement | null;
+        activeEl?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+    }, [tab]);
 
     useEffect(() => {
         setPreview((p) => {
@@ -218,6 +313,8 @@ export default function Popup() {
     useEffect(() => {
         if (!menu && !preview && !prompt && !boardDlg) {
             inputRef.current?.focus();
+        } else if (preview || prompt || boardDlg) {
+            setCtrl(false);
         }
     }, [menu, preview, prompt, boardDlg]);
 
@@ -230,8 +327,7 @@ export default function Popup() {
     }, [sel, cur?.id, settings?.virtual_scroll]);
 
     // ───────────── helpers ─────────────
-    const targets = (): ClipRow[] =>
-        multi.length > 1 ? items.filter((i) => multi.includes(i.id)) : cur ? [cur] : [];
+    const targets = (): ClipRow[] => (multi.length > 1 ? items.filter((i) => multi.includes(i.id)) : cur ? [cur] : []);
 
     const move = (to: number, extend = false) => {
         const n = items.length;
@@ -296,9 +392,7 @@ export default function Popup() {
             const ts = targets();
             if (explorerTarget && mode === 'auto') {
                 const fileTargets = id !== undefined ? items.filter((x) => x.id === id) : ts;
-                const fileIds = fileTargets
-                    .filter((x) => x.kind === 'file' || x.kind === 'image')
-                    .map((x) => x.id);
+                const fileIds = fileTargets.filter((x) => x.kind === 'file' || x.kind === 'image').map((x) => x.id);
                 if (fileIds.length > 0) {
                     const n = await api.pasteFilesToFolder(fileIds, explorerTarget);
                     showToast(t('Transferred {n} item(s) to folder', { n }));
@@ -337,7 +431,7 @@ export default function Popup() {
         const ids = ts.map((x) => x.id);
         try {
             if (tab !== null && !hard) {
-                await api.setPinboard(ids, null);
+                await api.setPinboard(ids, null, tab, false);
             } else {
                 await api.deleteItems(ids);
             }
@@ -377,21 +471,23 @@ export default function Popup() {
         });
     };
 
-    const newBoard = (assignIds?: number[]) => {
+    const newBoard = (assignIds?: number[], copyMode = true) => {
         setPrompt({
-            title: t('New pinboard'),
+            title: t('New category'),
             placeholder: t('Name'),
             onSubmit: async (name) => {
                 if (!name.trim()) {
                     return;
                 }
                 try {
-                    const id = await api.createPinboard(
-                        name,
-                        BOARD_COLORS[boards.length % BOARD_COLORS.length]
-                    );
+                    const id = await api.createPinboard(name, BOARD_COLORS[boards.length % BOARD_COLORS.length]);
                     if (assignIds?.length) {
-                        await api.setPinboard(assignIds, id);
+                        await api.setPinboard(assignIds, id, tab, copyMode);
+                        showToast(
+                            copyMode
+                                ? t('Copied to {name}', { name: name.trim() })
+                                : t('Moved to {name}', { name: name.trim() })
+                        );
                     } else {
                         setTab(id);
                         resetView();
@@ -437,7 +533,8 @@ export default function Popup() {
         }
         api.setPinned(
             ts.map((x) => x.id),
-            !ts[0].pinned
+            !ts[0].pinned,
+            tab
         ).catch(fail);
     };
 
@@ -531,7 +628,12 @@ export default function Popup() {
         }
         if (it.kind === 'file') {
             e.push({ label: t('Open'), hint: 'Ctrl+O', onClick: () => api.openItem(it.id) });
-            e.push({ label: t('Show in Explorer'), onClick: () => api.revealItem(it.id) });
+            e.push({
+                label: t('Show in Explorer'),
+                onClick: () => {
+                    api.revealItem(it.id, ids).catch(fail);
+                },
+            });
         }
         e.push({ label: t('Preview'), hint: 'Space', onClick: () => openPreview(it) });
         if (textual) {
@@ -550,24 +652,43 @@ export default function Popup() {
             hint: 'Ctrl+P',
             onClick: () => togglePin(it),
         });
-        e.push({ header: true, label: it.pinboard_id ? t('Move to') : t('Pin to') });
+        const isMainTab = tab === null;
+        const targetBoards = isMainTab ? boards : boards.filter((b) => b.id !== tab);
+        e.push({
+            header: true,
+            staticCategoryCopy: isMainTab,
+            dynamicCategoryMoveCopy: !isMainTab,
+            label: isMainTab ? t('Copy to') : t('Move to'),
+        });
         e.push({
             chips: [
-                ...boards.map((b) => ({
+                ...targetBoards.map((b) => ({
                     label: b.name,
                     color: b.color,
-                    onClick: () => {
-                        api.setPinboard(ids, b.id).catch(fail);
+                    onClick: (ctrlPressed: boolean) => {
+                        const shouldCopy = isMainTab || ctrlPressed;
+                        api.setPinboard(ids, b.id, tab, shouldCopy)
+                            .then(() =>
+                                showToast(
+                                    shouldCopy
+                                        ? t('Copied to {name}', { name: b.name })
+                                        : t('Moved to {name}', { name: b.name })
+                                )
+                            )
+                            .catch(fail);
                     },
                 })),
-                { label: t('+ New Pinboard'), onClick: () => newBoard(ids) },
+                {
+                    label: t('+ New Category'),
+                    onClick: (ctrlPressed: boolean) => newBoard(ids, isMainTab || ctrlPressed),
+                },
             ],
         });
-        if (it.pinboard_id) {
+        if (!isMainTab || it.pinboard_id) {
             e.push({
-                label: t('Remove from pinboard'),
+                label: t('Remove from category'),
                 onClick: () => {
-                    api.setPinboard(ids, null).catch(fail);
+                    api.setPinboard(ids, null, tab, false).catch(fail);
                 },
             });
         }
@@ -587,9 +708,7 @@ export default function Popup() {
                         label: a.name,
                         onClick: () => {
                             api.runAction(it.id, a.id)
-                                .then((r) =>
-                                    showToast(r ? t('Action finished: new item') : t('Action finished'))
-                                )
+                                .then((r) => showToast(r ? t('Action finished: new item') : t('Action finished')))
                                 .catch(fail);
                         },
                     })),
@@ -636,14 +755,14 @@ export default function Popup() {
             y,
             entries: [
                 {
-                    label: isAct ? t('Deactivate pinboard') : t('Activate pinboard (new copies go here)'),
+                    label: isAct ? t('Deactivate category') : t('Activate category (new copies go here)'),
                     onClick: () => {
                         if (settings) {
                             saveSettings({ ...settings, active_pinboard: isAct ? null : b.id });
                         }
                     },
                 },
-                { label: t('Pinboard settings…'), onClick: () => setBoardDlg(b) },
+                { label: t('Category settings…'), onClick: () => setBoardDlg(b) },
                 { sep: true },
                 {
                     label: t('Erase history…'),
@@ -651,7 +770,7 @@ export default function Popup() {
                     onClick: () => askErase(b),
                 },
                 {
-                    label: t('Delete pinboard…'),
+                    label: t('Delete category…'),
                     danger: true,
                     onClick: () =>
                         setPrompt({
@@ -677,11 +796,12 @@ export default function Popup() {
 
     // ───────────── keyboard ─────────────
     const onKey = (e: React.KeyboardEvent) => {
-        if (prompt || boardDlg) {
+        if (prompt || boardDlg || preview) {
             return;
         }
         if (e.key === 'Control') {
             setCtrl(true);
+            setDragCtrl(true);
             setQuickIds(visibleIds());
             return;
         }
@@ -698,9 +818,19 @@ export default function Popup() {
         // In RTL the arrows are mirrored visually, so "next tab" follows the reading direction.
         const rtl = isRtl(lang);
 
-        if (ck && /^[1-9]$/.test(k)) {
+        // Keyboard context menu activation (Shift+F10 or ContextMenu / Applications key)
+        if ((k === 'ContextMenu' || (e.shiftKey && k === 'F10')) && cur) {
             e.preventDefault();
-            const id = visibleIds()[Number(k) - 1];
+            const cardEl = document.getElementById(`card-${cur.id}`);
+            const rect = cardEl?.getBoundingClientRect();
+            openMenu(cur, rect ? rect.left + 28 : 80, rect ? rect.top + 24 : 120);
+            return;
+        }
+
+        const digit = ck ? digitOfKey(e) : null;
+        if (digit !== null) {
+            e.preventDefault();
+            const id = visibleIds()[digit - 1];
             if (id !== undefined) {
                 api.pasteItem(id, e.shiftKey ? 'plain' : 'auto').catch(fail);
             }
@@ -720,9 +850,9 @@ export default function Popup() {
             }
             return;
         }
-        if (ck && (k === ']' || k === '[')) {
+        if (ck && (isKey(e, ']') || isKey(e, '['))) {
             e.preventDefault();
-            switchTab(k === ']' ? 1 : -1);
+            switchTab(isKey(e, ']') ? 1 : -1);
             return;
         }
         switch (k) {
@@ -805,35 +935,34 @@ export default function Popup() {
                 return;
         }
         if (ck) {
-            const l = k.toLowerCase();
-            if (l === 'c' && !window.getSelection()?.toString()) {
+            if (isKey(e, 'c') && !window.getSelection()?.toString()) {
                 e.preventDefault();
                 doCopy();
-            } else if (l === 'o' && cur) {
+            } else if (isKey(e, 'o') && cur) {
                 e.preventDefault();
                 api.openItem(cur.id);
-            } else if (l === 'r') {
+            } else if (isKey(e, 'r')) {
                 e.preventDefault();
                 renameItem();
-            } else if (l === 'e' && cur) {
+            } else if (isKey(e, 'e') && cur) {
                 e.preventDefault();
                 openPreview(cur, true);
-            } else if (l === 'n') {
+            } else if (isKey(e, 'n')) {
                 e.preventDefault();
                 newBoard();
-            } else if (l === 'p') {
+            } else if (isKey(e, 'p')) {
                 e.preventDefault();
                 togglePin();
-            } else if (l === 't') {
+            } else if (isKey(e, 't')) {
                 e.preventDefault();
                 tagItem();
-            } else if (l === 'i' && cur) {
+            } else if (isKey(e, 'i') && cur) {
                 e.preventDefault();
                 openPreview(cur, false, true);
-            } else if (l === 'm') {
+            } else if (isKey(e, 'm')) {
                 e.preventDefault();
                 mergePrompt();
-            } else if (k === ',') {
+            } else if (isKey(e, ',')) {
                 e.preventDefault();
                 api.openSettings();
             }
@@ -913,8 +1042,16 @@ export default function Popup() {
         dragStart: (it, e) => {
             dragId.current = it.id;
             setDraggingId(it.id);
+            setDragCtrl(e.ctrlKey || e.metaKey);
             const count = multi.includes(it.id) && multi.length > 1 ? multi.length : 1;
-            const label = count > 1 ? t('Move {n} items', { n: count }) : t('Move item');
+            const isCopy = tab === null || e.ctrlKey || e.metaKey;
+            const label = isCopy
+                ? count > 1
+                    ? t('Copy {n} items', { n: count })
+                    : t('Copy item')
+                : count > 1
+                  ? t('Move {n} items', { n: count })
+                  : t('Move item');
             setDragLabel(label);
             if (dragPillRef.current) {
                 const span = dragPillRef.current.querySelector('.drag-pill-text');
@@ -951,18 +1088,9 @@ export default function Popup() {
         (it: ClipRow, e: React.MouseEvent) => handlers.current.doubleClick(it, e),
         []
     );
-    const stableMenu = useCallback(
-        (it: ClipRow, x: number, y: number) => handlers.current.menu(it, x, y),
-        []
-    );
-    const stableDragStart = useCallback(
-        (it: ClipRow, e: React.DragEvent) => handlers.current.dragStart(it, e),
-        []
-    );
-    const stableDragOver = useCallback(
-        (it: ClipRow, after: boolean) => handlers.current.dragOver(it, after),
-        []
-    );
+    const stableMenu = useCallback((it: ClipRow, x: number, y: number) => handlers.current.menu(it, x, y), []);
+    const stableDragStart = useCallback((it: ClipRow, e: React.DragEvent) => handlers.current.dragStart(it, e), []);
+    const stableDragOver = useCallback((it: ClipRow, after: boolean) => handlers.current.dragOver(it, after), []);
     const stableDrop = useCallback((it: ClipRow, after: boolean) => handlers.current.drop(it, after), []);
     const stableDragEnd = useCallback(() => {
         dragId.current = null;
@@ -979,6 +1107,7 @@ export default function Popup() {
     const useVirtual = s?.virtual_scroll !== false;
     const toolbar = s?.show_toolbar && cur;
     const showCounts = s?.show_pinboard_counts ?? true;
+    const wrapCategories = s?.wrap_categories ?? false;
 
     const renderCard = (it: ClipRow, i: number) => (
         <Card
@@ -1011,17 +1140,28 @@ export default function Popup() {
     return (
         <div
             className="popup"
+            role="application"
+            aria-label="ClipNest"
             tabIndex={-1}
             onKeyDown={onKey}
             onKeyUp={(e) => {
                 if (e.key === 'Control') {
                     setCtrl(false);
+                    setDragCtrl(false);
                 }
             }}
         >
+            {/* Screen-reader live region */}
+            <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+                {toast ||
+                    t(res.total === 1 ? '{n} item' : '{n} items', {
+                        n: num(res.total),
+                    })}
+            </div>
+
             {/* Offscreen custom drag preview pill */}
             <div ref={dragPillRef} className="drag-ghost-pill" aria-hidden>
-                <Icon name="copy" size={13} />
+                <Icon name={tab === null || dragCtrl ? 'copy' : 'arrowRight'} size={13} />
                 <span className="drag-pill-text">{dragLabel || t('Move item')}</span>
             </div>
 
@@ -1046,6 +1186,7 @@ export default function Popup() {
                     <button
                         type="button"
                         className="chipbtn"
+                        aria-label={t('Plain-text mode (click to turn off)')}
                         data-tip={t('Plain-text mode (click to turn off)')}
                         onClick={() => api.togglePlain()}
                     >
@@ -1054,14 +1195,15 @@ export default function Popup() {
                 )}
                 {status?.queue_active && (
                     <button type="button" className="chipbtn accent" onClick={() => api.queueToggle()}>
-                        {status.queue_mode === 'basket' ? t('Drop Basket') : t('Queue')}{' '}
-                        {num(status.queue_len)}
+                        {status.queue_mode === 'basket' ? t('Drop Basket') : t('Queue')} {num(status.queue_len)}
                     </button>
                 )}
                 <span className="spacer" />
                 <button
                     type="button"
                     className={`iconbtn${status?.popup_pinned ? ' on' : ''}`}
+                    aria-pressed={Boolean(status?.popup_pinned)}
+                    aria-label={status?.popup_pinned ? t('Unpin window') : t('Pin window on top')}
                     data-tip={status?.popup_pinned ? t('Unpin window') : t('Pin window on top')}
                     onClick={() => {
                         api.setPopupPinned(!(status?.popup_pinned ?? false)).catch(fail);
@@ -1072,6 +1214,8 @@ export default function Popup() {
                 <button
                     type="button"
                     className={`iconbtn${settings?.show_toolbar ? ' on' : ''}`}
+                    aria-pressed={Boolean(settings?.show_toolbar)}
+                    aria-label={t('Toggle side toolbar')}
                     data-tip={t('Toggle side toolbar')}
                     onClick={() => {
                         if (settings) {
@@ -1084,6 +1228,7 @@ export default function Popup() {
                 <button
                     type="button"
                     className="iconbtn"
+                    aria-label={t('Paste queue / Drop Basket')}
                     data-tip={t('Paste queue / Drop Basket')}
                     onClick={() => api.queueToggle()}
                 >
@@ -1092,6 +1237,7 @@ export default function Popup() {
                 <button
                     type="button"
                     className="iconbtn"
+                    aria-label={t('Settings (Ctrl+,)')}
                     data-tip={t('Settings (Ctrl+,)')}
                     onClick={() => api.openSettings()}
                 >
@@ -1100,6 +1246,7 @@ export default function Popup() {
                 <button
                     type="button"
                     className="iconbtn"
+                    aria-label={t('Close (Esc)')}
                     data-tip={t('Close (Esc)')}
                     onClick={() => api.hidePopup()}
                 >
@@ -1111,13 +1258,15 @@ export default function Popup() {
                 <Icon name="search" size={13} />
                 <input
                     ref={inputRef}
+                    role="searchbox"
+                    aria-label={t('Type to search your clipboard')}
+                    aria-controls="clip-list"
+                    aria-activedescendant={cur ? `card-${cur.id}` : undefined}
                     className="search-bare"
                     value={query}
                     spellCheck={false}
                     dir="auto"
-                    placeholder={
-                        smode === 'regex' ? t('Regular expression…') : t('Type to search your clipboard')
-                    }
+                    placeholder={smode === 'regex' ? t('Regular expression…') : t('Type to search your clipboard')}
                     onChange={(e) => {
                         setQuery(e.target.value);
                         resetView();
@@ -1127,6 +1276,7 @@ export default function Popup() {
                     <button
                         type="button"
                         className="iconbtn"
+                        aria-label={t('Clear')}
                         data-tip={t('Clear')}
                         onClick={() => {
                             setQuery('');
@@ -1139,6 +1289,8 @@ export default function Popup() {
                 <button
                     type="button"
                     className={`mini${richOn ? ' on' : ''}`}
+                    aria-pressed={richOn}
+                    aria-label={t('Switch between original style and plain text')}
                     data-tip={t('Switch between original style and plain text')}
                     onClick={toggleDisplayStyle}
                 >
@@ -1147,6 +1299,8 @@ export default function Popup() {
                 <button
                     type="button"
                     className={`mini${smode === 'regex' ? ' on' : ''}`}
+                    aria-pressed={smode === 'regex'}
+                    aria-label={t('Regular expression')}
                     data-tip={t('Regular expression')}
                     onClick={() => setSmode(smode === 'regex' ? 'smart' : 'regex')}
                 >
@@ -1155,6 +1309,8 @@ export default function Popup() {
                 <button
                     type="button"
                     className={`mini${smode === 'fuzzy' ? ' on' : ''}`}
+                    aria-pressed={smode === 'fuzzy'}
+                    aria-label={t('Strict fuzzy: letters in order')}
                     data-tip={t('Strict fuzzy: letters in order')}
                     onClick={() => setSmode(smode === 'fuzzy' ? 'smart' : 'fuzzy')}
                 >
@@ -1162,9 +1318,39 @@ export default function Popup() {
                 </button>
             </div>
 
-            <div className="tabs">
+            <div
+                ref={tabsRef}
+                role="tablist"
+                aria-label={t('Categories')}
+                className={`tabs${wrapCategories ? ' wrap' : ''}${tabsGrabbing ? ' grabbing' : ''}`}
+                onWheel={(e) => {
+                    if (!wrapCategories && tabsRef.current && e.deltaY !== 0 && e.deltaX === 0) {
+                        tabsRef.current.scrollLeft += e.deltaY;
+                    }
+                }}
+                onMouseDown={(e) => {
+                    if (!wrapCategories && e.button === 0 && tabsRef.current) {
+                        tabDragState.current = {
+                            active: true,
+                            startX: e.clientX,
+                            startScroll: tabsRef.current.scrollLeft,
+                            moved: false,
+                        };
+                    }
+                }}
+                onClickCapture={(e) => {
+                    if (tabDragState.current.moved) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        tabDragState.current.moved = false;
+                    }
+                }}
+            >
                 <button
                     type="button"
+                    role="tab"
+                    aria-selected={tab === null}
+                    aria-controls="clip-list"
                     className={`tab${tab === null ? ' active' : ''}`}
                     onClick={() => {
                         setTab(null);
@@ -1178,16 +1364,21 @@ export default function Popup() {
                     <span>{t('Clipboard')}</span>
                 </button>
                 {boards.map((b) => {
-                    const isDropTarget = dragOverTabId === b.id;
+                    const isDropTarget = dragOverTabId === b.id && tab !== b.id;
                     const isActiveTarget = settings?.active_pinboard === b.id;
+                    const isCopyDrop = tab === null || dragCtrl;
+                    const accentCopyDrop = tab !== null && dragCtrl;
                     return (
                         <button
                             key={b.id}
                             type="button"
+                            role="tab"
+                            aria-selected={tab === b.id}
+                            aria-controls="clip-list"
                             className={`tab${tab === b.id ? ' active' : ''}${isDropTarget ? ' drop-target' : ''}${
                                 isActiveTarget ? ' active-board' : ''
                             }`}
-                            data-tip={isActiveTarget ? t('Active pinboard (new copies go here)') : undefined}
+                            data-tip={isActiveTarget ? t('Active category (new copies go here)') : undefined}
                             onClick={() => {
                                 setTab(b.id);
                                 resetView();
@@ -1198,12 +1389,20 @@ export default function Popup() {
                             }}
                             onDragEnter={(e) => {
                                 e.preventDefault();
-                                setDragOverTabId(b.id);
-                                setDropMark(null);
+                                if (tab !== b.id) {
+                                    setDragOverTabId(b.id);
+                                    setDragCtrl(e.ctrlKey || e.metaKey);
+                                    setDropMark(null);
+                                }
                             }}
                             onDragOver={(e) => {
                                 e.preventDefault();
-                                if (dragOverTabId !== b.id) {
+                                const wantCopy = tab === null || e.ctrlKey || e.metaKey;
+                                e.dataTransfer.dropEffect = wantCopy ? 'copy' : 'move';
+                                if (dragCtrl !== (e.ctrlKey || e.metaKey)) {
+                                    setDragCtrl(e.ctrlKey || e.metaKey);
+                                }
+                                if (tab !== b.id && dragOverTabId !== b.id) {
                                     setDragOverTabId(b.id);
                                 }
                                 if (dropMark !== null) {
@@ -1218,24 +1417,39 @@ export default function Popup() {
                             }}
                             onDrop={(e) => {
                                 e.preventDefault();
+                                const shouldCopy = tab === null || e.ctrlKey || e.metaKey || dragCtrl;
                                 setDragOverTabId(null);
                                 setDraggingId(null);
                                 setDropMark(null);
                                 const id = Number(e.dataTransfer.getData('text/clip-id')) || dragId.current;
                                 dragId.current = null;
-                                if (id) {
+                                if (id && tab !== b.id) {
                                     const ids = multi.includes(id) ? multi : [id];
-                                    api.setPinboard(ids, b.id)
-                                        .then(() => showToast(t('Pinned to {name}', { name: b.name })))
+                                    api.setPinboard(ids, b.id, tab, shouldCopy)
+                                        .then(() =>
+                                            showToast(
+                                                shouldCopy
+                                                    ? t('Copied to {name}', { name: b.name })
+                                                    : t('Moved to {name}', { name: b.name })
+                                            )
+                                        )
                                         .catch(fail);
                                 }
                             }}
                         >
-                            <span
-                                className={`dot${isActiveTarget ? ' pulse' : ''}`}
-                                style={{ background: b.color }}
-                            />
-                            <span>{isDropTarget ? t('Move to {name}', { name: b.name }) : b.name}</span>
+                            {isDropTarget ? (
+                                <Icon name={isCopyDrop ? 'copy' : 'arrowRight'} size={12} />
+                            ) : (
+                                <span
+                                    className={`dot${isActiveTarget ? ' pulse' : ''}`}
+                                    style={{ background: b.color }}
+                                />
+                            )}
+                            {isDropTarget ? (
+                                renderDropTabLabel(isCopyDrop, accentCopyDrop, b.name)
+                            ) : (
+                                <span>{b.name}</span>
+                            )}
                             {showCounts && !isDropTarget && <span className="tab-count">{num(b.count)}</span>}
                         </button>
                     );
@@ -1243,7 +1457,8 @@ export default function Popup() {
                 <button
                     type="button"
                     className="tab plus"
-                    data-tip={t('New pinboard (Ctrl+N)')}
+                    aria-label={t('New category (Ctrl+N)')}
+                    data-tip={t('New category (Ctrl+N)')}
                     onClick={() => newBoard()}
                 >
                     <Icon name="plus" size={12} />
@@ -1277,6 +1492,7 @@ export default function Popup() {
                     <button
                         type="button"
                         className="iconbtn"
+                        aria-label={t('Clear')}
                         data-tip={t('Clear')}
                         onClick={() => {
                             setExplorerTarget(null);
@@ -1293,7 +1509,14 @@ export default function Popup() {
 
             <div className="mainrow">
                 {res.error || items.length === 0 || !useVirtual ? (
-                    <div className="list" ref={listRef}>
+                    <div
+                        id="clip-list"
+                        role="listbox"
+                        aria-label={t('Clipboard')}
+                        aria-multiselectable="true"
+                        className="list"
+                        ref={listRef}
+                    >
                         {res.error && <div className="empty err">{res.error}</div>}
                         {!res.error && items.length === 0 && (
                             <div className="empty">
@@ -1301,13 +1524,20 @@ export default function Popup() {
                                     ? t('Nothing found')
                                     : tab === null
                                       ? t('Nothing copied yet')
-                                      : t('This pinboard is empty — drag cards onto its tab')}
+                                      : t('This category is empty — drag cards onto its tab')}
                             </div>
                         )}
                         {!res.error && items.map((it, i) => renderCard(it, i))}
                     </div>
                 ) : (
-                    <div className="list vlist-host" ref={listRef}>
+                    <div
+                        id="clip-list"
+                        role="listbox"
+                        aria-label={t('Clipboard')}
+                        aria-multiselectable="true"
+                        className="list vlist-host"
+                        ref={listRef}
+                    >
                         <VList ref={vlistRef} className="vlist">
                             {items.map((it, i) => (
                                 <div key={it.id} className="vlist-item">
@@ -1319,21 +1549,32 @@ export default function Popup() {
                 )}
 
                 {toolbar && cur && (
-                    <div className="toolbar">
-                        <button type="button" data-tip={t('Preview')} onClick={() => openPreview()}>
+                    <div className="toolbar" role="toolbar" aria-label={t('Actions')}>
+                        <button
+                            type="button"
+                            aria-label={t('Preview')}
+                            data-tip={t('Preview')}
+                            onClick={() => openPreview()}
+                        >
                             <Icon name="eye" size={16} />
                         </button>
-                        <button type="button" data-tip={t('Pin on top')} onClick={() => togglePin()}>
+                        <button
+                            type="button"
+                            aria-label={t('Pin on top')}
+                            data-tip={t('Pin on top')}
+                            onClick={() => togglePin()}
+                        >
                             <Icon name="pin" size={16} />
                         </button>
-                        <button type="button" data-tip={t('Tags…')} onClick={() => tagItem()}>
+                        <button type="button" aria-label={t('Tags…')} data-tip={t('Tags…')} onClick={() => tagItem()}>
                             <Icon name="tag" size={16} />
                         </button>
-                        <button type="button" data-tip={t('Copy')} onClick={() => doCopy()}>
+                        <button type="button" aria-label={t('Copy')} data-tip={t('Copy')} onClick={() => doCopy()}>
                             <Icon name="copy" size={16} />
                         </button>
                         <button
                             type="button"
+                            aria-label={t('Formats (MIME inspector)')}
                             data-tip={t('Formats (MIME inspector)')}
                             onClick={() => openPreview(cur, false, true)}
                         >
@@ -1342,17 +1583,24 @@ export default function Popup() {
                         {cur.kind !== 'image' && cur.kind !== 'file' && (
                             <button
                                 type="button"
+                                aria-label={t('Edit…')}
                                 data-tip={t('Edit…')}
                                 onClick={() => openPreview(cur, true)}
                             >
                                 <Icon name="edit" size={16} />
                             </button>
                         )}
-                        <button type="button" data-tip={t('Merge selected')} onClick={mergePrompt}>
+                        <button
+                            type="button"
+                            aria-label={t('Merge selected')}
+                            data-tip={t('Merge selected')}
+                            onClick={mergePrompt}
+                        >
                             <Icon name="merge" size={16} />
                         </button>
                         <button
                             type="button"
+                            aria-label={t('Actions')}
                             data-tip={t('Actions')}
                             onClick={(e) => openMenu(cur, e.clientX, e.clientY)}
                         >
@@ -1360,6 +1608,7 @@ export default function Popup() {
                         </button>
                         <button
                             type="button"
+                            aria-label={t('Delete')}
                             data-tip={t('Delete')}
                             className="danger"
                             onClick={() => doDelete(false)}
@@ -1378,6 +1627,7 @@ export default function Popup() {
                 <button
                     type="button"
                     className="iconbtn erase"
+                    aria-label={t('Erase history…')}
                     data-tip={t('Erase history…')}
                     onClick={() => askErase()}
                 >
@@ -1395,14 +1645,20 @@ export default function Popup() {
                     </span>
                     <span className="hint-item">
                         <kbd>Del</kbd>
-                        <span>{tab === null ? t('Delete') : t('Unpin')}</span>
+                        <span>{tab === null ? t('Delete') : t('Remove')}</span>
                     </span>
                 </span>
             </footer>
 
             {toast && <div className="toast">{toast}</div>}
             {menu && (
-                <ContextMenu x={menu.x} y={menu.y} entries={menu.entries} onClose={() => setMenu(null)} />
+                <ContextMenu
+                    x={menu.x}
+                    y={menu.y}
+                    entries={menu.entries}
+                    initialCtrl={ctrl}
+                    onClose={() => setMenu(null)}
+                />
             )}
             {prompt && <Prompt p={prompt} onClose={() => setPrompt(null)} />}
             {boardDlg && (

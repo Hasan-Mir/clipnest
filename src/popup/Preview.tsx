@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { api, ClipRow, FormatMeta, errText } from '../lib/api';
 import { basename, colorFormats, hostOf, humanSize, relTime } from '../lib/format';
 import { highlightText, SearchMode } from '../lib/highlightMatch';
 import { num, t, useLang } from '../lib/i18n';
 import { Icon } from '../lib/icons';
+import { isKey } from '../lib/shortcut';
 import { RichView, forgetHtml } from './RichView';
 
 interface Props {
@@ -53,7 +55,14 @@ export function Preview({
     useEffect(() => {
         root.current?.focus();
         setAutoSaved(false);
+        setEditing(false);
+        setImg(null);
+        setFormats(null);
+        api.getFormats(item.id)
+            .then(setFormats)
+            .catch(() => {});
         if (item.kind === 'image') {
+            setText(null);
             api.getImage(item.id)
                 .then(setImg)
                 .catch(() => {});
@@ -90,12 +99,9 @@ export function Preview({
                 await api.updateItemText(item.id, value);
                 forgetHtml(item.id);
                 setText(value);
-                setFormats(null);
-                if (showFormats) {
-                    api.getFormats(item.id)
-                        .then(setFormats)
-                        .catch(() => {});
-                }
+                api.getFormats(item.id)
+                    .then(setFormats)
+                    .catch(() => {});
                 if (closeEditor) {
                     setEditing(false);
                     onToast(t('Saved (rich formatting dropped)'));
@@ -108,7 +114,7 @@ export function Preview({
                 }
             }
         },
-        [item.id, text, showFormats, onToast]
+        [item.id, text, onToast]
     );
 
     useEffect(() => {
@@ -144,8 +150,33 @@ export function Preview({
     const truncated = lines.length > MAX_LINES;
     const shown = truncated ? lines.slice(0, MAX_LINES) : lines;
 
+    const contentBytes = useMemo(() => {
+        if (editing) {
+            return draft ? (draft.length + 1) * 2 : 0;
+        }
+        if (formats && formats.length > 0) {
+            const unicodeFmt = formats.find((f) => f.name === 'CF_UNICODETEXT');
+            if (unicodeFmt) {
+                return unicodeFmt.size;
+            }
+            const pngFmt = formats.find((f) => f.name === 'PNG');
+            if (pngFmt) {
+                return pngFmt.size;
+            }
+            return formats[0].size;
+        }
+        if (text !== null && text.length > 0) {
+            return (text.length + 1) * 2;
+        }
+        if (item.chars > 0) {
+            return (item.chars + 1) * 2;
+        }
+        return 0;
+    }, [editing, draft, formats, text, item.chars]);
+
     const onKey = (e: React.KeyboardEvent) => {
         e.stopPropagation();
+        const ck = e.ctrlKey || e.metaKey;
         if (editing) {
             if (e.key === 'Escape') {
                 window.clearTimeout(autoSaveTimer.current);
@@ -156,7 +187,7 @@ export function Preview({
                 }
                 e.preventDefault();
             }
-            if (e.key.toLowerCase() === 's' && (e.ctrlKey || e.metaKey)) {
+            if (ck && isKey(e, 's')) {
                 e.preventDefault();
                 save();
             }
@@ -168,11 +199,11 @@ export function Preview({
         } else if (e.key === 'Enter') {
             e.preventDefault();
             onPaste(item.id, e.shiftKey ? 'plain' : 'auto');
-        } else if (e.key.toLowerCase() === 'e' && e.ctrlKey && editable) {
+        } else if (ck && isKey(e, 'e') && editable) {
             e.preventDefault();
             setDraft(text ?? '');
             setEditing(true);
-        } else if (e.key.toLowerCase() === 'i' && e.ctrlKey) {
+        } else if (ck && isKey(e, 'i')) {
             e.preventDefault();
             setShowFormats((v) => !v);
         }
@@ -181,8 +212,25 @@ export function Preview({
     const showRich = canStyle && styled && !editing;
 
     return (
-        <div className="preview" ref={root} tabIndex={0} onKeyDown={onKey}>
-            <div className="preview-head">
+        <div
+            className="preview"
+            role="dialog"
+            aria-modal="true"
+            aria-label={item.title || t('Preview')}
+            ref={root}
+            tabIndex={0}
+            onKeyDown={onKey}
+        >
+            <div
+                className="preview-head"
+                onMouseDown={(e) => {
+                    if (e.button === 0 && !(e.target as HTMLElement).closest('button, input, a, textarea')) {
+                        getCurrentWindow()
+                            .startDragging()
+                            .catch(() => {});
+                    }
+                }}
+            >
                 <div className="preview-title">
                     <b>{item.title || t(item.kind)}</b>
                     <span className="muted">
@@ -192,13 +240,15 @@ export function Preview({
                 </div>
                 <div className="preview-actions">
                     {canStyle && !editing && (
-                        <button className="btn small-btn" onClick={() => setStyled((v) => !v)}>
+                        <button type="button" className="btn small-btn" onClick={() => setStyled((v) => !v)}>
                             {styled ? t('Plain text') : t('Original style')}
                         </button>
                     )}
                     {editable && !editing && (
                         <button
+                            type="button"
                             className="iconbtn"
+                            aria-label={t('Edit (Ctrl+E)')}
                             data-tip={t('Edit (Ctrl+E)')}
                             onClick={() => {
                                 setDraft(text ?? '');
@@ -209,13 +259,22 @@ export function Preview({
                         </button>
                     )}
                     <button
+                        type="button"
                         className={`iconbtn${showFormats ? ' on' : ''}`}
+                        aria-pressed={showFormats}
+                        aria-label={t('Formats (Ctrl+I)')}
                         data-tip={t('Formats (Ctrl+I)')}
                         onClick={() => setShowFormats((v) => !v)}
                     >
                         <Icon name="info" />
                     </button>
-                    <button className="iconbtn" data-tip={t('Close (Esc)')} onClick={handleClose}>
+                    <button
+                        type="button"
+                        className="iconbtn"
+                        aria-label={t('Close (Esc)')}
+                        data-tip={t('Close (Esc)')}
+                        onClick={handleClose}
+                    >
                         <Icon name="close" />
                     </button>
                 </div>
@@ -224,7 +283,11 @@ export function Preview({
             <div className="preview-body">
                 {item.kind === 'image' && (
                     <div className="pv-image">
-                        {img ? <img src={img} alt="" /> : <div className="muted">{t('Loading…')}</div>}
+                        {img ? (
+                            <img src={img} alt={item.title || t('image')} />
+                        ) : (
+                            <div className="muted">{t('Loading…')}</div>
+                        )}
                         <div className="muted small">
                             {item.img_w}×{item.img_h} px
                         </div>
@@ -236,10 +299,19 @@ export function Preview({
                         {colorFormats(item.color).map((f) => (
                             <div
                                 key={f.label}
+                                role="button"
+                                tabIndex={0}
                                 className="pv-colorrow"
                                 onClick={() => {
                                     api.copyText(f.value).catch(() => {});
                                     onToast(t('Copied {v}', { v: f.value }));
+                                }}
+                                onKeyDown={(ev) => {
+                                    if (ev.key === 'Enter' || ev.key === ' ') {
+                                        ev.preventDefault();
+                                        api.copyText(f.value).catch(() => {});
+                                        onToast(t('Copied {v}', { v: f.value }));
+                                    }
                                 }}
                             >
                                 <span className="muted">{f.label}</span>
@@ -250,13 +322,11 @@ export function Preview({
                 )}
                 {item.kind === 'link' && text && (
                     <div className="pv-link">
-                        <div className="link-host big">
-                            {highlightText(hostOf(text), query, searchMode, highlight)}
-                        </div>
+                        <div className="link-host big">{highlightText(hostOf(text), query, searchMode, highlight)}</div>
                         <div className="link-url wrap" dir="ltr">
                             {highlightText(text, query, searchMode, highlight)}
                         </div>
-                        <button className="btn" onClick={() => api.openItem(item.id)}>
+                        <button type="button" className="btn" onClick={() => api.openItem(item.id)}>
                             {t('Open in browser')}
                         </button>
                     </div>
@@ -276,7 +346,7 @@ export function Preview({
                                     </span>
                                 </div>
                             ))}
-                        <button className="btn" onClick={() => api.revealItem(item.id)}>
+                        <button type="button" className="btn" onClick={() => api.revealItem(item.id)}>
                             {t('Show in Explorer')}
                         </button>
                     </div>
@@ -284,6 +354,7 @@ export function Preview({
                 {editable && editing && (
                     <textarea
                         className="editor"
+                        aria-label={t('Edit (Ctrl+E)')}
                         dir="auto"
                         autoFocus
                         value={draft}
@@ -310,7 +381,7 @@ export function Preview({
                     text !== null &&
                     (item.kind === 'text' || item.kind === 'code') && (
                         <div className="codeview" dir="ltr">
-                            <div className="gutter">
+                            <div className="gutter" aria-hidden>
                                 {shown.map((_, i) => (
                                     <div key={i}>{i + 1}</div>
                                 ))}
@@ -328,48 +399,54 @@ export function Preview({
                         })}
                     </div>
                 )}
-
-                {showFormats && (
-                    <div className="formats" dir="ltr">
-                        <div className="muted small">{t('Stored clipboard formats')}</div>
-                        {(formats ?? []).map((f, i) => (
-                            <div key={i} className="fmt-row">
-                                <span className="mono">{f.name}</span>
-                                <span className="muted">{f.mime}</span>
-                                <span>{humanSize(f.size)}</span>
-                            </div>
-                        ))}
-                        {formats && formats.length === 0 && (
-                            <div className="muted small">{t('No raw formats stored.')}</div>
-                        )}
-                    </div>
-                )}
             </div>
+
+            {showFormats && (
+                <div className="formats" dir="ltr" role="region" aria-label={t('Stored clipboard formats')}>
+                    <div className="muted small">{t('Stored clipboard formats')}</div>
+                    {(formats ?? []).map((f, i) => (
+                        <div key={i} className="fmt-row">
+                            <span className="mono">{f.name}</span>
+                            <span className="muted">{f.mime}</span>
+                            <span>{humanSize(f.size)}</span>
+                        </div>
+                    ))}
+                    {formats && formats.length === 0 && (
+                        <div className="muted small">{t('No raw formats stored.')}</div>
+                    )}
+                </div>
+            )}
 
             <div className="preview-foot">
                 {editing ? (
                     <>
-                        <span className="muted small">{t('Ctrl+S save · Esc cancel')}</span>
+                        <span className="muted small preview-stats">{t('Ctrl+S save · Esc cancel')}</span>
                         {autoSaved && <span className="autosave-badge">✓ {t('Auto-saved')}</span>}
                         <span className="spacer" />
-                        <button className="btn" onClick={() => setEditing(false)}>
+                        <button type="button" className="btn" onClick={() => setEditing(false)}>
                             {t('Cancel')}
                         </button>
-                        <button className="btn primary" onClick={save}>
+                        <button type="button" className="btn primary" onClick={save}>
                             {t('Save')}
                         </button>
                     </>
                 ) : (
                     <>
-                        <span className="muted small">
-                            {item.chars ? t('{n} chars', { n: num(item.chars) }) : ''}
+                        <span className="muted small preview-stats">
+                            {item.chars
+                                ? `${t('{n} chars', { n: num(item.chars) })}${
+                                      contentBytes > 0 ? ` / ${humanSize(contentBytes)}` : ''
+                                  }`
+                                : contentBytes > 0
+                                  ? humanSize(contentBytes)
+                                  : ''}
                         </span>
                         {autoSaved && <span className="autosave-badge">✓ {t('Auto-saved')}</span>}
                         <span className="spacer" />
-                        <button className="btn" onClick={() => onPaste(item.id, 'plain')}>
+                        <button type="button" className="btn" onClick={() => onPaste(item.id, 'plain')}>
                             {item.kind === 'file' ? t('Paste file path') : t('Paste plain')}
                         </button>
-                        <button className="btn primary" onClick={() => onPaste(item.id, 'auto')}>
+                        <button type="button" className="btn primary" onClick={() => onPaste(item.id, 'auto')}>
                             {t('Paste')}
                         </button>
                     </>

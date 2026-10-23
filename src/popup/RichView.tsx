@@ -266,10 +266,8 @@ export const RichView = memo(function RichView({
         borderRadius: paper ? 6 : undefined,
         visibility: state === 'loading' ? 'hidden' : 'visible',
         minHeight: state === 'loading' ? 18 : undefined,
-        WebkitMaskImage:
-            !full && overflowing ? 'linear-gradient(to bottom, #000 78%, transparent 100%)' : undefined,
-        maskImage:
-            !full && overflowing ? 'linear-gradient(to bottom, #000 78%, transparent 100%)' : undefined,
+        WebkitMaskImage: !full && overflowing ? 'linear-gradient(to bottom, #000 78%, transparent 100%)' : undefined,
+        maskImage: !full && overflowing ? 'linear-gradient(to bottom, #000 78%, transparent 100%)' : undefined,
     };
     return <div ref={host} className="rich-host" style={style} dir="auto" />;
 });

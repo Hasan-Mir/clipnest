@@ -10,7 +10,7 @@
 use crate::classify::normalize;
 use crate::db::{row_from, ClipRow, ROW_COLS};
 use regex::Regex;
-use rusqlite::{params_from_iter, Connection};
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Debug)]
@@ -78,7 +78,15 @@ fn parse(query: &str, mode: &str) -> Result<Parsed, String> {
         return Ok(p);
     }
     if mode == "regex" {
-        let re = Regex::new(&format!("(?i){q}")).map_err(|e| format!("Invalid regular expression: {e}"))?;
+        let norm_q = normalize(q);
+        let pat = if norm_q != q.to_lowercase() && !norm_q.is_empty() {
+            format!("(?i)(?:{q})|(?:{norm_q})")
+        } else {
+            format!("(?i){q}")
+        };
+        let re = Regex::new(&pat)
+            .or_else(|_| Regex::new(&format!("(?i){q}")))
+            .map_err(|e| format!("Invalid regular expression: {e}"))?;
         p.regex = Some(re);
         return Ok(p);
     }
@@ -167,7 +175,7 @@ fn matches(p: &Parsed, row: &ClipRow, f: &Fields, typos: bool) -> bool {
         return false;
     }
     if let Some(re) = &p.regex {
-        return re.is_match(f.search) || re.is_match(f.title_n);
+        return re.is_match(f.search) || re.is_match(&row.preview) || re.is_match(f.title_n);
     }
     if let Some(fz) = &p.fuzzy {
         return subsequence(f.search, fz)
@@ -200,18 +208,45 @@ enum Tier {
     Typos,
 }
 
+fn category_cols(independent_pinning: bool) -> &'static str {
+    if independent_pinning {
+        "c.id,c.kind,c.title,c.preview,c.app_name,c.app_exe,c.tags,c.lang,c.img_w,c.img_h,c.color,c.chars,c.file_count,cc.board_id,cc.pinned,c.sensitive,c.has_rich,c.ts,c.created_at,(c.thumb IS NOT NULL)"
+    } else {
+        "c.id,c.kind,c.title,c.preview,c.app_name,c.app_exe,c.tags,c.lang,c.img_w,c.img_h,c.color,c.chars,c.file_count,cc.board_id,(CASE WHEN c.pinned<>0 OR cc.pinned<>0 THEN 1 ELSE 0 END),c.sensitive,c.has_rich,c.ts,c.created_at,(c.thumb IS NOT NULL)"
+    }
+}
+
+fn category_order(independent_pinning: bool) -> &'static str {
+    if independent_pinning {
+        "ORDER BY cc.pinned DESC, cc.sort_ts DESC"
+    } else {
+        "ORDER BY (CASE WHEN c.pinned<>0 OR cc.pinned<>0 THEN 1 ELSE 0 END) DESC, cc.sort_ts DESC"
+    }
+}
+
 fn scan(
     conn: &Connection,
     a: &ListArgs,
     p: &Parsed,
     tier: Tier,
     limit: usize,
+    independent_pinning: bool,
 ) -> Result<(Vec<ClipRow>, usize), String> {
-    let board_clause = if a.pinboard.is_some() { "WHERE pinboard_id=?1" } else { "WHERE ?1 IS NULL" };
-    let sql = format!("SELECT {ROW_COLS}, search FROM clips {board_clause} ORDER BY pinned DESC, sort_ts DESC");
+    let sql = if a.pinboard.is_some() {
+        format!(
+            "SELECT {}, c.search FROM clips c JOIN clip_categories cc ON cc.clip_id=c.id WHERE cc.board_id=?1 {}",
+            category_cols(independent_pinning),
+            category_order(independent_pinning)
+        )
+    } else {
+        format!("SELECT {ROW_COLS}, search FROM clips ORDER BY pinned DESC, sort_ts DESC")
+    };
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-    let bind: Vec<Option<i64>> = vec![a.pinboard];
-    let mut rows = stmt.query(params_from_iter(bind.iter())).map_err(|e| e.to_string())?;
+    let mut rows = if let Some(bid) = a.pinboard {
+        stmt.query(params![bid]).map_err(|e| e.to_string())?
+    } else {
+        stmt.query([]).map_err(|e| e.to_string())?
+    };
     let mut items = Vec::new();
     let mut total = 0usize;
     while let Some(r) = rows.next().map_err(|e| e.to_string())? {
@@ -237,24 +272,41 @@ fn scan(
 }
 
 pub fn list(conn: &Connection, a: &ListArgs) -> ListResult {
+    list_scoped(conn, a, true)
+}
+
+pub fn list_scoped(conn: &Connection, a: &ListArgs, independent_pinning: bool) -> ListResult {
     if a.query.trim().is_empty() {
         // Fast path: no filtering, plain SQL.
-        let (where_clause, bind): (&str, Vec<Option<i64>>) = match a.pinboard {
-            Some(id) => ("WHERE pinboard_id=?1", vec![Some(id)]),
-            None => ("WHERE ?1 IS NULL", vec![None]),
-        };
-        let total: usize = conn
-            .query_row(&format!("SELECT COUNT(*) FROM clips {where_clause}"), params_from_iter(bind.iter()), |r| {
-                r.get::<_, i64>(0)
-            })
-            .unwrap_or(0) as usize;
-        let sql = format!(
-            "SELECT {ROW_COLS} FROM clips {where_clause} ORDER BY pinned DESC, sort_ts DESC LIMIT {}",
-            a.limit.max(1)
-        );
+        if let Some(bid) = a.pinboard {
+            let total: usize = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM clip_categories cc JOIN clips c ON c.id=cc.clip_id WHERE cc.board_id=?1",
+                    params![bid],
+                    |r| r.get::<_, i64>(0),
+                )
+                .unwrap_or(0) as usize;
+            let sql = format!(
+                "SELECT {} FROM clips c JOIN clip_categories cc ON cc.clip_id=c.id WHERE cc.board_id=?1 {} LIMIT {}",
+                category_cols(independent_pinning),
+                category_order(independent_pinning),
+                a.limit.max(1)
+            );
+            let mut items = vec![];
+            if let Ok(mut st) = conn.prepare(&sql) {
+                if let Ok(rows) = st.query_map(params![bid], row_from) {
+                    items = rows.filter_map(|r| r.ok()).collect();
+                }
+            }
+            return ListResult { items, total, error: None };
+        }
+
+        let total: usize =
+            conn.query_row("SELECT COUNT(*) FROM clips", [], |r| r.get::<_, i64>(0)).unwrap_or(0) as usize;
+        let sql = format!("SELECT {ROW_COLS} FROM clips ORDER BY pinned DESC, sort_ts DESC LIMIT {}", a.limit.max(1));
         let mut items = vec![];
         if let Ok(mut st) = conn.prepare(&sql) {
-            if let Ok(rows) = st.query_map(params_from_iter(bind.iter()), row_from) {
+            if let Ok(rows) = st.query_map([], row_from) {
                 items = rows.filter_map(|r| r.ok()).collect();
             }
         }
@@ -265,14 +317,14 @@ pub fn list(conn: &Connection, a: &ListArgs) -> ListResult {
         Ok(p) => p,
         Err(e) => return ListResult { items: vec![], total: 0, error: Some(e) },
     };
-    let (mut items, mut total) = match scan(conn, a, &parsed, Tier::Exact, a.limit) {
+    let (mut items, mut total) = match scan(conn, a, &parsed, Tier::Exact, a.limit, independent_pinning) {
         Ok(r) => r,
         Err(e) => return ListResult { items: vec![], total: 0, error: Some(e) },
     };
     // Full-text results first; if there are few, add typo-tolerant (fuzzy) matches after them.
     if a.mode == "smart" && parsed.terms.iter().any(|t| max_typos(t.chars().count()) > 0) && total < 30 {
         let room = a.limit.saturating_sub(items.len());
-        if let Ok((more, n)) = scan(conn, a, &parsed, Tier::Typos, room) {
+        if let Ok((more, n)) = scan(conn, a, &parsed, Tier::Typos, room, independent_pinning) {
             items.extend(more);
             total += n;
         }

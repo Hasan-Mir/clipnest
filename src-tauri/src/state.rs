@@ -40,7 +40,7 @@ pub struct AutoRule {
     pub pattern: String,
     /// "ignore" | "to_board" | "tag" | "plain_only" | "trim" | "expire" | "run_action"
     pub action: String,
-    /// Target pinboard id for "to_board" (0 = none).
+    /// Target category/pinboard id for "to_board" (0 = none).
     pub board: i64,
     /// Tag text, minutes for "expire", or custom-action id for "run_action".
     pub value: String,
@@ -71,6 +71,7 @@ pub struct Settings {
     pub auto_save_edit: bool,
     pub basket_allow_cut: bool,
     pub active_pinboard: Option<i64>,
+    pub independent_pinning: bool,
     // Privacy
     pub ignore_apps: Vec<String>,
     pub ignore_confidential: bool,
@@ -92,6 +93,7 @@ pub struct Settings {
     pub remember_popup_size: bool,
     pub show_toolbar: bool,
     pub show_pinboard_counts: bool,
+    pub wrap_categories: bool,
     pub animations: bool,
     pub show_thumbnails: bool,
     pub thumbnail_size: String,
@@ -145,6 +147,7 @@ impl Default for Settings {
             auto_save_edit: true,
             basket_allow_cut: true,
             active_pinboard: None,
+            independent_pinning: true,
             ignore_apps: vec![
                 "keepass.exe".into(),
                 "keepassxc.exe".into(),
@@ -171,6 +174,7 @@ impl Default for Settings {
             remember_popup_size: true,
             show_toolbar: false,
             show_pinboard_counts: true,
+            wrap_categories: false,
             animations: true,
             show_thumbnails: true,
             thumbnail_size: "medium".into(),

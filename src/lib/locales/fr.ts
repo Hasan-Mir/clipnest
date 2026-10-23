@@ -22,20 +22,61 @@ export const fr: LocaleDefinition = {
         'System (Auto)': 'Système (Auto)',
         'Clip items font family': 'Police des éléments',
         'Maximum card height (px)': 'Hauteur maximale de carte (px)',
-        'Show item count on pinboard tabs': "Afficher le nombre d'éléments sur les onglets de tableaux",
+        Category: 'Catégorie',
+        Categories: 'Catégories',
+        '+ New Category': '+ Nouvelle catégorie',
+        'New Category…': 'Nouvelle catégorie…',
+        'New category': 'Nouvelle catégorie',
+        'Category name': 'Nom de la catégorie',
+        'Category settings': 'Paramètres de catégorie',
+        'Delete category': 'Supprimer la catégorie',
+        'Copy to': 'Copier vers',
+        'Copy to {name}': 'Copier vers {name}',
+        'Move to': 'Déplacer vers',
+        'Move to {name}': 'Déplacer vers {name}',
+        'Copied to {name}': 'Copié vers {name}',
+        'Moved to {name}': 'Déplacé vers {name}',
+        'Hold Ctrl to copy': 'Maintenez Ctrl pour copier',
+        'Remove from category': 'Retirer de la catégorie',
+        'Show item count on category tabs': "Afficher le nombre d'éléments sur les onglets de catégories",
+        'Displays a small badge with the number of items next to each category tab in the popup.':
+            "Affiche un petit badge indiquant le nombre d'éléments à côté de chaque onglet de catégorie.",
+        'Wrap category tabs onto multiple lines': 'Afficher les onglets de catégories sur plusieurs lignes',
+        'When enabled, category tabs wrap into multiple rows instead of scrolling horizontally (similar to VS Code wrapTabs).':
+            'Lorsque cette option est activée, les onglets de catégories passent sur plusieurs lignes au lieu de défiler horizontalement.',
+        'Independent pinning per category': 'Épinglage indépendant par catégorie',
+        'When enabled, pinning an item inside a category only pins it within that category without pinning it in the main Clipboard tab or other categories.':
+            "Lorsque cette option est activée, épingler un élément dans une catégorie ne l'épingle que dans celle-ci, sans l'épingler dans l'onglet principal Presse-papiers ni dans les autres catégories.",
+        'Also erase all categories and main clipboard':
+            'Effacer aussi toutes les catégories et le presse-papiers principal',
+        'Also erase pinned items and categories': 'Effacer aussi les éléments épinglés et catégories',
+        'This will erase items in the active category "{name}".':
+            'Cela effacera les éléments de la catégorie active « {name} ».',
+        'This will erase items in the main Clipboard tab (categories are kept unless you check the option below).':
+            "Cela effacera les éléments de l'onglet principal Presse-papiers (les catégories sont conservées sauf si vous cochez l'option ci-dessous).",
+        'Activate category (new copies go here)': 'Activer la catégorie (les nouvelles copies vont ici)',
+        'Deactivate category': 'Désactiver la catégorie',
+        'Active category (new copies go here)': 'Catégorie active (les nouvelles copies vont ici)',
+        'Categories & active tab': 'Catégories et onglet actif',
+        'Create colour-coded Categories with + or Ctrl+N and drag cards onto any tab (hold Ctrl while dragging to copy between categories). Right-click a Category tab and enable Active category so all new copies go straight into that tab automatically.':
+            'Créez des catégories colorées avec + ou Ctrl+N et faites glisser des cartes sur un onglet (maintenez Ctrl pour copier entre catégories). Faites un clic droit sur une catégorie et activez-la pour que toutes les nouvelles copies y soient enregistrées automatiquement.',
+        'Switch Clipboard ↔ categories': 'Basculer entre Presse-papiers et catégories',
+        'Delete (or remove from category)': 'Supprimer (ou retirer de la catégorie)',
+        'Open link/file · new category · settings': 'Ouvrir lien/fichier · nouvelle catégorie · paramètres',
+        'Show item count on pinboard tabs': "Afficher le nombre d'éléments sur les onglets de catégories",
         'Displays a small badge with the number of items next to each pinboard tab in the popup.':
-            "Affiche un petit badge indiquant le nombre d'éléments à côté de chaque onglet de tableau.",
+            "Affiche un petit badge indiquant le nombre d'éléments à côté de chaque onglet de catégorie.",
         'Also erase pinned items': 'Effacer aussi les éléments épinglés',
         'Also erase all pinboards and main clipboard':
-            'Effacer aussi tous les tableaux et le presse-papiers principal',
-        'Also erase pinned items and pinboards': 'Effacer aussi les éléments épinglés et tableaux',
+            'Effacer aussi toutes les catégories et le presse-papiers principal',
+        'Also erase pinned items and pinboards': 'Effacer aussi les éléments épinglés et catégories',
         'This will erase items in the active pinboard "{name}".':
-            'Cela effacera les éléments du tableau actif « {name} ».',
+            'Cela effacera les éléments de la catégorie active « {name} ».',
         'This will erase items in the main Clipboard tab (pinboards are kept unless you check the option below).':
-            "Cela effacera les éléments de l'onglet principal Presse-papiers (les tableaux sont conservés sauf si vous cochez l'option ci-dessous).",
-        'Activate pinboard (new copies go here)': 'Activer le tableau (les nouvelles copies vont ici)',
-        'Deactivate pinboard': 'Désactiver le tableau',
-        'Active pinboard (new copies go here)': 'Tableau actif (les nouvelles copies vont ici)',
+            "Cela effacera les éléments de l'onglet principal Presse-papiers (les catégories sont conservées sauf si vous cochez l'option ci-dessous).",
+        'Activate pinboard (new copies go here)': 'Activer la catégorie (les nouvelles copies vont ici)',
+        'Deactivate pinboard': 'Désactiver la catégorie',
+        'Active pinboard (new copies go here)': 'Catégorie active (les nouvelles copies vont ici)',
         Transform: 'Transformer',
         Actions: 'Actions',
         'Windows File Explorer context menu': "Menu contextuel de l'Explorateur Windows",
@@ -98,16 +139,15 @@ export const fr: LocaleDefinition = {
         '{n} item': '{n} élément',
         '{n} items': '{n} éléments',
         '{n} selected': '{n} sélectionné(s)',
-        // Help & Guide + About translations
         'Getting started': 'Prise en main',
         'Press Win+V (or your configured shortcut) anywhere in Windows to open ClipNest at your text cursor. Double-click a card or press Enter to paste it with original formatting, or press Shift+Enter to paste as plain text.':
             "Appuyez sur Win+V (ou votre raccourci configuré) n'importe où dans Windows pour ouvrir ClipNest près du curseur. Double-cliquez sur une carte ou appuyez sur Entrée pour coller avec le format d'origine, ou Maj+Entrée pour coller en texte brut.",
         'Smart search & filters': 'Recherche intelligente et filtres',
         'Type any word to search text, titles, app names, and tags with typo tolerance. Type image, code, link, file, or color to filter by item type (or wrap in quotes like "image" for literal text). Toggle .* for Regex or ~ for strict fuzzy matching.':
             'Tapez un mot pour rechercher dans le texte, les titres, les applications et les étiquettes avec tolérance aux fautes. Tapez image, code, link, file ou color pour filtrer par type (ou entre guillemets comme "image" pour le mot exact). Activez .* pour Regex ou ~ pour la recherche floue.',
-        'Pinboards & active tab': 'Tableaux (Pinboards) et onglet actif',
+        'Pinboards & active tab': 'Catégories et onglet actif',
         'Create colour-coded Pinboards with + or Ctrl+N and drag cards onto any tab. Right-click a Pinboard tab and enable Active pinboard so all new copies go straight into that tab automatically.':
-            'Créez des tableaux colorés avec + ou Ctrl+N et faites glisser des cartes sur un onglet. Faites un clic droit sur un tableau et activez-le pour que toutes les nouvelles copies y soient enregistrées automatiquement.',
+            'Créez des catégories colorées avec + ou Ctrl+N et faites glisser des cartes sur un onglet. Faites un clic droit sur une catégorie et activez-la pour que toutes les nouvelles copies y soient enregistrées automatiquement.',
         'Paste Queue & Drop Basket': 'File de collage et Panier de fichiers',
         'Press Ctrl+Alt+Q to open the floating Queue / Drop Basket window. In Queue mode, copy multiple items and press Ctrl+V repeatedly to paste them in FIFO or LIFO order. In Drop Basket mode, collect files and images from different folders and paste or move them all at once.':
             'Appuyez sur Ctrl+Alt+Q pour ouvrir la fenêtre flottante File / Panier. En mode File, copiez plusieurs éléments et appuyez sur Ctrl+V à répétition pour les coller dans l’ordre FIFO ou LIFO. En mode Panier, rassemblez des fichiers et images de différents dossiers et collez-les ou déplacez-les en une seule fois.',
@@ -118,17 +158,16 @@ export const fr: LocaleDefinition = {
             'Faites un clic droit sur une carte texte et choisissez Transformer pour modifier la casse, formater du JSON, encoder en Base64/URL ou normaliser les caractères et chiffres.',
         'Inside the popup': 'Dans la fenêtre principale',
         'Select / extend selection / jump': 'Sélectionner / étendre la sélection / sauter',
-        'Switch Clipboard ↔ pinboards': 'Basculer entre Presse-papiers et tableaux',
+        'Switch Clipboard ↔ pinboards': 'Basculer entre Presse-papiers et catégories',
         'Paste · plain text · keep formatting': 'Coller · texte brut · garder le formatage',
         'Quick-paste a visible card': 'Collage rapide d’une carte visible',
         'Move the card up / down': 'Déplacer la carte vers le haut / bas',
         'Preview (empty search)': 'Aperçu (recherche vide)',
         'Copy only': 'Copier uniquement',
-        'Delete (or unpin inside a pinboard)': 'Supprimer (ou retirer du tableau)',
+        'Delete (or unpin inside a pinboard)': 'Supprimer (ou retirer de la catégorie)',
         'Rename · tags · pin on top': 'Renommer · étiquettes · épingler en haut',
-        'Edit · formats inspector · merge selected':
-            'Modifier · inspecteur de formats · fusionner la sélection',
-        'Open link/file · new pinboard · settings': 'Ouvrir lien/fichier · nouveau tableau · paramètres',
+        'Edit · formats inspector · merge selected': 'Modifier · inspecteur de formats · fusionner la sélection',
+        'Open link/file · new pinboard · settings': 'Ouvrir lien/fichier · nouvelle catégorie · paramètres',
         'Clear search, then close': 'Effacer la recherche, puis fermer',
         'Fast, private clipboard manager & file collector for Windows 10 and 11.':
             'Gestionnaire de presse-papiers et collecteur de fichiers rapide et privé pour Windows 10 et 11.',
@@ -137,5 +176,6 @@ export const fr: LocaleDefinition = {
             'Toutes les données du presse-papiers, icônes et sauvegardes sont stockées uniquement sur votre appareil, sans synchronisation cloud ni télémétrie.',
         'Data folder': 'Dossier de données',
         'Open in Explorer': "Ouvrir dans l'Explorateur",
+        'Show in Explorer': "Afficher dans l'Explorateur",
     },
 };

@@ -40,11 +40,7 @@ function Thumb({ id, w, h }: { id: number; w: number | null; h: number | null })
     }
     return (
         <div className="thumbwrap">
-            {src ? (
-                <img className="thumb" src={src} alt="" draggable={false} />
-            ) : (
-                <div className="thumb ph" />
-            )}
+            {src ? <img className="thumb" src={src} alt="" draggable={false} /> : <div className="thumb ph" />}
             {w && h ? (
                 <div className="dims">
                     {w}×{h}
@@ -89,7 +85,7 @@ function AppIcon({ exe, name, rev }: { exe: string; name: string; rev: number })
         return <img className="appicon" src={src} alt="" draggable={false} />;
     }
     return (
-        <span className="appdot" style={{ background: appColor(exe || name) }}>
+        <span className="appdot" style={{ background: appColor(exe || name) }} aria-hidden>
             {(name || '?').charAt(0).toUpperCase()}
         </span>
     );
@@ -177,12 +173,8 @@ function Body({
         case 'link':
             return (
                 <>
-                    <div className="link-host">
-                        {highlightText(hostOf(item.preview), query, searchMode, highlight)}
-                    </div>
-                    <div className="link-url">
-                        {highlightText(item.preview, query, searchMode, highlight)}
-                    </div>
+                    <div className="link-host">{highlightText(hostOf(item.preview), query, searchMode, highlight)}</div>
+                    <div className="link-url">{highlightText(item.preview, query, searchMode, highlight)}</div>
                 </>
             );
         case 'image':
@@ -238,15 +230,7 @@ function Body({
                     />
                 );
             }
-            return (
-                <PlainText
-                    item={item}
-                    lines={lines}
-                    query={query}
-                    searchMode={searchMode}
-                    highlight={highlight}
-                />
-            );
+            return <PlainText item={item} lines={lines} query={query} searchMode={searchMode} highlight={highlight} />;
     }
 }
 
@@ -267,9 +251,26 @@ function CardImpl(p: Props) {
         dragging,
         drop,
     } = p;
+
+    const srSummary = [
+        item.title ? item.title : '',
+        t(item.kind),
+        item.sensitive ? t('Detect sensitive data') : item.preview.replace(/\s+/g, ' ').slice(0, 140),
+        item.app_name || t('Unknown'),
+        relTime(item.ts, now, lang),
+        item.pinned ? t('Pin on top') : '',
+        item.tags ? `#${item.tags}` : '',
+    ]
+        .filter(Boolean)
+        .join(' · ');
+
     return (
         <div
             id={`card-${item.id}`}
+            role="option"
+            tabIndex={selected ? 0 : -1}
+            aria-selected={selected || multi}
+            aria-label={srSummary}
             className={`card${selected ? ' sel' : ''}${multi ? ' multi' : ''}${item.sensitive ? ' sensitive' : ''}${
                 dragging ? ' dragging' : ''
             }${drop ? ` drop-${drop}` : ''}`}
@@ -282,7 +283,7 @@ function CardImpl(p: Props) {
             draggable
             onDragStart={(e) => {
                 e.dataTransfer.setData('text/clip-id', String(item.id));
-                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.effectAllowed = 'copyMove';
                 p.onDragStart(item, e);
             }}
             onDragOver={(e) => {
@@ -304,7 +305,7 @@ function CardImpl(p: Props) {
                 </span>
                 <span className="muted">· {relTime(item.ts, now, lang)}</span>
                 {item.pinned && (
-                    <span className="pin" data-tip={t('Pin on top')}>
+                    <span className="pin" data-tip={t('Pin on top')} aria-label={t('Pin on top')}>
                         <Icon name="pin" size={11} />
                     </span>
                 )}
@@ -316,7 +317,10 @@ function CardImpl(p: Props) {
                 <span className="spacer" />
                 {badge !== null && <span className="badge">Ctrl+{badge}</span>}
                 <button
+                    type="button"
                     className="more"
+                    aria-label={t('More')}
+                    aria-haspopup="menu"
                     data-tip={t('More')}
                     onClick={(e) => {
                         e.stopPropagation();

@@ -1,0 +1,58 @@
+{
+    "name": "@seymi/clipnest-cli",
+    "version": "0.2.0",
+    "description": "ClipNest CLI — Fast, pipeline-friendly command-line interface and automation tool for the ClipNest clipboard manager (clipnest / clipn).",
+    "keywords": [
+        "clipnest",
+        "clipn",
+        "clipboard",
+        "clipboard-manager",
+        "copyq",
+        "cli",
+        "automation",
+        "windows",
+        "tauri"
+    ],
+    "license": "MIT",
+    "author": "SeyMi",
+    "maintainers": [
+        "SeyMi"
+    ],
+    "type": "module",
+    "bin": {
+        "clipnest": "dist/index.js",
+        "clipn": "dist/index.js"
+    },
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "files": [
+        "dist",
+        "bin",
+        "scripts",
+        "README.md"
+    ],
+    "scripts": {
+        "build": "tsc",
+        "typecheck": "tsc --noEmit --skipLibCheck",
+        "test": "node --test tests/run-cli-tests.mjs",
+        "postinstall": "node scripts/install-binary.cjs",
+        "start": "node dist/index.js"
+    },
+    "engines": {
+        "node": ">=18"
+    },
+    "publishConfig": {
+        "access": "public"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/Hasan-Mir/clipnest.git"
+    },
+    "bugs": {
+        "url": "https://github.com/Hasan-Mir/clipnest/issues"
+    },
+    "homepage": "https://github.com/Hasan-Mir/clipnest#readme",
+    "devDependencies": {
+        "@types/node": "^22.20.5"
+    }
+}

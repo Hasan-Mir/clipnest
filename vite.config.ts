@@ -12,4 +12,8 @@ export default defineConfig({
         },
     },
     build: { target: 'es2021', chunkSizeWarningLimit: 1200 },
-});
+    test: {
+        include: ['src/**/*.{test,spec}.{ts,tsx}'],
+        exclude: ['packages/**', 'node_modules/**', 'dist/**'],
+    },
+} as Record<string, unknown>);

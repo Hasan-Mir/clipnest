@@ -275,12 +275,7 @@ export function cleanFtsQuery(query: string): string {
  * Slices `text` into plain strings and `<mark className="shl">` nodes without breaking
  * Persian or Arabic cursive letter joining.
  */
-export function highlightText(
-    text: string,
-    query: string,
-    mode: SearchMode,
-    enabled = true
-): React.ReactNode {
+export function highlightText(text: string, query: string, mode: SearchMode, enabled = true): React.ReactNode {
     if (!enabled || !text || !query.trim()) {
         return text;
     }
@@ -341,10 +336,7 @@ export function highlightDomElement(root: Node, query: string, mode: SearchMode,
     let current: Node | null;
     while ((current = walker.nextNode()) !== null) {
         const parent = current.parentElement;
-        if (
-            parent &&
-            (parent.tagName === 'STYLE' || parent.tagName === 'SCRIPT' || parent.tagName === 'MARK')
-        ) {
+        if (parent && (parent.tagName === 'STYLE' || parent.tagName === 'SCRIPT' || parent.tagName === 'MARK')) {
             continue;
         }
         if (current.nodeValue && current.nodeValue.trim().length > 0) {

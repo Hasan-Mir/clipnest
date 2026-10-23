@@ -3,10 +3,14 @@
     "private": true,
     "version": "0.2.0",
     "type": "module",
+    "workspaces": [
+        "packages/*"
+    ],
     "scripts": {
         "dev": "vite",
-        "build": "vite build",
-        "typecheck": "tsc --noEmit",
+        "build": "vite build && npm run build:cli",
+        "build:cli": "npm run build --workspace @seymi/clipnest-cli",
+        "typecheck": "tsc --noEmit && npm run typecheck --workspace @seymi/clipnest-cli",
         "test": "vitest run",
         "test:watch": "vitest",
         "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
@@ -15,8 +19,8 @@
         "format:check": "prettier --check \"**/*.{ts,tsx,css,json}\" && cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
         "prepare": "husky",
         "tauri": "tauri dev",
-        "tauri:build": "tauri build && node scripts/build-portable.mjs",
-        "tauri:portable": "tauri build --no-bundle && node scripts/build-portable.mjs"
+        "tauri:build": "tauri build && cargo build --release --manifest-path src-tauri/Cargo.toml --bin clipnest-cli && node scripts/build-portable.mjs",
+        "tauri:portable": "tauri build --no-bundle && cargo build --release --manifest-path src-tauri/Cargo.toml --bin clipnest-cli && node scripts/build-portable.mjs"
     },
     "dependencies": {
         "@floating-ui/dom": "^1.8.0",
@@ -29,6 +33,7 @@
     },
     "devDependencies": {
         "@tauri-apps/cli": "^2.12.4",
+        "@types/node": "^22.10.0",
         "@types/react": "^18.3.3",
         "@types/react-dom": "^18.3.0",
         "@vitejs/plugin-react": "^6.1.2",

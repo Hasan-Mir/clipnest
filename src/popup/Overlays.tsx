@@ -1,36 +1,103 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { autoUpdate, flip, offset, shift, size, useFloating } from '@floating-ui/react';
 import { Pinboard } from '../lib/api';
 import { CustomSelect } from '../lib/CustomSelect';
+import { Icon, IconName } from '../lib/icons';
 import { t } from '../lib/i18n';
 
 // ───────────── context menu (powered by @floating-ui/react) ─────────────
+export interface MenuChip {
+    label: string;
+    color?: string;
+    onClick: (ctrlKey: boolean) => void;
+}
+
 export interface MenuEntry {
     label?: string;
     hint?: string;
-    onClick?: () => void;
+    icon?: IconName | string;
+    onClick?: (ctrlKey: boolean) => void;
     sep?: boolean;
     header?: boolean;
-    chips?: { label: string; color?: string; onClick: () => void }[];
+    /** On the main Clipboard tab: always shows Copy icon + "Copy to" */
+    staticCategoryCopy?: boolean;
+    /** Inside a Category tab: shows Right-Arrow + "Move to" by default, or Copy icon + accent "Copy" + "to" while Ctrl is held */
+    dynamicCategoryMoveCopy?: boolean;
+    chips?: MenuChip[];
     submenu?: MenuEntry[];
     danger?: boolean;
+}
+
+function renderAccentCopyHeader() {
+    const full = t('Copy to');
+    const copyWord = t('Copy');
+    if (full.toLowerCase().startsWith(copyWord.toLowerCase())) {
+        const rest = full.slice(copyWord.length);
+        return (
+            <span>
+                <span className="menu-copy-accent">{full.slice(0, copyWord.length)}</span>
+                {rest}
+            </span>
+        );
+    }
+    return <span className="menu-copy-accent">{full}</span>;
 }
 
 export function ContextMenu({
     x,
     y,
     entries,
+    initialCtrl = false,
     onClose,
 }: {
     x: number;
     y: number;
     entries: MenuEntry[];
+    initialCtrl?: boolean;
     onClose: () => void;
 }) {
     const [openSub, setOpenSub] = useState<number | null>(null);
     const [subAnchor, setSubAnchor] = useState<DOMRect | null>(null);
     const [parentRect, setParentRect] = useState<DOMRect | null>(null);
+    const [ctrlHeld, setCtrlHeld] = useState(initialCtrl);
+    const [focusIdx, setFocusIdx] = useState<number>(0);
     const menuElRef = useRef<HTMLDivElement | null>(null);
+
+    const actionableIndices = useMemo(() => {
+        const out: number[] = [];
+        entries.forEach((e, idx) => {
+            if (!e.sep && !e.header) {
+                out.push(idx);
+            }
+        });
+        return out;
+    }, [entries]);
+
+    useEffect(() => {
+        setCtrlHeld(initialCtrl);
+    }, [initialCtrl]);
+
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Control' || e.ctrlKey || e.metaKey) {
+                setCtrlHeld(true);
+            }
+        };
+        const onKeyUp = (e: KeyboardEvent) => {
+            if (e.key === 'Control' || (!e.ctrlKey && !e.metaKey)) {
+                setCtrlHeld(false);
+            }
+        };
+        const onBlur = () => setCtrlHeld(false);
+        window.addEventListener('keydown', onKeyDown, true);
+        window.addEventListener('keyup', onKeyUp, true);
+        window.addEventListener('blur', onBlur);
+        return () => {
+            window.removeEventListener('keydown', onKeyDown, true);
+            window.removeEventListener('keyup', onKeyUp, true);
+            window.removeEventListener('blur', onBlur);
+        };
+    }, []);
 
     const { refs, floatingStyles, isPositioned } = useFloating({
         open: true,
@@ -59,6 +126,7 @@ export function ContextMenu({
 
     useLayoutEffect(() => {
         setOpenSub(null);
+        setFocusIdx(actionableIndices[0] ?? -1);
         refs.setPositionReference({
             getBoundingClientRect() {
                 return {
@@ -73,7 +141,98 @@ export function ContextMenu({
                 };
             },
         });
-    }, [x, y, refs]);
+    }, [x, y, refs, actionableIndices]);
+
+    useEffect(() => {
+        if (isPositioned) {
+            menuElRef.current?.focus();
+        }
+    }, [isPositioned]);
+
+    const handleMenuKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            if (openSub !== null) {
+                setOpenSub(null);
+            } else {
+                onClose();
+            }
+            return;
+        }
+        if (!actionableIndices.length) {
+            return;
+        }
+        const curPos = actionableIndices.indexOf(focusIdx);
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            e.stopPropagation();
+            const next = actionableIndices[(curPos + 1) % actionableIndices.length];
+            setFocusIdx(next);
+            setOpenSub(null);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            e.stopPropagation();
+            const prev = actionableIndices[(curPos - 1 + actionableIndices.length) % actionableIndices.length];
+            setFocusIdx(prev);
+            setOpenSub(null);
+        } else if (e.key === 'Home') {
+            e.preventDefault();
+            e.stopPropagation();
+            setFocusIdx(actionableIndices[0]);
+        } else if (e.key === 'End') {
+            e.preventDefault();
+            e.stopPropagation();
+            setFocusIdx(actionableIndices[actionableIndices.length - 1]);
+        } else if (e.key === 'ArrowRight') {
+            const entry = entries[focusIdx];
+            if (entry?.submenu) {
+                e.preventDefault();
+                e.stopPropagation();
+                const itemEl = menuElRef.current?.querySelector(`[data-menu-idx="${focusIdx}"]`);
+                if (itemEl) {
+                    setOpenSub(focusIdx);
+                    setSubAnchor(itemEl.getBoundingClientRect());
+                    if (menuElRef.current) {
+                        setParentRect(menuElRef.current.getBoundingClientRect());
+                    }
+                }
+            }
+        } else if (e.key === 'ArrowLeft') {
+            if (openSub !== null) {
+                e.preventDefault();
+                e.stopPropagation();
+                setOpenSub(null);
+            }
+        } else if (e.key === 'Enter' || e.key === ' ') {
+            const entry = entries[focusIdx];
+            if (!entry) {
+                return;
+            }
+            if (entry.submenu) {
+                e.preventDefault();
+                e.stopPropagation();
+                const itemEl = menuElRef.current?.querySelector(`[data-menu-idx="${focusIdx}"]`);
+                if (itemEl) {
+                    setOpenSub(focusIdx);
+                    setSubAnchor(itemEl.getBoundingClientRect());
+                    if (menuElRef.current) {
+                        setParentRect(menuElRef.current.getBoundingClientRect());
+                    }
+                }
+            } else if (entry.onClick) {
+                e.preventDefault();
+                e.stopPropagation();
+                entry.onClick(e.ctrlKey || e.metaKey || ctrlHeld);
+                onClose();
+            } else if (entry.chips && entry.chips.length > 0) {
+                e.preventDefault();
+                e.stopPropagation();
+                entry.chips[0].onClick(e.ctrlKey || e.metaKey || ctrlHeld);
+                onClose();
+            }
+        }
+    };
 
     return (
         <>
@@ -87,6 +246,9 @@ export function ContextMenu({
             />
             <div
                 key={`${x}-${y}`}
+                role="menu"
+                aria-label={t('Actions')}
+                tabIndex={-1}
                 className={`menu${isPositioned ? ' menu-ready' : ''}`}
                 ref={(node) => {
                     menuElRef.current = node;
@@ -96,6 +258,7 @@ export function ContextMenu({
                     ...floatingStyles,
                     visibility: isPositioned ? 'visible' : 'hidden',
                 }}
+                onKeyDown={handleMenuKeyDown}
                 onScroll={() => {
                     if (openSub !== null) {
                         setOpenSub(null);
@@ -104,25 +267,54 @@ export function ContextMenu({
             >
                 {entries.map((e, i) => {
                     if (e.sep) {
-                        return <div key={i} className="menu-sep" />;
+                        return <div key={i} role="separator" className="menu-sep" />;
                     }
                     if (e.header) {
+                        if (e.staticCategoryCopy) {
+                            return (
+                                <div key={i} className="menu-head menu-head-icon">
+                                    <Icon name="copy" size={12} />
+                                    <span>{t('Copy to')}</span>
+                                </div>
+                            );
+                        }
+                        if (e.dynamicCategoryMoveCopy) {
+                            return (
+                                <div
+                                    key={i}
+                                    className={`menu-head menu-head-icon${ctrlHeld ? ' copy-mode' : ''}`}
+                                    title={t('Hold Ctrl to copy instead of move')}
+                                >
+                                    <Icon name={ctrlHeld ? 'copy' : 'arrowRight'} size={12} />
+                                    {ctrlHeld ? renderAccentCopyHeader() : <span>{t('Move to')}</span>}
+                                    <span className="menu-head-hint">Ctrl</span>
+                                </div>
+                            );
+                        }
                         return (
                             <div key={i} className="menu-head">
-                                {e.label}
+                                {e.icon && <Icon name={e.icon} size={12} />}
+                                <span>{e.label}</span>
                             </div>
                         );
                     }
                     if (e.chips) {
                         return (
-                            <div key={i} className="menu-chips">
+                            <div
+                                key={i}
+                                data-menu-idx={i}
+                                role="group"
+                                aria-label={t('Categories')}
+                                className={`menu-chips${focusIdx === i ? ' focused' : ''}`}
+                            >
                                 {e.chips.map((c, j) => (
                                     <button
                                         key={j}
                                         type="button"
+                                        role="menuitem"
                                         className="chip"
-                                        onClick={() => {
-                                            c.onClick();
+                                        onClick={(ev) => {
+                                            c.onClick(ev.ctrlKey || ev.metaKey || ctrlHeld);
                                             onClose();
                                         }}
                                     >
@@ -137,8 +329,13 @@ export function ContextMenu({
                         return (
                             <div
                                 key={i}
-                                className="menu-item has-sub"
+                                data-menu-idx={i}
+                                role="menuitem"
+                                aria-haspopup="menu"
+                                aria-expanded={openSub === i}
+                                className={`menu-item has-sub${focusIdx === i ? ' focused' : ''}`}
                                 onMouseEnter={(ev) => {
+                                    setFocusIdx(i);
                                     setOpenSub(i);
                                     setSubAnchor(ev.currentTarget.getBoundingClientRect());
                                     if (menuElRef.current) {
@@ -146,13 +343,19 @@ export function ContextMenu({
                                     }
                                 }}
                             >
-                                <span className="menu-item-label">{e.label}</span>
-                                <span className="hint">▸</span>
+                                <span className="menu-item-label">
+                                    {e.icon && <Icon name={e.icon} size={13} />}
+                                    <span>{e.label}</span>
+                                </span>
+                                <span className="hint" aria-hidden>
+                                    ▸
+                                </span>
                                 {openSub === i && subAnchor && (
                                     <SubMenu
                                         anchor={subAnchor}
                                         parentRect={parentRect ?? subAnchor}
                                         entries={e.submenu}
+                                        ctrlHeld={ctrlHeld}
                                         onPick={onClose}
                                     />
                                 )}
@@ -162,14 +365,23 @@ export function ContextMenu({
                     return (
                         <div
                             key={i}
-                            className={`menu-item${e.danger ? ' danger' : ''}`}
-                            onMouseEnter={() => setOpenSub(null)}
-                            onClick={() => {
-                                e.onClick?.();
+                            data-menu-idx={i}
+                            role="menuitem"
+                            tabIndex={-1}
+                            className={`menu-item${e.danger ? ' danger' : ''}${focusIdx === i ? ' focused' : ''}`}
+                            onMouseEnter={() => {
+                                setFocusIdx(i);
+                                setOpenSub(null);
+                            }}
+                            onClick={(ev) => {
+                                e.onClick?.(ev.ctrlKey || ev.metaKey || ctrlHeld);
                                 onClose();
                             }}
                         >
-                            <span className="menu-item-label">{e.label}</span>
+                            <span className="menu-item-label">
+                                {e.icon && <Icon name={e.icon} size={13} />}
+                                <span>{e.label}</span>
+                            </span>
                             {e.hint && <span className="hint">{e.hint}</span>}
                         </div>
                     );
@@ -188,11 +400,13 @@ function SubMenu({
     anchor,
     parentRect,
     entries,
+    ctrlHeld,
     onPick,
 }: {
     anchor: DOMRect;
     parentRect: DOMRect;
     entries: MenuEntry[];
+    ctrlHeld: boolean;
     onPick: () => void;
 }) {
     const spaceRight = window.innerWidth - parentRect.right - 6;
@@ -251,6 +465,7 @@ function SubMenu({
 
     return (
         <div
+            role="menu"
             className={`menu sub${isPositioned ? ' menu-ready' : ''}`}
             ref={refs.setFloating}
             style={{
@@ -261,10 +476,12 @@ function SubMenu({
             {entries.map((s, j) => (
                 <div
                     key={j}
+                    role="menuitem"
+                    tabIndex={-1}
                     className="menu-item"
                     onClick={(ev) => {
                         ev.stopPropagation();
-                        s.onClick?.();
+                        s.onClick?.(ev.ctrlKey || ev.metaKey || ctrlHeld);
                         onPick();
                     }}
                 >
@@ -284,7 +501,7 @@ export interface PromptState {
     confirm?: boolean; // confirm-only (no text field)
     checkLabel?: string; // primary checkbox (e.g. "Also erase pinned items")
     defaultChecked?: boolean;
-    checkLabel2?: string; // secondary checkbox (e.g. "Also erase all pinboards and main clipboard")
+    checkLabel2?: string; // secondary checkbox (e.g. "Also erase all categories and main clipboard")
     defaultChecked2?: boolean;
     okLabel?: string;
     danger?: boolean;
@@ -313,6 +530,9 @@ export function Prompt({ p, onClose }: { p: PromptState; onClose: () => void }) 
         <div className="overlay" onMouseDown={onClose}>
             <div
                 className="dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-label={p.title}
                 ref={dialogRef}
                 tabIndex={-1}
                 onMouseDown={(e) => e.stopPropagation()}
@@ -322,7 +542,7 @@ export function Prompt({ p, onClose }: { p: PromptState; onClose: () => void }) 
                         e.preventDefault();
                         onClose();
                     }
-                    if (e.key === 'Enter') {
+                    if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'BUTTON') {
                         e.preventDefault();
                         submit();
                     }
@@ -333,6 +553,7 @@ export function Prompt({ p, onClose }: { p: PromptState; onClose: () => void }) 
                 {!p.confirm && (
                     <input
                         ref={ref}
+                        aria-label={p.title}
                         value={v}
                         placeholder={p.placeholder}
                         onChange={(e) => setV(e.target.value)}
@@ -340,21 +561,13 @@ export function Prompt({ p, onClose }: { p: PromptState; onClose: () => void }) 
                 )}
                 {p.checkLabel && (
                     <label className="dialog-check">
-                        <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={(e) => setChecked(e.target.checked)}
-                        />
+                        <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} />
                         <span>{p.checkLabel}</span>
                     </label>
                 )}
                 {p.checkLabel2 && (
                     <label className="dialog-check">
-                        <input
-                            type="checkbox"
-                            checked={checked2}
-                            onChange={(e) => setChecked2(e.target.checked)}
-                        />
+                        <input type="checkbox" checked={checked2} onChange={(e) => setChecked2(e.target.checked)} />
                         <span>{p.checkLabel2}</span>
                     </label>
                 )}
@@ -376,17 +589,8 @@ export function Prompt({ p, onClose }: { p: PromptState; onClose: () => void }) 
     );
 }
 
-// ───────────── pinboard settings dialog (per-tab settings) ─────────────
-export const BOARD_COLORS = [
-    '#4f8cff',
-    '#34c759',
-    '#ff9f0a',
-    '#ff453a',
-    '#bf5af2',
-    '#64d2ff',
-    '#ffd60a',
-    '#8e8e93',
-];
+// ───────────── category settings dialog (per-tab settings) ─────────────
+export const BOARD_COLORS = ['#4f8cff', '#34c759', '#ff9f0a', '#ff453a', '#bf5af2', '#64d2ff', '#ffd60a', '#8e8e93'];
 
 export function BoardDialog({
     board,
@@ -424,6 +628,9 @@ export function BoardDialog({
         <div className="overlay" onMouseDown={onClose}>
             <div
                 className="dialog"
+                role="dialog"
+                aria-modal="true"
+                aria-label={t('Category settings')}
                 ref={dialogRef}
                 tabIndex={-1}
                 onMouseDown={(e) => e.stopPropagation()}
@@ -433,24 +640,27 @@ export function BoardDialog({
                         e.preventDefault();
                         onClose();
                     }
-                    if (e.key === 'Enter') {
+                    if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'BUTTON') {
                         e.preventDefault();
                         save();
                     }
                 }}
             >
-                <div className="dialog-title">{t('Pinboard settings')}</div>
+                <div className="dialog-title">{t('Category settings')}</div>
                 <label className="field">
                     <span>{t('Name')}</span>
                     <input autoFocus value={name} onChange={(e) => setName(e.target.value)} />
                 </label>
                 <div className="field">
                     <span>{t('Color')}</span>
-                    <div className="swatches">
+                    <div className="swatches" role="radiogroup" aria-label={t('Color')}>
                         {BOARD_COLORS.map((c) => (
                             <button
                                 key={c}
                                 type="button"
+                                role="radio"
+                                aria-checked={c === color}
+                                aria-label={c}
                                 className={`sw${c === color ? ' on' : ''}`}
                                 style={{ background: c }}
                                 onClick={() => setColor(c)}
@@ -460,11 +670,9 @@ export function BoardDialog({
                 </div>
                 <div className="field field-row">
                     <div>
-                        <div>{t('Active pinboard (new copies go here)')}</div>
+                        <div>{t('Active category (new copies go here)')}</div>
                         <div className="muted small">
-                            {t(
-                                'New copies are automatically placed in this pinboard and the popup opens on this tab'
-                            )}
+                            {t('New copies are automatically placed in this category and the popup opens on this tab')}
                         </div>
                     </div>
                     <button
@@ -472,6 +680,7 @@ export function BoardDialog({
                         className={`switch${active ? ' on' : ''}`}
                         role="switch"
                         aria-checked={active}
+                        aria-label={t('Active category (new copies go here)')}
                         onClick={() => setActive((v) => !v)}
                     >
                         <span />

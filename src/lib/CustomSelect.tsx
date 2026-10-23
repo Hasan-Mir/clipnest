@@ -148,9 +148,7 @@ export function CustomSelect<T extends string | number>({
         } else if (e.key === 'ArrowUp') {
             e.preventDefault();
             e.stopPropagation();
-            setFocusIdx(
-                (i) => (i - 1 + Math.max(1, filteredOptions.length)) % Math.max(1, filteredOptions.length)
-            );
+            setFocusIdx((i) => (i - 1 + Math.max(1, filteredOptions.length)) % Math.max(1, filteredOptions.length));
         } else if (e.key === 'Enter' || (!searchable && e.key === ' ')) {
             e.preventDefault();
             e.stopPropagation();
@@ -177,9 +175,7 @@ export function CustomSelect<T extends string | number>({
                 <span
                     className="cselect-label"
                     style={
-                        selectedOpt?.fontFamily
-                            ? { fontFamily: `"${selectedOpt.fontFamily}", sans-serif` }
-                            : undefined
+                        selectedOpt?.fontFamily ? { fontFamily: `"${selectedOpt.fontFamily}", sans-serif` } : undefined
                     }
                 >
                     {selectedLabel}
@@ -230,9 +226,7 @@ export function CustomSelect<T extends string | number>({
                                         isSel ? ' sel' : ''
                                     }${isFocus ? ' focus' : ''}`}
                                     style={
-                                        opt.fontFamily
-                                            ? { fontFamily: `"${opt.fontFamily}", sans-serif` }
-                                            : undefined
+                                        opt.fontFamily ? { fontFamily: `"${opt.fontFamily}", sans-serif` } : undefined
                                     }
                                     onMouseEnter={() => setFocusIdx(idx)}
                                     onMouseDown={(e) => {

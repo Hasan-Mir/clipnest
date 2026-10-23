@@ -6,7 +6,7 @@ use crate::search::{self, ListArgs, ListResult};
 use crate::state::{AppState, Settings};
 use base64::Engine;
 use serde::Serialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -30,8 +30,9 @@ pub struct ShortcutConflict {
 
 #[tauri::command]
 pub async fn list_items(state: State<'_, AppState>, args: ListArgs) -> Res<ListResult> {
+    let indep = state.settings.read().independent_pinning;
     let conn = state.db.lock();
-    Ok(search::list(&conn, &args))
+    Ok(search::list_scoped(&conn, &args, indep))
 }
 
 #[tauri::command]
@@ -110,25 +111,58 @@ pub async fn set_tags(app: AppHandle, state: State<'_, AppState>, id: i64, tags:
 }
 
 #[tauri::command]
-pub async fn set_pinboard(app: AppHandle, state: State<'_, AppState>, ids: Vec<i64>, board: Option<i64>) -> Res<()> {
-    db::set_pinboard(&state.db.lock(), &ids, board)?;
+pub async fn set_pinboard(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<i64>,
+    board: Option<i64>,
+    source_board: Option<i64>,
+    copy: Option<bool>,
+) -> Res<()> {
+    db::assign_category(&state.db.lock(), &ids, board, source_board, copy.unwrap_or(false))?;
     changed(&app);
     Ok(())
 }
 
 #[tauri::command]
-pub async fn set_pinned(app: AppHandle, state: State<'_, AppState>, ids: Vec<i64>, pinned: bool) -> Res<()> {
-    db::set_pinned(&state.db.lock(), &ids, pinned)?;
+pub async fn set_pinned(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<i64>,
+    pinned: bool,
+    board: Option<i64>,
+) -> Res<()> {
+    let indep = state.settings.read().independent_pinning;
+    db::set_pinned_scoped(&state.db.lock(), &ids, pinned, board, indep)?;
     changed(&app);
     Ok(())
 }
 
-fn store_text(app: &AppHandle, state: &AppState, text: &str) -> Res<i64> {
+pub fn store_text(app: &AppHandle, state: &AppState, text: &str) -> Res<i64> {
     if text.is_empty() {
         return Err("empty text".into());
     }
-    let nc = build_text_clip(text, None, "ClipNest", "clipnest.exe", false);
-    let (id, _) = db::insert_clip(&mut state.db.lock(), &nc, &[text_format(text)])?;
+    let s = state.settings.read().clone();
+    let mut nc = build_text_clip(text, None, "ClipNest", "clipnest.exe", false);
+    if s.detect_sensitive && matches!(nc.kind.as_str(), "text" | "code") && crate::classify::is_sensitive(text) {
+        if s.sensitive_action == "mask_delete" {
+            nc.sensitive = true;
+            nc.expires_at = Some(db::now_ms() + (s.sensitive_ttl_min.max(1) as i64) * 60_000);
+        } else if s.sensitive_action != "skip" {
+            nc.sensitive = true;
+        }
+    }
+    let id = {
+        let mut conn = state.db.lock();
+        let (id, is_new) = db::insert_clip(&mut conn, &nc, &[text_format(text)])?;
+        if is_new {
+            if let Some(b) = s.active_pinboard {
+                let _ = db::assign_category(&conn, &[id], Some(b), None, true);
+            }
+        }
+        let _ = db::apply_limits(&conn, &s);
+        id
+    };
     changed(app);
     Ok(id)
 }
@@ -153,16 +187,16 @@ pub async fn update_item_text(app: AppHandle, state: State<'_, AppState>, id: i6
     if text.trim().is_empty() {
         return Err("text is empty".into());
     }
-    let nc = build_text_clip(&text, None, "", "", false);
-    let sens = state.settings.read().detect_sensitive
-        && matches!(nc.kind.as_str(), "text" | "code")
-        && crate::classify::is_sensitive(&text);
     {
         let mut conn = state.db.lock();
-        let (kind, _) = db::get_plain(&conn, id).ok_or("item not found")?;
-        if kind == "image" || kind == "file" {
+        let existing_row = db::get_row(&conn, id).ok_or("item not found")?;
+        if existing_row.kind == "image" || existing_row.kind == "file" {
             return Err("only text items can be edited".into());
         }
+        let nc = build_text_clip(&text, existing_row.lang.clone(), "", "", false);
+        let sens = state.settings.read().detect_sensitive
+            && matches!(nc.kind.as_str(), "text" | "code")
+            && crate::classify::is_sensitive(&text);
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         tx.execute(
             "UPDATE clips SET hash=?1,kind=?2,plain=?3,preview=?4,search=?5,lang=?6,color=?7,chars=?8,has_rich=0,sensitive=?11,expires_at=CASE WHEN ?11=1 THEN expires_at ELSE NULL END,ts=?9,sort_ts=?9 WHERE id=?10",
@@ -188,7 +222,7 @@ pub async fn update_item_text(app: AppHandle, state: State<'_, AppState>, id: i6
     Ok(())
 }
 
-// ───────────── pinboards ─────────────
+// ───────────── categories (pinboards) ─────────────
 
 #[tauri::command]
 pub async fn create_pinboard(app: AppHandle, state: State<'_, AppState>, name: String, color: String) -> Res<i64> {
@@ -315,17 +349,35 @@ pub async fn open_item(state: State<'_, AppState>, id: i64) -> Res<()> {
     Ok(())
 }
 
+/// Opens Windows File Explorer and selects ALL files belonging to the target item(s)
+/// using `SHOpenFolderAndSelectItems` so multi-file cards and multi-selected file cards
+/// highlight every file in the destination folder.
 #[tauri::command]
-pub async fn reveal_item(state: State<'_, AppState>, id: i64) -> Res<()> {
-    let (kind, target) = first_target(&state, id).ok_or("item not found")?;
-    if kind == "file" {
-        use std::os::windows::process::CommandExt;
-        std::process::Command::new("explorer")
-            .raw_arg(format!("/select,\"{target}\""))
-            .spawn()
-            .map_err(|e| e.to_string())?;
+pub async fn reveal_item(state: State<'_, AppState>, id: i64, ids: Option<Vec<i64>>) -> Res<()> {
+    let target_ids = match ids {
+        Some(list) if !list.is_empty() => list,
+        _ => vec![id],
+    };
+    let mut paths: Vec<String> = Vec::new();
+    {
+        let conn = state.db.lock();
+        for tid in target_ids {
+            if let Some((kind, plain)) = db::get_plain(&conn, tid) {
+                if kind == "file" {
+                    for line in plain.lines() {
+                        let p = line.trim();
+                        if !p.is_empty() {
+                            paths.push(p.to_string());
+                        }
+                    }
+                }
+            }
+        }
     }
-    Ok(())
+    if paths.is_empty() {
+        return Err("item not found".into());
+    }
+    crate::platform::win::reveal_files_in_explorer(&paths)
 }
 
 // ───────────── settings / status / app ─────────────
@@ -726,7 +778,7 @@ pub async fn move_item(
 
 // ───────────── import / export ─────────────
 
-/// Export = a fresh compressed snapshot copied to a place of the user's choosing.
+/// Export = a fresh compressed snapshot copied crash-safely to a place of the user's choosing.
 #[tauri::command]
 pub async fn export_data(app: AppHandle, state: State<'_, AppState>) -> Res<Option<String>> {
     use tauri_plugin_dialog::DialogExt;
@@ -740,7 +792,9 @@ pub async fn export_data(app: AppHandle, state: State<'_, AppState>) -> Res<Opti
         .blocking_save_file();
     let Some(dest) = dest else { return Ok(None) };
     let dest = dest.into_path().map_err(|e| e.to_string())?;
-    std::fs::copy(&snapshot, &dest).map_err(|e| e.to_string())?;
+    let tmp_dest = PathBuf::from(format!("{}.tmp", dest.to_string_lossy()));
+    std::fs::copy(&snapshot, &tmp_dest).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp_dest, &dest).map_err(|e| e.to_string())?;
     Ok(Some(dest.to_string_lossy().to_string()))
 }
 
@@ -766,7 +820,7 @@ pub async fn import_data(app: AppHandle, state: State<'_, AppState>) -> Res<Opti
         raw
     };
     let tmp = state.data_dir.join("import.tmp.db");
-    std::fs::write(&tmp, &bytes).map_err(|e| e.to_string())?;
+    db::write_atomic(&tmp, &bytes).map_err(|e| e.to_string())?;
     let result = db::merge_from(&state.db.lock(), &tmp);
     let _ = std::fs::remove_file(&tmp);
     let n = result?;
@@ -782,7 +836,7 @@ pub async fn export_settings(app: AppHandle, state: State<'_, AppState>) -> Res<
         app.dialog().file().add_filter("JSON", &["json"]).set_file_name("clipnest-settings.json").blocking_save_file();
     let Some(dest) = dest else { return Ok(None) };
     let dest = dest.into_path().map_err(|e| e.to_string())?;
-    std::fs::write(&dest, json).map_err(|e| e.to_string())?;
+    db::write_atomic(&dest, json.as_bytes()).map_err(|e| e.to_string())?;
     Ok(Some(dest.to_string_lossy().to_string()))
 }
 

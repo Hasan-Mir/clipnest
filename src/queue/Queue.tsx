@@ -78,14 +78,11 @@ export default function QueueView() {
     const listItems = mode === 'queue' ? (fifo ? items : [...items].reverse()) : items;
 
     return (
-        <div className="queue">
+        <div className="queue" role="region" aria-label={t('Paste queue / Drop Basket')}>
             <header
                 className="head"
                 onMouseDown={(e) => {
-                    if (
-                        e.button === 0 &&
-                        !(e.target as HTMLElement).closest('button, input, a, .seg-switch')
-                    ) {
+                    if (e.button === 0 && !(e.target as HTMLElement).closest('button, input, a, .seg-switch')) {
                         getCurrentWindow()
                             .startDragging()
                             .catch(() => {});
@@ -93,9 +90,11 @@ export default function QueueView() {
                 }}
             >
                 <img className="logo-img" src="/icon.png" alt="ClipNest" draggable={false} />
-                <div className="seg-switch">
+                <div className="seg-switch" role="tablist" aria-label={t('Paste queue / Drop Basket')}>
                     <button
                         type="button"
+                        role="tab"
+                        aria-selected={mode === 'queue'}
                         className={`seg-btn${mode === 'queue' ? ' active' : ''}`}
                         onClick={() => switchMode('queue')}
                     >
@@ -103,6 +102,8 @@ export default function QueueView() {
                     </button>
                     <button
                         type="button"
+                        role="tab"
+                        aria-selected={mode === 'basket'}
                         className={`seg-btn${mode === 'basket' ? ' active' : ''}`}
                         onClick={() => switchMode('basket')}
                     >
@@ -111,19 +112,37 @@ export default function QueueView() {
                 </div>
                 <span className="spacer" />
                 {mode === 'queue' && (
-                    <button className="mini" data-tip={t('Order (click to reverse)')} onClick={flip}>
+                    <button
+                        type="button"
+                        className="mini"
+                        aria-label={t('Order (click to reverse)')}
+                        data-tip={t('Order (click to reverse)')}
+                        onClick={flip}
+                    >
                         {fifo ? 'FIFO ↓' : 'LIFO ↑'}
                     </button>
                 )}
-                <button className="iconbtn" data-tip={t('Clear')} onClick={() => api.queueClear()}>
+                <button
+                    type="button"
+                    className="iconbtn"
+                    aria-label={t('Clear')}
+                    data-tip={t('Clear')}
+                    onClick={() => api.queueClear()}
+                >
                     <Icon name="trash" />
                 </button>
-                <button className="iconbtn" data-tip={t('Close queue')} onClick={() => api.queueToggle()}>
+                <button
+                    type="button"
+                    className="iconbtn"
+                    aria-label={t('Close queue')}
+                    data-tip={t('Close queue')}
+                    onClick={() => api.queueToggle()}
+                >
                     <Icon name="close" />
                 </button>
             </header>
 
-            <div className="qlist">
+            <div className="qlist" role="list">
                 {listItems.length === 0 && mode === 'queue' && (
                     <div className="empty small">
                         {t('Copy something — it is added here.')}
@@ -145,6 +164,7 @@ export default function QueueView() {
                     return (
                         <div
                             key={`${it.id}-${i}`}
+                            role="listitem"
                             className={`qrow${mode === 'queue' && i === 0 ? ' next' : ''}`}
                         >
                             <span className="qn">{i + 1}</span>
@@ -161,6 +181,7 @@ export default function QueueView() {
                                 <button
                                     type="button"
                                     className={`cut-badge${it.cut ? ' cut' : ' copy'}`}
+                                    aria-label={t('Click to toggle between Copy and Cut')}
                                     data-tip={t('Click to toggle between Copy and Cut')}
                                     onClick={() => api.basketToggleCut(it.id)}
                                 >
@@ -168,7 +189,9 @@ export default function QueueView() {
                                 </button>
                             )}
                             <button
+                                type="button"
                                 className="iconbtn"
+                                aria-label={t('Remove')}
                                 data-tip={t('Remove')}
                                 onClick={() => api.queueRemove(it.id)}
                             >
@@ -181,12 +204,7 @@ export default function QueueView() {
 
             {mode === 'basket' && (
                 <footer className="qfoot">
-                    <button
-                        type="button"
-                        className="btn"
-                        disabled={listItems.length === 0}
-                        onClick={onPasteHere}
-                    >
+                    <button type="button" className="btn" disabled={listItems.length === 0} onClick={onPasteHere}>
                         {t('Paste All Here')}
                     </button>
                     <button
@@ -200,7 +218,11 @@ export default function QueueView() {
                 </footer>
             )}
 
-            {toast && <div className="toast">{toast}</div>}
+            {toast && (
+                <div className="toast" role="status" aria-live="polite">
+                    {toast}
+                </div>
+            )}
         </div>
     );
 }

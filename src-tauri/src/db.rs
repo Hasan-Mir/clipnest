@@ -67,7 +67,7 @@ pub fn row_from(r: &Row) -> rusqlite::Result<ClipRow> {
     })
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Pinboard {
     pub id: i64,
     pub name: String,
@@ -78,6 +78,8 @@ pub struct Pinboard {
     pub list_style: String,
     pub paste_mode: String,
 }
+
+use serde::Deserialize;
 
 #[derive(Serialize, Clone, Debug)]
 pub struct FormatMeta {
@@ -180,6 +182,14 @@ CREATE TABLE IF NOT EXISTS clips (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_clips_hash ON clips(hash);
 CREATE INDEX IF NOT EXISTS idx_clips_order ON clips(pinned DESC, sort_ts DESC);
 CREATE INDEX IF NOT EXISTS idx_clips_board ON clips(pinboard_id, sort_ts DESC);
+CREATE TABLE IF NOT EXISTS clip_categories (
+  clip_id INTEGER NOT NULL REFERENCES clips(id) ON DELETE CASCADE,
+  board_id INTEGER NOT NULL REFERENCES pinboards(id) ON DELETE CASCADE,
+  pinned INTEGER NOT NULL DEFAULT 0,
+  sort_ts REAL NOT NULL DEFAULT 0,
+  PRIMARY KEY (clip_id, board_id)
+);
+CREATE INDEX IF NOT EXISTS idx_clip_categories_board ON clip_categories(board_id, pinned DESC, sort_ts DESC);
 CREATE TABLE IF NOT EXISTS clip_formats (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   clip_id INTEGER NOT NULL REFERENCES clips(id) ON DELETE CASCADE,
@@ -189,7 +199,7 @@ CREATE TABLE IF NOT EXISTS clip_formats (
   data BLOB NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_formats_clip ON clip_formats(clip_id);
-INSERT OR IGNORE INTO meta(key,value) VALUES('schema_version','1');
+INSERT OR IGNORE INTO meta(key,value) VALUES('schema_version','2');
 ";
 
 fn has_column(conn: &Connection, table: &str, col: &str) -> bool {
@@ -224,6 +234,23 @@ pub fn migrate(conn: &Connection) {
     }
     if pb_exist > 0 && !has_column(conn, "pinboards", "paste_mode") {
         let _ = conn.execute_batch("ALTER TABLE pinboards ADD COLUMN paste_mode TEXT NOT NULL DEFAULT 'inherit';");
+    }
+    let _ = conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS clip_categories (
+           clip_id INTEGER NOT NULL REFERENCES clips(id) ON DELETE CASCADE,
+           board_id INTEGER NOT NULL REFERENCES pinboards(id) ON DELETE CASCADE,
+           pinned INTEGER NOT NULL DEFAULT 0,
+           sort_ts REAL NOT NULL DEFAULT 0,
+           PRIMARY KEY (clip_id, board_id)
+         );
+         CREATE INDEX IF NOT EXISTS idx_clip_categories_board ON clip_categories(board_id, pinned DESC, sort_ts DESC);",
+    );
+    if clips_exist > 0 && pb_exist > 0 {
+        let _ = conn.execute(
+            "INSERT OR IGNORE INTO clip_categories(clip_id, board_id, pinned, sort_ts)
+             SELECT id, pinboard_id, 0, sort_ts FROM clips WHERE pinboard_id IS NOT NULL",
+            [],
+        );
     }
 }
 
@@ -296,7 +323,7 @@ fn list_backups(data_dir: &Path) -> Vec<PathBuf> {
 
 /// Writes `bytes` to `path` crash-safely: temp file, fsync, then atomic rename.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let tmp = path.with_extension("tmp");
+    let tmp = PathBuf::from(format!("{}.tmp", path.to_string_lossy()));
     {
         let mut f = std::fs::File::create(&tmp)?;
         f.write_all(bytes)?;
@@ -356,7 +383,7 @@ fn restore_latest_backup(data_dir: &Path, target: &Path) -> Result<(), String> {
     let mut dec = flate2::read::GzDecoder::new(&gz[..]);
     let mut raw = Vec::new();
     dec.read_to_end(&mut raw).map_err(|e| e.to_string())?;
-    std::fs::write(target, raw).map_err(|e| e.to_string())
+    write_atomic(target, &raw).map_err(|e| e.to_string())
 }
 
 // ───────────────────────────── clips ─────────────────────────────
@@ -487,7 +514,9 @@ pub fn get_thumb(conn: &Connection, id: i64) -> Option<Vec<u8>> {
 }
 
 pub fn touch(conn: &Connection, id: i64) {
-    let _ = conn.execute("UPDATE clips SET ts=?1, sort_ts=?1 WHERE id=?2", params![now_ms(), id]);
+    let now = now_ms();
+    let _ = conn.execute("UPDATE clips SET ts=?1, sort_ts=?1 WHERE id=?2", params![now, id]);
+    let _ = conn.execute("UPDATE clip_categories SET sort_ts=?1 WHERE clip_id=?2", params![now as f64, id]);
 }
 
 pub fn delete_ids(conn: &mut Connection, ids: &[i64]) -> Result<(), String> {
@@ -515,9 +544,63 @@ pub fn set_tags(conn: &Connection, id: i64, tags: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-pub fn set_pinboard(conn: &Connection, ids: &[i64], board: Option<i64>) -> Result<(), String> {
+/// Assigns `ids` to a category (`board = Some(bid)`) or removes them (`board = None`).
+/// - When `copy == true` (e.g. from the main Clipboard tab, or holding Ctrl inside a Category tab),
+///   the items are added to `board` while keeping any existing category memberships.
+/// - When `copy == false` and `source_board == Some(src)`, the items are moved from `src` to `board`.
+/// - When `copy == false` and `source_board == None`, the items' category membership is replaced with `board`.
+pub fn assign_category(
+    conn: &Connection,
+    ids: &[i64],
+    board: Option<i64>,
+    source_board: Option<i64>,
+    copy: bool,
+) -> Result<(), String> {
     for id in ids {
-        conn.execute("UPDATE clips SET pinboard_id=?1 WHERE id=?2", params![board, id]).map_err(|e| e.to_string())?;
+        let sort_ts: f64 = conn
+            .query_row("SELECT sort_ts FROM clips WHERE id=?1", params![id], |r| r.get(0))
+            .unwrap_or(now_ms() as f64);
+        match board {
+            Some(bid) => {
+                if !copy {
+                    if let Some(src) = source_board {
+                        if src != bid {
+                            let _ = conn.execute(
+                                "DELETE FROM clip_categories WHERE clip_id=?1 AND board_id=?2",
+                                params![id, src],
+                            );
+                        }
+                    } else {
+                        let _ = conn.execute("DELETE FROM clip_categories WHERE clip_id=?1", params![id]);
+                    }
+                }
+                conn.execute(
+                    "INSERT INTO clip_categories(clip_id, board_id, pinned, sort_ts) VALUES(?1, ?2, 0, ?3)
+                     ON CONFLICT(clip_id, board_id) DO UPDATE SET sort_ts=excluded.sort_ts",
+                    params![id, bid, sort_ts],
+                )
+                .map_err(|e| e.to_string())?;
+                conn.execute("UPDATE clips SET pinboard_id=?1 WHERE id=?2", params![Some(bid), id])
+                    .map_err(|e| e.to_string())?;
+            }
+            None => {
+                if let Some(src) = source_board {
+                    let _ =
+                        conn.execute("DELETE FROM clip_categories WHERE clip_id=?1 AND board_id=?2", params![id, src]);
+                } else {
+                    let _ = conn.execute("DELETE FROM clip_categories WHERE clip_id=?1", params![id]);
+                }
+                let remaining: Option<i64> = conn
+                    .query_row("SELECT board_id FROM clip_categories WHERE clip_id=?1 LIMIT 1", params![id], |r| {
+                        r.get(0)
+                    })
+                    .optional()
+                    .ok()
+                    .flatten();
+                conn.execute("UPDATE clips SET pinboard_id=?1 WHERE id=?2", params![remaining, id])
+                    .map_err(|e| e.to_string())?;
+            }
+        }
     }
     if let Some(b) = board {
         trim_board(conn, b);
@@ -525,24 +608,59 @@ pub fn set_pinboard(conn: &Connection, ids: &[i64], board: Option<i64>) -> Resul
     Ok(())
 }
 
-pub fn set_pinned(conn: &Connection, ids: &[i64], pinned: bool) -> Result<(), String> {
+pub fn set_pinboard(conn: &Connection, ids: &[i64], board: Option<i64>) -> Result<(), String> {
+    assign_category(conn, ids, board, None, false)
+}
+
+/// Sets the pinned status of `ids`.
+/// - When `independent` is `true` (default):
+///   - If `board` is `Some(bid)`, only pins/unpins inside category `bid` (`clip_categories.pinned`).
+///   - If `board` is `None`, only pins/unpins in the main Clipboard tab (`clips.pinned`).
+/// - When `independent` is `false`:
+///   - Pins/unpins across both the main Clipboard tab (`clips.pinned`) and all categories (`clip_categories.pinned`).
+pub fn set_pinned_scoped(
+    conn: &Connection,
+    ids: &[i64],
+    pinned: bool,
+    board: Option<i64>,
+    independent: bool,
+) -> Result<(), String> {
+    let pval = pinned as i64;
     for id in ids {
-        conn.execute("UPDATE clips SET pinned=?1 WHERE id=?2", params![pinned as i64, id])
-            .map_err(|e| e.to_string())?;
+        if independent {
+            if let Some(bid) = board {
+                conn.execute(
+                    "UPDATE clip_categories SET pinned=?1 WHERE clip_id=?2 AND board_id=?3",
+                    params![pval, id, bid],
+                )
+                .map_err(|e| e.to_string())?;
+            } else {
+                conn.execute("UPDATE clips SET pinned=?1 WHERE id=?2", params![pval, id]).map_err(|e| e.to_string())?;
+            }
+        } else {
+            conn.execute("UPDATE clips SET pinned=?1 WHERE id=?2", params![pval, id]).map_err(|e| e.to_string())?;
+            conn.execute("UPDATE clip_categories SET pinned=?1 WHERE clip_id=?2", params![pval, id])
+                .map_err(|e| e.to_string())?;
+        }
     }
     Ok(())
+}
+
+pub fn set_pinned(conn: &Connection, ids: &[i64], pinned: bool) -> Result<(), String> {
+    set_pinned_scoped(conn, ids, pinned, None, true)
 }
 
 pub fn get_rows(conn: &Connection, ids: &[i64]) -> Vec<ClipRow> {
     ids.iter().filter_map(|id| get_row(conn, *id)).collect()
 }
 
-// ───────────────────────────── pinboards ─────────────────────────────
+// ───────────────────────────── categories (pinboards) ─────────────────────────────
 
 pub fn list_pinboards(conn: &Connection) -> Result<Vec<Pinboard>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT p.id,p.name,p.color,p.position,(SELECT COUNT(*) FROM clips c WHERE c.pinboard_id=p.id),
+            "SELECT p.id,p.name,p.color,p.position,
+                    (SELECT COUNT(*) FROM clip_categories cc WHERE cc.board_id=p.id),
                     p.max_items,p.list_style,p.paste_mode
              FROM pinboards p ORDER BY p.position, p.id",
         )
@@ -594,15 +712,29 @@ pub fn update_pinboard(
     Ok(())
 }
 
-/// Per-pinboard item limit: the oldest items beyond the limit are removed.
+/// Per-category item limit: the oldest items beyond the limit are removed.
 pub fn trim_board(conn: &Connection, board: i64) {
     let max: i64 =
         conn.query_row("SELECT max_items FROM pinboards WHERE id=?1", params![board], |r| r.get(0)).unwrap_or(0);
     if max > 0 {
-        let _ = conn.execute(
-            "DELETE FROM clips WHERE id IN (SELECT id FROM clips WHERE pinboard_id=?1 ORDER BY sort_ts DESC LIMIT -1 OFFSET ?2)",
-            params![board, max],
-        );
+        let overflow_ids: Vec<i64> = conn
+            .prepare(
+                "SELECT clip_id FROM clip_categories WHERE board_id=?1 ORDER BY pinned DESC, sort_ts DESC LIMIT -1 OFFSET ?2",
+            )
+            .and_then(|mut st| {
+                let rows = st.query_map(params![board, max], |r| r.get::<_, i64>(0))?;
+                Ok(rows.filter_map(|r| r.ok()).collect())
+            })
+            .unwrap_or_default();
+        for cid in overflow_ids {
+            let _ = conn.execute("DELETE FROM clip_categories WHERE clip_id=?1 AND board_id=?2", params![cid, board]);
+            let other_count: i64 = conn
+                .query_row("SELECT COUNT(*) FROM clip_categories WHERE clip_id=?1", params![cid], |r| r.get(0))
+                .unwrap_or(0);
+            if other_count == 0 {
+                let _ = conn.execute("DELETE FROM clips WHERE id=?1 AND pinboard_id=?2", params![cid, board]);
+            }
+        }
     }
 }
 
@@ -615,13 +747,19 @@ pub fn delete_pinboard(conn: &Connection, id: i64) -> Result<(), String> {
 pub fn apply_limits(conn: &Connection, s: &Settings) -> Result<(), String> {
     if s.retention_days > 0 {
         let cutoff = now_ms() - (s.retention_days as i64) * 86_400_000;
-        conn.execute("DELETE FROM clips WHERE pinned=0 AND pinboard_id IS NULL AND ts<?1", params![cutoff])
-            .map_err(|e| e.to_string())?;
+        conn.execute(
+            "DELETE FROM clips WHERE pinned=0 AND pinboard_id IS NULL
+             AND NOT EXISTS (SELECT 1 FROM clip_categories cc WHERE cc.clip_id=clips.id)
+             AND ts<?1",
+            params![cutoff],
+        )
+        .map_err(|e| e.to_string())?;
     }
     if s.max_items > 0 {
         conn.execute(
             "DELETE FROM clips WHERE id IN (
                SELECT id FROM clips WHERE pinned=0 AND pinboard_id IS NULL
+               AND NOT EXISTS (SELECT 1 FROM clip_categories cc WHERE cc.clip_id=clips.id)
                ORDER BY sort_ts DESC LIMIT -1 OFFSET ?1)",
             params![s.max_items as i64],
         )
@@ -634,13 +772,7 @@ pub fn delete_expired(conn: &Connection) -> usize {
     conn.execute("DELETE FROM clips WHERE expires_at IS NOT NULL AND expires_at<?1", params![now_ms()]).unwrap_or(0)
 }
 
-/// Erases clipboard history according to the selected scope and pinned-items option:
-/// - `all_pinboards == true`:
-///   - `include_pinned == true`: deletes ALL clips across the main clipboard and all pinboards.
-///   - `include_pinned == false`: deletes all unpinned clips (`pinned = 0`) across the main clipboard and all pinboards.
-/// - `all_pinboards == false`:
-///   - If `target_pinboard` is `Some(board_id)`, deletes clips in that pinboard (`pinboard_id = board_id`).
-///   - If `target_pinboard` is `None`, deletes clips in the main Clipboard tab (`pinboard_id IS NULL`).
+/// Erases clipboard history according to the selected scope and pinned-items option.
 pub fn erase_history(
     conn: &Connection,
     include_pinned: bool,
@@ -651,19 +783,56 @@ pub fn erase_history(
         if include_pinned {
             conn.execute("DELETE FROM clips", []).map_err(|e| e.to_string())
         } else {
-            conn.execute("DELETE FROM clips WHERE pinned=0", []).map_err(|e| e.to_string())
+            conn.execute(
+                "DELETE FROM clips WHERE pinned=0
+                 AND NOT EXISTS (SELECT 1 FROM clip_categories cc WHERE cc.clip_id=clips.id AND cc.pinned<>0)",
+                [],
+            )
+            .map_err(|e| e.to_string())
         }
     } else if let Some(board_id) = target_pinboard {
-        if include_pinned {
-            conn.execute("DELETE FROM clips WHERE pinboard_id=?1", params![board_id]).map_err(|e| e.to_string())
-        } else {
-            conn.execute("DELETE FROM clips WHERE pinned=0 AND pinboard_id=?1", params![board_id])
-                .map_err(|e| e.to_string())
+        let target_ids: Vec<i64> = {
+            let sql = if include_pinned {
+                "SELECT clip_id FROM clip_categories WHERE board_id=?1"
+            } else {
+                "SELECT cc.clip_id FROM clip_categories cc JOIN clips c ON c.id=cc.clip_id
+                 WHERE cc.board_id=?1 AND cc.pinned=0 AND c.pinned=0"
+            };
+            let mut st = conn.prepare(sql).map_err(|e| e.to_string())?;
+            let rows = st.query_map(params![board_id], |r| r.get::<_, i64>(0)).map_err(|e| e.to_string())?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
+        let mut count = 0usize;
+        for cid in target_ids {
+            let _ =
+                conn.execute("DELETE FROM clip_categories WHERE clip_id=?1 AND board_id=?2", params![cid, board_id]);
+            let remaining: Option<i64> = conn
+                .query_row("SELECT board_id FROM clip_categories WHERE clip_id=?1 LIMIT 1", params![cid], |r| r.get(0))
+                .optional()
+                .ok()
+                .flatten();
+            if let Some(other_board) = remaining {
+                let _ = conn.execute("UPDATE clips SET pinboard_id=?1 WHERE id=?2", params![other_board, cid]);
+            } else {
+                let _ = conn.execute("DELETE FROM clips WHERE id=?1", params![cid]);
+            }
+            count += 1;
         }
+        Ok(count)
     } else if include_pinned {
-        conn.execute("DELETE FROM clips WHERE pinboard_id IS NULL", []).map_err(|e| e.to_string())
+        conn.execute(
+            "DELETE FROM clips WHERE pinboard_id IS NULL
+             AND NOT EXISTS (SELECT 1 FROM clip_categories cc WHERE cc.clip_id=clips.id)",
+            [],
+        )
+        .map_err(|e| e.to_string())
     } else {
-        conn.execute("DELETE FROM clips WHERE pinned=0 AND pinboard_id IS NULL", []).map_err(|e| e.to_string())
+        conn.execute(
+            "DELETE FROM clips WHERE pinned=0 AND pinboard_id IS NULL
+             AND NOT EXISTS (SELECT 1 FROM clip_categories cc WHERE cc.clip_id=clips.id)",
+            [],
+        )
+        .map_err(|e| e.to_string())
     }
 }
 
@@ -684,25 +853,62 @@ pub fn recent_apps(conn: &Connection) -> Vec<AppInfo> {
 // ───────────────────────────── manual ordering ─────────────────────────────
 
 /// Moves `id` directly above (`after=false`) or below (`after=true`) `target`, inside the current
-/// view (`scope` = pinboard id, or None for the whole history). Uses a fractional sort key so only
+/// view (`scope` = category id, or None for the whole history). Uses a fractional sort key so only
 /// one row is written.
 pub fn move_item(conn: &Connection, id: i64, target: i64, after: bool, scope: Option<i64>) -> Result<(), String> {
     if id == target {
         return Ok(());
     }
+    if let Some(bid) = scope {
+        let (t_sort, t_pinned): (f64, i64) = conn
+            .query_row(
+                "SELECT sort_ts, pinned FROM clip_categories WHERE clip_id=?1 AND board_id=?2",
+                params![target, bid],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(|e| e.to_string())?;
+        let neighbour: Option<f64> = if after {
+            conn.query_row(
+                "SELECT MAX(sort_ts) FROM clip_categories WHERE board_id=?1 AND pinned=?2 AND sort_ts<?3 AND clip_id<>?4",
+                params![bid, t_pinned, t_sort, id],
+                |r| r.get(0),
+            )
+        } else {
+            conn.query_row(
+                "SELECT MIN(sort_ts) FROM clip_categories WHERE board_id=?1 AND pinned=?2 AND sort_ts>?3 AND clip_id<>?4",
+                params![bid, t_pinned, t_sort, id],
+                |r| r.get(0),
+            )
+        }
+        .map_err(|e| e.to_string())?;
+        let new = match (after, neighbour) {
+            (true, Some(lo)) => (t_sort + lo) / 2.0,
+            (true, None) => t_sort - 1000.0,
+            (false, Some(hi)) => (t_sort + hi) / 2.0,
+            (false, None) => t_sort + 1000.0,
+        };
+        return conn
+            .execute(
+                "UPDATE clip_categories SET sort_ts=?1, pinned=?2 WHERE clip_id=?3 AND board_id=?4",
+                params![new, t_pinned, id, bid],
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string());
+    }
+
     let (t_sort, t_pinned): (f64, i64) = conn
         .query_row("SELECT sort_ts,pinned FROM clips WHERE id=?1", params![target], |r| Ok((r.get(0)?, r.get(1)?)))
         .map_err(|e| e.to_string())?;
     let neighbour: Option<f64> = if after {
         conn.query_row(
-            "SELECT MAX(sort_ts) FROM clips WHERE pinned=?1 AND sort_ts<?2 AND id<>?3 AND (?4 IS NULL OR pinboard_id=?4)",
-            params![t_pinned, t_sort, id, scope],
+            "SELECT MAX(sort_ts) FROM clips WHERE pinned=?1 AND sort_ts<?2 AND id<>?3",
+            params![t_pinned, t_sort, id],
             |r| r.get(0),
         )
     } else {
         conn.query_row(
-            "SELECT MIN(sort_ts) FROM clips WHERE pinned=?1 AND sort_ts>?2 AND id<>?3 AND (?4 IS NULL OR pinboard_id=?4)",
-            params![t_pinned, t_sort, id, scope],
+            "SELECT MIN(sort_ts) FROM clips WHERE pinned=?1 AND sort_ts>?2 AND id<>?3",
+            params![t_pinned, t_sort, id],
             |r| r.get(0),
         )
     }
@@ -802,11 +1008,21 @@ pub fn merge_from(conn: &Connection, imp: &Path) -> Result<usize, String> {
             .map_err(|e| e.to_string())?;
             conn.execute(
                 "UPDATE main.clips SET pinboard_id=(
-                     SELECT m.new FROM pbmap m JOIN imp.clips i ON i.pinboard_id=m.old WHERE i.hash=main.clips.hash)
+                     SELECT m.new FROM pbmap m JOIN imp.clips i ON i.pinboard_id=m.old WHERE i.hash=main.clips.hash LIMIT 1)
                  WHERE id>?1 AND hash IN (SELECT hash FROM imp.clips WHERE pinboard_id IS NOT NULL)",
                 params![max_before],
             )
             .map_err(|e| e.to_string())?;
+            let _ = conn.execute(
+                "INSERT OR IGNORE INTO main.clip_categories(clip_id, board_id, pinned, sort_ts)
+                 SELECT id, pinboard_id, 0, sort_ts FROM main.clips WHERE id>?1 AND pinboard_id IS NOT NULL",
+                params![max_before],
+            );
+            if let Ok(all_boards) = list_pinboards(conn) {
+                for b in all_boards {
+                    trim_board(conn, b.id);
+                }
+            }
             Ok(added)
         })();
         match body {
@@ -896,6 +1112,46 @@ mod tests {
         let deleted_all = erase_history(&conn, true, None, true).unwrap();
         assert_eq!(deleted_all, 1);
         assert!(get_row(&conn, id_pinned).is_none());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn independent_category_pinning_and_copy_vs_move() {
+        let dir = std::env::temp_dir().join(format!("clipnest_db_indep_pin_{}", now_ms()));
+        let mut conn = open_with_recovery(&dir).unwrap();
+
+        let c = build_text_clip("category test item", None, "App", "app.exe", false);
+        let (id, _) = insert_clip(&mut conn, &c, &[text_format("category test item")]).unwrap();
+
+        let cat_a = create_pinboard(&conn, "CatA", "#4f8cff").unwrap();
+        let cat_b = create_pinboard(&conn, "CatB", "#34c759").unwrap();
+
+        // Copy from main clipboard to CatA
+        assign_category(&conn, &[id], Some(cat_a), None, true).unwrap();
+        // Copy from CatA to CatB (Ctrl+Drag / Ctrl+Click)
+        assign_category(&conn, &[id], Some(cat_b), Some(cat_a), true).unwrap();
+
+        let boards = list_pinboards(&conn).unwrap();
+        assert_eq!(boards.iter().find(|b| b.id == cat_a).unwrap().count, 1);
+        assert_eq!(boards.iter().find(|b| b.id == cat_b).unwrap().count, 1);
+
+        // Pin inside CatA with independent_pinning = true
+        set_pinned_scoped(&conn, &[id], true, Some(cat_a), true).unwrap();
+        // Main clipboard remains unpinned, CatB remains unpinned
+        assert!(!get_row(&conn, id).unwrap().pinned);
+        let cat_a_pin: i64 = conn
+            .query_row("SELECT pinned FROM clip_categories WHERE clip_id=?1 AND board_id=?2", params![id, cat_a], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        let cat_b_pin: i64 = conn
+            .query_row("SELECT pinned FROM clip_categories WHERE clip_id=?1 AND board_id=?2", params![id, cat_b], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(cat_a_pin, 1);
+        assert_eq!(cat_b_pin, 0);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

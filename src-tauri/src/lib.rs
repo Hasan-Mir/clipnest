@@ -1,5 +1,6 @@
 mod capture;
 mod classify;
+pub mod cli;
 mod commands;
 mod db;
 mod paste;
@@ -8,6 +9,7 @@ mod queue;
 mod rules;
 mod search;
 mod state;
+pub mod transforms;
 mod windowing;
 
 use state::{AppState, HotAction, Settings};
@@ -333,6 +335,11 @@ fn spawn_maintenance(app: AppHandle) {
 // ───────────────────────────── run ─────────────────────────────
 
 pub fn run() {
+    let raw_args: Vec<String> = std::env::args().collect();
+    if cli::is_cli_invocation(&raw_args) {
+        std::process::exit(cli::run_from_env());
+    }
+
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             handle_cli_args(app, &args, true);
@@ -353,6 +360,7 @@ pub fn run() {
             build_tray(&handle)?;
             capture::spawn(handle.clone());
             spawn_maintenance(handle.clone());
+            cli::spawn_ipc_server(handle.clone());
 
             // Keep the OS autostart entry in sync with the setting
             let al = handle.autolaunch();
@@ -446,7 +454,7 @@ pub fn run() {
                         let scale = window.scale_factor().unwrap_or(1.0);
                         let lw = ((phys.width as f64) / scale).round() as u32;
                         let lh = ((phys.height as f64) / scale).round() as u32;
-                        if (340..=1400).contains(&lw) && (380..=1400).contains(&lh) {
+                        if (260..=1400).contains(&lw) && (320..=1400).contains(&lh) {
                             let app = window.app_handle();
                             let st = app.state::<AppState>();
                             let remember = st.settings.read().remember_popup_size;

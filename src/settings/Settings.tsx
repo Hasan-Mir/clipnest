@@ -33,14 +33,7 @@ const TABS: { id: TabId; label: string; keys: (keyof Settings)[] }[] = [
     {
         id: 'general',
         label: 'General',
-        keys: [
-            'language',
-            'autostart',
-            'explorer_context_menu',
-            'max_items',
-            'retention_days',
-            'max_image_mb',
-        ],
+        keys: ['language', 'autostart', 'explorer_context_menu', 'max_items', 'retention_days', 'max_image_mb'],
     },
     {
         id: 'clipboard',
@@ -51,6 +44,7 @@ const TABS: { id: TabId; label: string; keys: (keyof Settings)[] }[] = [
             'default_mode',
             'direct_paste',
             'move_to_top',
+            'independent_pinning',
             'card_paste_click',
             'ctrl_click_action',
             'ctrl_shift_click_action',
@@ -85,6 +79,7 @@ const TABS: { id: TabId; label: string; keys: (keyof Settings)[] }[] = [
             'remember_popup_size',
             'show_toolbar',
             'show_pinboard_counts',
+            'wrap_categories',
         ],
     },
     {
@@ -179,6 +174,7 @@ function Row({
                         <button
                             type="button"
                             className="srow-gear"
+                            aria-label={t('Reset Setting')}
                             data-tip={t('Reset Setting')}
                             onClick={(e) => {
                                 e.stopPropagation();
@@ -196,7 +192,7 @@ function Row({
     );
 }
 
-function Toggle({ v, on }: { v: boolean; on: (b: boolean) => void }) {
+function Toggle({ v, on, label }: { v: boolean; on: (b: boolean) => void; label?: string }) {
     return (
         <button
             type="button"
@@ -204,6 +200,7 @@ function Toggle({ v, on }: { v: boolean; on: (b: boolean) => void }) {
             onClick={() => on(!v)}
             role="switch"
             aria-checked={v}
+            aria-label={label ? t(label) : undefined}
         >
             <span />
         </button>
@@ -211,9 +208,7 @@ function Toggle({ v, on }: { v: boolean; on: (b: boolean) => void }) {
 }
 
 function Select<T extends string>({ v, on, opts }: { v: T; on: (v: T) => void; opts: [T, string][] }) {
-    return (
-        <CustomSelect value={v} onChange={on} options={opts.map(([k, l]) => ({ value: k, label: t(l) }))} />
-    );
+    return <CustomSelect value={v} onChange={on} options={opts.map(([k, l]) => ({ value: k, label: t(l) }))} />;
 }
 
 function Num({
@@ -316,12 +311,7 @@ function ShortcutInput({
                             setLiveMods('');
                             return;
                         }
-                        if (
-                            (e.key === 'Backspace' || e.key === 'Delete') &&
-                            !e.ctrlKey &&
-                            !e.altKey &&
-                            !e.shiftKey
-                        ) {
+                        if ((e.key === 'Backspace' || e.key === 'Delete') && !e.ctrlKey && !e.altKey && !e.shiftKey) {
                             on('');
                             setRec(false);
                             setLiveMods('');
@@ -412,7 +402,11 @@ function TagList({
                 {items.map((a) => (
                     <span key={a} className="pill">
                         <span>{a}</span>
-                        <button type="button" onClick={() => onChange(items.filter((y) => y !== a))}>
+                        <button
+                            type="button"
+                            aria-label={`${t('Remove')} ${a}`}
+                            onClick={() => onChange(items.filter((y) => y !== a))}
+                        >
                             ×
                         </button>
                     </span>
@@ -454,7 +448,7 @@ function TagList({
 const KINDS = ['text', 'code', 'link', 'image', 'file', 'color'];
 const ACTIONS: [AutoRule['action'], string][] = [
     ['ignore', 'Do not store'],
-    ['to_board', 'Move to pinboard'],
+    ['to_board', 'Move to category'],
     ['tag', 'Add tag'],
     ['plain_only', 'Keep plain text only'],
     ['trim', 'Trim whitespace'],
@@ -588,9 +582,9 @@ export default function SettingsView() {
     const askEraseHistory = () => {
         const targetBoard = boards.find((b) => b.id === s.active_pinboard) ?? null;
         const msgText = targetBoard
-            ? t('This will erase items in the active pinboard "{name}".', { name: targetBoard.name })
+            ? t('This will erase items in the active category "{name}".', { name: targetBoard.name })
             : t(
-                  'This will erase items in the main Clipboard tab (pinboards are kept unless you check the option below).'
+                  'This will erase items in the main Clipboard tab (categories are kept unless you check the option below).'
               );
         setPrompt({
             title: t('Erase all history?'),
@@ -598,7 +592,7 @@ export default function SettingsView() {
             confirm: true,
             checkLabel: t('Also erase pinned items'),
             defaultChecked: false,
-            checkLabel2: t('Also erase all pinboards and main clipboard'),
+            checkLabel2: t('Also erase all categories and main clipboard'),
             defaultChecked2: false,
             okLabel: t('Erase'),
             danger: true,
@@ -672,7 +666,7 @@ export default function SettingsView() {
 
     return (
         <div className="settings">
-            <nav className="snav">
+            <nav className="snav" role="tablist" aria-label={t('Settings (Ctrl+,)')}>
                 <div className="sbrand">
                     <img className="logo-img" src="/icon.png" alt="ClipNest" draggable={false} />
                     <span>ClipNest</span>
@@ -681,6 +675,8 @@ export default function SettingsView() {
                     <Icon name="search" size={13} />
                     <input
                         ref={searchInputRef}
+                        role="searchbox"
+                        aria-label={t('Search settings…')}
                         className="search-bare"
                         value={searchQuery}
                         placeholder={t('Search settings…')}
@@ -696,6 +692,7 @@ export default function SettingsView() {
                         <button
                             type="button"
                             className="iconbtn"
+                            aria-label={t('Clear')}
                             data-tip={t('Clear')}
                             onClick={() => setSearchQuery('')}
                         >
@@ -707,6 +704,8 @@ export default function SettingsView() {
                     <button
                         key={x.id}
                         type="button"
+                        role="tab"
+                        aria-selected={!isSearching && tab === x.id}
                         className={!isSearching && tab === x.id ? 'active' : ''}
                         onClick={() => {
                             setSearchQuery('');
@@ -755,7 +754,7 @@ export default function SettingsView() {
                             label="Start with Windows"
                             hint="Launch ClipNest automatically in the system tray when you sign in to Windows."
                         >
-                            <Toggle v={s.autostart} on={(b) => set('autostart', b)} />
+                            <Toggle v={s.autostart} on={(b) => set('autostart', b)} label="Start with Windows" />
                         </Row>
                         <Row
                             k="explorer_context_menu"
@@ -765,7 +764,11 @@ export default function SettingsView() {
                             label="Windows File Explorer context menu"
                             hint="Adds ClipNest to the right-click context menu of folders and files in Windows Explorer to view and paste copied files or collect files into the Drop Basket."
                         >
-                            <Toggle v={s.explorer_context_menu} on={(b) => set('explorer_context_menu', b)} />
+                            <Toggle
+                                v={s.explorer_context_menu}
+                                on={(b) => set('explorer_context_menu', b)}
+                                label="Windows File Explorer context menu"
+                            />
                         </Row>
                         <Row
                             k="max_items"
@@ -773,7 +776,7 @@ export default function SettingsView() {
                             searchQuery={q}
                             onGearMenu={openGearMenu}
                             label="Maximum history items"
-                            hint="0 = unlimited. Pinned and pinboard items are never removed."
+                            hint="0 = unlimited. Pinned and category items are never removed."
                         >
                             <Num v={s.max_items} on={(n) => set('max_items', n)} step={100} />
                         </Row>
@@ -802,7 +805,7 @@ export default function SettingsView() {
                             searchQuery={q}
                             onGearMenu={openGearMenu}
                             label="Erase history"
-                            hint="Removes unpinned history, with an option in the confirmation dialog to also delete pinned items and pinboards."
+                            hint="Removes unpinned history, with an option in the confirmation dialog to also delete pinned items and categories."
                         >
                             <button type="button" className="btn danger" onClick={askEraseHistory}>
                                 <span>{t('Erase history…')}</span>
@@ -829,6 +832,7 @@ export default function SettingsView() {
                     'Default paste (Enter)',
                     'Paste directly into the app',
                     'Move used item to the top',
+                    'Independent pinning per category',
                     'Paste card with mouse',
                     'Ctrl + Click on card',
                     'Ctrl + Shift + Click on card',
@@ -848,7 +852,11 @@ export default function SettingsView() {
                             label="Keep text styling (HTML / RTF)"
                             hint="On: colours, fonts and backgrounds are stored and can be pasted back. Off: only plain text is stored (smaller database)."
                         >
-                            <Toggle v={s.store_rich} on={(b) => set('store_rich', b)} />
+                            <Toggle
+                                v={s.store_rich}
+                                on={(b) => set('store_rich', b)}
+                                label="Keep text styling (HTML / RTF)"
+                            />
                         </Row>
                         <Row
                             k="list_style"
@@ -892,7 +900,11 @@ export default function SettingsView() {
                             label="Paste directly into the app"
                             hint="Off = the item is only copied; you press Ctrl+V yourself."
                         >
-                            <Toggle v={s.direct_paste} on={(b) => set('direct_paste', b)} />
+                            <Toggle
+                                v={s.direct_paste}
+                                on={(b) => set('direct_paste', b)}
+                                label="Paste directly into the app"
+                            />
                         </Row>
                         <Row
                             k="move_to_top"
@@ -902,7 +914,25 @@ export default function SettingsView() {
                             label="Move used item to the top"
                             hint="Moves a card to the top of the history list whenever you paste or copy it."
                         >
-                            <Toggle v={s.move_to_top} on={(b) => set('move_to_top', b)} />
+                            <Toggle
+                                v={s.move_to_top}
+                                on={(b) => set('move_to_top', b)}
+                                label="Move used item to the top"
+                            />
+                        </Row>
+                        <Row
+                            k="independent_pinning"
+                            s={s}
+                            searchQuery={q}
+                            onGearMenu={openGearMenu}
+                            label="Independent pinning per category"
+                            hint="When enabled (default), pinning an item inside a category only pins it in that category, without pinning it in the main Clipboard tab."
+                        >
+                            <Toggle
+                                v={s.independent_pinning ?? true}
+                                on={(b) => set('independent_pinning', b)}
+                                label="Independent pinning per category"
+                            />
                         </Row>
                         <Row
                             k="card_paste_click"
@@ -966,7 +996,11 @@ export default function SettingsView() {
                             label="Auto-save edits in preview"
                             hint="Automatically saves text changes in the inline preview editor after a short pause without requiring Ctrl+S."
                         >
-                            <Toggle v={s.auto_save_edit} on={(b) => set('auto_save_edit', b)} />
+                            <Toggle
+                                v={s.auto_save_edit}
+                                on={(b) => set('auto_save_edit', b)}
+                                label="Auto-save edits in preview"
+                            />
                         </Row>
                         <Row
                             k="queue_fifo"
@@ -993,7 +1027,11 @@ export default function SettingsView() {
                             label="Paste queue: take over Ctrl+V"
                             hint="While the queue has items, Ctrl+V pastes the next one."
                         >
-                            <Toggle v={s.queue_intercept} on={(b) => set('queue_intercept', b)} />
+                            <Toggle
+                                v={s.queue_intercept}
+                                on={(b) => set('queue_intercept', b)}
+                                label="Paste queue: take over Ctrl+V"
+                            />
                         </Row>
                         <Row
                             k="basket_allow_cut"
@@ -1003,7 +1041,11 @@ export default function SettingsView() {
                             label="Drop Basket: allow Cut (move files after verified copy)"
                             hint="When enabled, files cut with Ctrl+X are moved only after destination copy and exact byte size are verified on disk."
                         >
-                            <Toggle v={s.basket_allow_cut} on={(b) => set('basket_allow_cut', b)} />
+                            <Toggle
+                                v={s.basket_allow_cut}
+                                on={(b) => set('basket_allow_cut', b)}
+                                label="Drop Basket: allow Cut (move files after verified copy)"
+                            />
                         </Row>
 
                         {matchesSearch(q, 'Per-application rules', 'Executable', 'Paste as', 'Keystroke') && (
@@ -1115,7 +1157,8 @@ export default function SettingsView() {
                     'Popup height (px)',
                     'Preserve popup size when resized with mouse',
                     'Side toolbar (CopyQ style)',
-                    'Show item count on pinboard tabs',
+                    'Show item count on category tabs',
+                    'Wrap category tabs onto multiple lines',
                 ]) && (
                     <section className="ssection">
                         {renderSectionHeader('appearance', 'Appearance')}
@@ -1171,7 +1214,7 @@ export default function SettingsView() {
                             label="Smooth animations"
                             hint="Enable subtle Notion-style transitions for menus, dialogs, and hover states."
                         >
-                            <Toggle v={s.animations} on={(b) => set('animations', b)} />
+                            <Toggle v={s.animations} on={(b) => set('animations', b)} label="Smooth animations" />
                         </Row>
                         <Row
                             k="density"
@@ -1249,7 +1292,11 @@ export default function SettingsView() {
                             label="Show image and media thumbnails in cards"
                             hint="Renders inline image and video/media previews inside cards in the popup list."
                         >
-                            <Toggle v={s.show_thumbnails} on={(b) => set('show_thumbnails', b)} />
+                            <Toggle
+                                v={s.show_thumbnails}
+                                on={(b) => set('show_thumbnails', b)}
+                                label="Show image and media thumbnails in cards"
+                            />
                         </Row>
                         <Row
                             k="thumbnail_size"
@@ -1277,7 +1324,11 @@ export default function SettingsView() {
                             label="Virtual list rendering"
                             hint="Off renders the entire list into the DOM normally; On renders only visible items for peak performance"
                         >
-                            <Toggle v={s.virtual_scroll} on={(b) => set('virtual_scroll', b)} />
+                            <Toggle
+                                v={s.virtual_scroll}
+                                on={(b) => set('virtual_scroll', b)}
+                                label="Virtual list rendering"
+                            />
                         </Row>
                         <Row
                             k="highlight_matches"
@@ -1287,7 +1338,11 @@ export default function SettingsView() {
                             label="Highlight search matches"
                             hint="Highlights matched characters and words inside cards and previews while searching."
                         >
-                            <Toggle v={s.highlight_matches} on={(b) => set('highlight_matches', b)} />
+                            <Toggle
+                                v={s.highlight_matches}
+                                on={(b) => set('highlight_matches', b)}
+                                label="Highlight search matches"
+                            />
                         </Row>
                         <Row
                             k="highlight_color"
@@ -1328,9 +1383,7 @@ export default function SettingsView() {
                                 />
                                 <input
                                     type="color"
-                                    value={
-                                        /^#[0-9a-fA-F]{6}$/.test(s.highlight_bg) ? s.highlight_bg : '#ffe043'
-                                    }
+                                    value={/^#[0-9a-fA-F]{6}$/.test(s.highlight_bg) ? s.highlight_bg : '#ffe043'}
                                     onChange={(e) => set('highlight_bg', e.target.value)}
                                 />
                             </div>
@@ -1428,13 +1481,7 @@ export default function SettingsView() {
                             label="Popup width (px)"
                             hint="Default width of the popup window in logical pixels (minimum 340 px)."
                         >
-                            <Num
-                                v={s.popup_width}
-                                on={(n) => set('popup_width', n)}
-                                min={340}
-                                max={1400}
-                                step={10}
-                            />
+                            <Num v={s.popup_width} on={(n) => set('popup_width', n)} min={260} max={1400} step={10} />
                         </Row>
                         <Row
                             k="popup_height"
@@ -1444,13 +1491,7 @@ export default function SettingsView() {
                             label="Popup height (px)"
                             hint="Default height of the popup window in logical pixels (minimum 380 px)."
                         >
-                            <Num
-                                v={s.popup_height}
-                                on={(n) => set('popup_height', n)}
-                                min={380}
-                                max={1400}
-                                step={10}
-                            />
+                            <Num v={s.popup_height} on={(n) => set('popup_height', n)} min={320} max={1400} step={10} />
                         </Row>
                         <Row
                             k="remember_popup_size"
@@ -1460,7 +1501,11 @@ export default function SettingsView() {
                             label="Preserve popup size when resized with mouse"
                             hint="Automatically saves the new width and height when you drag the edges of the popup window."
                         >
-                            <Toggle v={s.remember_popup_size} on={(b) => set('remember_popup_size', b)} />
+                            <Toggle
+                                v={s.remember_popup_size}
+                                on={(b) => set('remember_popup_size', b)}
+                                label="Preserve popup size when resized with mouse"
+                            />
                         </Row>
                         <Row
                             k="show_toolbar"
@@ -1470,17 +1515,39 @@ export default function SettingsView() {
                             label="Side toolbar (CopyQ style)"
                             hint="Quick buttons next to the list: preview, pin, tags, copy, formats, edit, merge, actions, delete (can also be toggled from the popup header)."
                         >
-                            <Toggle v={s.show_toolbar} on={(b) => set('show_toolbar', b)} />
+                            <Toggle
+                                v={s.show_toolbar}
+                                on={(b) => set('show_toolbar', b)}
+                                label="Side toolbar (CopyQ style)"
+                            />
                         </Row>
                         <Row
                             k="show_pinboard_counts"
                             s={s}
                             searchQuery={q}
                             onGearMenu={openGearMenu}
-                            label="Show item count on pinboard tabs"
-                            hint="Displays a small badge with the number of items next to each pinboard tab in the popup."
+                            label="Show item count on category tabs"
+                            hint="Displays a small badge with the number of items next to each category tab in the popup."
                         >
-                            <Toggle v={s.show_pinboard_counts} on={(b) => set('show_pinboard_counts', b)} />
+                            <Toggle
+                                v={s.show_pinboard_counts}
+                                on={(b) => set('show_pinboard_counts', b)}
+                                label="Show item count on category tabs"
+                            />
+                        </Row>
+                        <Row
+                            k="wrap_categories"
+                            s={s}
+                            searchQuery={q}
+                            onGearMenu={openGearMenu}
+                            label="Wrap category tabs onto multiple lines"
+                            hint="On: wraps category tabs into multiple rows (like VS Code wrapTabs). Off: scrolls category tabs horizontally with mouse wheel or click-and-drag."
+                        >
+                            <Toggle
+                                v={s.wrap_categories ?? false}
+                                on={(b) => set('wrap_categories', b)}
+                                label="Wrap category tabs onto multiple lines"
+                            />
                         </Row>
                     </section>
                 )}
@@ -1522,7 +1589,11 @@ export default function SettingsView() {
                             label="Respect “do not record” flags"
                             hint="Password managers mark their clipboard data; ClipNest then never stores it."
                         >
-                            <Toggle v={s.ignore_confidential} on={(b) => set('ignore_confidential', b)} />
+                            <Toggle
+                                v={s.ignore_confidential}
+                                on={(b) => set('ignore_confidential', b)}
+                                label="Respect “do not record” flags"
+                            />
                         </Row>
                         <Row
                             k="detect_sensitive"
@@ -1532,7 +1603,11 @@ export default function SettingsView() {
                             label="Detect sensitive data"
                             hint="Card numbers (Luhn), API keys (sk-…, ghp_…, AKIA…), private keys, JWTs."
                         >
-                            <Toggle v={s.detect_sensitive} on={(b) => set('detect_sensitive', b)} />
+                            <Toggle
+                                v={s.detect_sensitive}
+                                on={(b) => set('detect_sensitive', b)}
+                                label="Detect sensitive data"
+                            />
                         </Row>
                         {s.detect_sensitive && (
                             <>
@@ -1580,9 +1655,7 @@ export default function SettingsView() {
                         ) && (
                             <>
                                 <h3>{t('Ignored applications')}</h3>
-                                <p className="muted small">
-                                    {t('Nothing copied from these executables is stored.')}
-                                </p>
+                                <p className="muted small">{t('Nothing copied from these executables is stored.')}</p>
                                 <TagList
                                     items={s.ignore_apps}
                                     onChange={(l) => set('ignore_apps', l)}
@@ -1590,9 +1663,7 @@ export default function SettingsView() {
                                     placeholder="keepass.exe"
                                 />
                                 <div className="cap-note muted small">
-                                    {t(
-                                        'Database encryption and per-tab locking are not part of this version.'
-                                    )}
+                                    {t('Database encryption and per-tab locking are not part of this version.')}
                                 </div>
                             </>
                         )}
@@ -1624,11 +1695,7 @@ export default function SettingsView() {
                             hint="Global hotkey to show or hide the main ClipNest popup."
                         >
                             <div className="stack">
-                                <ShortcutInput
-                                    role="open"
-                                    v={s.shortcut_open}
-                                    on={(v) => set('shortcut_open', v)}
-                                />
+                                <ShortcutInput role="open" v={s.shortcut_open} on={(v) => set('shortcut_open', v)} />
                                 <div className="presets">
                                     <button
                                         type="button"
@@ -1655,11 +1722,7 @@ export default function SettingsView() {
                             label="Paste queue on/off"
                             hint="Global hotkey to open or close the Paste Queue / Drop Basket window."
                         >
-                            <ShortcutInput
-                                role="queue"
-                                v={s.shortcut_queue}
-                                on={(v) => set('shortcut_queue', v)}
-                            />
+                            <ShortcutInput role="queue" v={s.shortcut_queue} on={(v) => set('shortcut_queue', v)} />
                         </Row>
                         <Row
                             k="shortcut_plain_toggle"
@@ -1683,11 +1746,7 @@ export default function SettingsView() {
                             label="Pause / resume capture"
                             hint="Global hotkey to pause or resume clipboard capturing."
                         >
-                            <ShortcutInput
-                                role="pause"
-                                v={s.shortcut_pause}
-                                on={(v) => set('shortcut_pause', v)}
-                            />
+                            <ShortcutInput role="pause" v={s.shortcut_pause} on={(v) => set('shortcut_pause', v)} />
                         </Row>
                         {!isSearching && (
                             <>
@@ -1699,7 +1758,7 @@ export default function SettingsView() {
                                                 '↑ ↓ · Shift+↑↓ · PgUp/PgDn · Ctrl+↑↓',
                                                 'Select / extend selection / jump',
                                             ],
-                                            ['← → · Tab · Ctrl+[ ]', 'Switch Clipboard ↔ pinboards'],
+                                            ['← → · Tab · Ctrl+[ ]', 'Switch Clipboard ↔ categories'],
                                             [
                                                 'Enter · Shift+Enter · Ctrl+Enter',
                                                 'Paste · plain text · keep formatting',
@@ -1708,16 +1767,10 @@ export default function SettingsView() {
                                             ['Alt+↑ / Alt+↓ (or drag a card)', 'Move the card up / down'],
                                             ['Space (or F3)', 'Preview (empty search)'],
                                             ['Ctrl+C', 'Copy only'],
-                                            ['Delete / Ctrl+Delete', 'Delete (or unpin inside a pinboard)'],
+                                            ['Delete / Ctrl+Delete', 'Delete (or remove inside a category)'],
                                             ['F2 · Ctrl+T · Ctrl+P', 'Rename · tags · pin on top'],
-                                            [
-                                                'Ctrl+E · Ctrl+I · Ctrl+M',
-                                                'Edit · formats inspector · merge selected',
-                                            ],
-                                            [
-                                                'Ctrl+O · Ctrl+N · Ctrl+,',
-                                                'Open link/file · new pinboard · settings',
-                                            ],
+                                            ['Ctrl+E · Ctrl+I · Ctrl+M', 'Edit · formats inspector · merge selected'],
+                                            ['Ctrl+O · Ctrl+N · Ctrl+,', 'Open link/file · new category · settings'],
                                             ['Esc', 'Clear search, then close'],
                                         ].map(([k, d]) => (
                                             <tr key={k}>
@@ -1746,13 +1799,17 @@ export default function SettingsView() {
                         {renderSectionHeader('rules', 'Automatic rules')}
                         <p className="muted small">
                             {t(
-                                'Run on every new copy, in order. A rule applies when ALL of its filled-in conditions match. Example: app “keepass”, action “Do not store”; or pattern “^https?://”, action “Move to pinboard”.'
+                                'Run on every new copy, in order. A rule applies when ALL of its filled-in conditions match. Example: app “keepass”, action “Do not store”; or pattern “^https?://”, action “Move to category”.'
                             )}
                         </p>
                         {s.rules.map((r, i) => (
                             <div key={r.id} className="rulecard">
                                 <div className="rulehead">
-                                    <Toggle v={r.enabled} on={(b) => updAuto(i, { enabled: b })} />
+                                    <Toggle
+                                        v={r.enabled}
+                                        on={(b) => updAuto(i, { enabled: b })}
+                                        label={r.name || t('Rule name')}
+                                    />
                                     <input
                                         value={r.name}
                                         placeholder={t('Rule name')}
@@ -1833,22 +1890,16 @@ export default function SettingsView() {
                                             <span>{t(k)}</span>
                                         </label>
                                     ))}
-                                    <span className="muted small">
-                                        {r.kinds.length === 0 ? t('(any)') : ''}
-                                    </span>
+                                    <span className="muted small">{r.kinds.length === 0 ? t('(any)') : ''}</span>
                                 </div>
                                 <div className="rulegrid">
                                     <div>
                                         <span className="field-label">{t('Then')}</span>
-                                        <Select
-                                            v={r.action}
-                                            on={(v) => updAuto(i, { action: v })}
-                                            opts={ACTIONS}
-                                        />
+                                        <Select v={r.action} on={(v) => updAuto(i, { action: v })} opts={ACTIONS} />
                                     </div>
                                     {r.action === 'to_board' && (
                                         <div>
-                                            <span className="field-label">{t('Pinboard')}</span>
+                                            <span className="field-label">{t('Category')}</span>
                                             <CustomSelect
                                                 value={r.board}
                                                 onChange={(v) => updAuto(i, { board: Number(v) })}
@@ -2017,7 +2068,11 @@ export default function SettingsView() {
                             label="Daily automatic backup"
                             hint="Automatically creates a compressed daily snapshot in the backups folder."
                         >
-                            <Toggle v={s.auto_backup} on={(b) => set('auto_backup', b)} />
+                            <Toggle
+                                v={s.auto_backup}
+                                on={(b) => set('auto_backup', b)}
+                                label="Daily automatic backup"
+                            />
                         </Row>
                         <Row
                             k="backup_keep"
@@ -2034,7 +2089,7 @@ export default function SettingsView() {
                             searchQuery={q}
                             onGearMenu={openGearMenu}
                             label="Export history"
-                            hint="Saves everything (items, formats, pinboards) to a file you choose."
+                            hint="Saves everything (items, formats, categories) to a file you choose."
                         >
                             <button
                                 type="button"
@@ -2093,9 +2148,7 @@ export default function SettingsView() {
                                     type="button"
                                     className="btn"
                                     onClick={() =>
-                                        run(async () =>
-                                            (await api.importSettings()) ? t('Settings imported') : null
-                                        )
+                                        run(async () => ((await api.importSettings()) ? t('Settings imported') : null))
                                     }
                                 >
                                     <span>{t('Import…')}</span>
@@ -2133,7 +2186,7 @@ export default function SettingsView() {
                             searchQuery={q}
                             onGearMenu={openGearMenu}
                             label="Erase history"
-                            hint="Removes unpinned history, with an option in the confirmation dialog to also delete pinned items and pinboards."
+                            hint="Removes unpinned history, with an option in the confirmation dialog to also delete pinned items and categories."
                         >
                             <button type="button" className="btn danger" onClick={askEraseHistory}>
                                 <span>{t('Erase history…')}</span>
@@ -2168,7 +2221,7 @@ export default function SettingsView() {
                     'Help & Guide',
                     'Getting started',
                     'Smart search & filters',
-                    'Pinboards & active tab',
+                    'Categories & active tab',
                     'Paste Queue & Drop Basket',
                     'Windows File Explorer context menu',
                     'Text transforms & Persian tools',
@@ -2195,10 +2248,10 @@ export default function SettingsView() {
                                 </p>
                             </div>
                             <div className="guide-card">
-                                <h3>{t('Pinboards & active tab')}</h3>
+                                <h3>{t('Categories & active tab')}</h3>
                                 <p className="muted">
                                     {t(
-                                        'Create colour-coded Pinboards with + or Ctrl+N and drag cards onto any tab. Right-click a Pinboard tab and enable Active pinboard so all new copies go straight into that tab automatically.'
+                                        'Create colour-coded Categories with + or Ctrl+N and drag cards onto any tab (hold Ctrl while dragging from a category to copy instead of move). Right-click a Category tab and enable Active category so all new copies go straight into that tab automatically.'
                                     )}
                                 </p>
                             </div>
@@ -2232,23 +2285,17 @@ export default function SettingsView() {
                         <table className="keys" dir="ltr">
                             <tbody>
                                 {[
-                                    [
-                                        '↑ ↓ · Shift+↑↓ · PgUp/PgDn · Ctrl+↑↓',
-                                        'Select / extend selection / jump',
-                                    ],
-                                    ['← → · Tab · Ctrl+[ ]', 'Switch Clipboard ↔ pinboards'],
-                                    [
-                                        'Enter · Shift+Enter · Ctrl+Enter',
-                                        'Paste · plain text · keep formatting',
-                                    ],
+                                    ['↑ ↓ · Shift+↑↓ · PgUp/PgDn · Ctrl+↑↓', 'Select / extend selection / jump'],
+                                    ['← → · Tab · Ctrl+[ ]', 'Switch Clipboard ↔ categories'],
+                                    ['Enter · Shift+Enter · Ctrl+Enter', 'Paste · plain text · keep formatting'],
                                     ['Ctrl+1 … Ctrl+9', 'Quick-paste a visible card'],
                                     ['Alt+↑ / Alt+↓ (or drag a card)', 'Move the card up / down'],
                                     ['Space (or F3)', 'Preview (empty search)'],
                                     ['Ctrl+C', 'Copy only'],
-                                    ['Delete / Ctrl+Delete', 'Delete (or unpin inside a pinboard)'],
+                                    ['Delete / Ctrl+Delete', 'Delete (or remove inside a category)'],
                                     ['F2 · Ctrl+T · Ctrl+P', 'Rename · tags · pin on top'],
                                     ['Ctrl+E · Ctrl+I · Ctrl+M', 'Edit · formats inspector · merge selected'],
-                                    ['Ctrl+O · Ctrl+N · Ctrl+,', 'Open link/file · new pinboard · settings'],
+                                    ['Ctrl+O · Ctrl+N · Ctrl+,', 'Open link/file · new category · settings'],
                                     ['Esc', 'Clear search, then close'],
                                 ].map(([k, d]) => (
                                     <tr key={k}>
@@ -2278,9 +2325,7 @@ export default function SettingsView() {
                                     <span className="badge">v0.2.0</span>
                                 </div>
                                 <p className="muted">
-                                    {t(
-                                        'Fast, private clipboard manager & file collector for Windows 10 and 11.'
-                                    )}
+                                    {t('Fast, private clipboard manager & file collector for Windows 10 and 11.')}
                                 </p>
                             </div>
                         </div>
@@ -2312,10 +2357,12 @@ export default function SettingsView() {
                     </section>
                 )}
 
-                {msg && <div className="toast">{msg}</div>}
-                {menu && (
-                    <ContextMenu x={menu.x} y={menu.y} entries={menu.entries} onClose={() => setMenu(null)} />
+                {msg && (
+                    <div className="toast" role="status" aria-live="polite">
+                        {msg}
+                    </div>
                 )}
+                {menu && <ContextMenu x={menu.x} y={menu.y} entries={menu.entries} onClose={() => setMenu(null)} />}
                 {prompt && <Prompt p={prompt} onClose={() => setPrompt(null)} />}
             </main>
         </div>

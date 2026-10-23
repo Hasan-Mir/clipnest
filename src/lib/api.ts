@@ -114,6 +114,7 @@ export interface Settings {
     auto_save_edit: boolean;
     basket_allow_cut: boolean;
     active_pinboard: number | null;
+    independent_pinning: boolean;
     ignore_apps: string[];
     ignore_confidential: boolean;
     detect_sensitive: boolean;
@@ -133,6 +134,7 @@ export interface Settings {
     remember_popup_size: boolean;
     show_toolbar: boolean;
     show_pinboard_counts: boolean;
+    wrap_categories: boolean;
     animations: boolean;
     show_thumbnails: boolean;
     thumbnail_size: 'small' | 'medium' | 'large';
@@ -167,8 +169,10 @@ export const api = {
     deleteItems: (ids: number[]) => invoke<void>('delete_items', { ids }),
     renameItem: (id: number, title: string) => invoke<void>('rename_item', { id, title }),
     setTags: (id: number, tags: string) => invoke<void>('set_tags', { id, tags }),
-    setPinboard: (ids: number[], board: number | null) => invoke<void>('set_pinboard', { ids, board }),
-    setPinned: (ids: number[], pinned: boolean) => invoke<void>('set_pinned', { ids, pinned }),
+    setPinboard: (ids: number[], board: number | null, sourceBoard: number | null = null, copy = false) =>
+        invoke<void>('set_pinboard', { ids, board, sourceBoard, copy }),
+    setPinned: (ids: number[], pinned: boolean, board: number | null = null) =>
+        invoke<void>('set_pinned', { ids, pinned, board }),
     createTextItem: (text: string) => invoke<number>('create_text_item', { text }),
     mergeItems: (ids: number[], sep: string) => invoke<number>('merge_items', { ids, sep }),
     updateItemText: (id: number, text: string) => invoke<void>('update_item_text', { id, text }),
@@ -192,7 +196,7 @@ export const api = {
     deletePinboard: (id: number) => invoke<void>('delete_pinboard', { id }),
     runAction: (id: number, action: string) => invoke<number | null>('run_action', { id, action }),
     openItem: (id: number) => invoke<void>('open_item', { id }),
-    revealItem: (id: number) => invoke<void>('reveal_item', { id }),
+    revealItem: (id: number, ids?: number[]) => invoke<void>('reveal_item', { id, ids }),
     getSettings: () => invoke<Settings>('get_settings'),
     setSettings: (settings: Settings) => invoke<void>('set_settings', { settings }),
     status: () => invoke<Status>('app_status'),
@@ -226,8 +230,7 @@ export const api = {
         invoke<ShortcutConflict>('check_shortcut_conflict', { shortcut, role }),
     getExplorerTarget: () => invoke<string | null>('get_explorer_target'),
     clearExplorerTarget: () => invoke<void>('clear_explorer_target'),
-    pasteFilesToFolder: (ids: number[], folder: string) =>
-        invoke<number>('paste_files_to_folder', { ids, folder }),
+    pasteFilesToFolder: (ids: number[], folder: string) => invoke<number>('paste_files_to_folder', { ids, folder }),
 };
 
 export function on(event: string, cb: () => void): Promise<UnlistenFn> {

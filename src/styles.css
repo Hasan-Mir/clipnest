@@ -49,8 +49,7 @@
     --accent: #4f8cff;
     --accent-fg: #ffffff;
     --fs: 13px;
-    --card-font:
-        'Vazirmatn', system-ui, -apple-system, 'Segoe UI Variable Text', 'Segoe UI', Tahoma, sans-serif;
+    --card-font: 'Vazirmatn', system-ui, -apple-system, 'Segoe UI Variable Text', 'Segoe UI', Tahoma, sans-serif;
     --card-max-h: 160px;
     --thumb-max-h: 110px;
     --hl-color: #4f8cff;
@@ -161,6 +160,19 @@ body,
     height: 100%;
 }
 
+/* Screen-reader only utility */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 /* Prioritize embedded Vazirmatn first so both Persian and Latin glyphs render with Vazirmatn by default */
 body {
     background: var(--bg);
@@ -194,6 +206,14 @@ button {
     background: none;
     line-height: 1;
     vertical-align: middle;
+}
+
+button:focus-visible,
+.card:focus-visible,
+.pv-colorrow:focus-visible,
+.menu-item:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
 }
 
 button > span {
@@ -366,9 +386,10 @@ mark.shl {
 /* ───────── popup frame ───────── */
 .popup {
     position: relative;
+    width: 100%;
     height: 100vh;
-    min-width: 340px;
-    min-height: 380px;
+    min-width: 0;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     outline: 0;
@@ -548,21 +569,50 @@ input.search-bare::placeholder,
     box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 38%, transparent);
 }
 
-/* ───────── pinboard tabs ───────── */
+/* ───────── category tabs (scroll + drag-to-scroll + wrap option) ───────── */
 .tabs {
     display: flex;
+    flex-shrink: 0;
     gap: 5px;
-    padding: 0 10px 8px;
+    padding: 0 10px 6px;
     overflow-x: auto;
-    scrollbar-width: none;
+    overflow-y: hidden;
     align-items: center;
+    cursor: grab;
+    scrollbar-width: thin;
 }
 
 .tabs::-webkit-scrollbar {
-    display: none;
+    height: 4px;
+}
+
+.tabs::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 4px;
+}
+
+.tabs:hover::-webkit-scrollbar-thumb {
+    background: var(--border);
+}
+
+.tabs.grabbing {
+    cursor: grabbing;
+}
+
+.tabs.grabbing .tab {
+    cursor: grabbing;
+}
+
+.tabs.wrap {
+    flex-wrap: wrap;
+    overflow-x: hidden;
+    overflow-y: auto;
+    max-height: 108px;
+    cursor: default;
 }
 
 .tab {
+    flex: none;
     height: 28px;
     padding: 0 10px;
     border-radius: 7px;
@@ -870,7 +920,8 @@ input.search-bare::placeholder,
 }
 
 .card:hover .more,
-.card.sel .more {
+.card.sel .more,
+.more:focus-visible {
     opacity: 1;
 }
 
@@ -1076,12 +1127,14 @@ input.search-bare::placeholder,
     display: flex;
     align-items: center;
     min-height: 36px;
-    padding: 4px 12px;
+    min-width: 0;
+    padding: 4px 10px;
     border-top: 1px solid var(--border);
     color: var(--muted);
     font-size: 0.8em;
     line-height: 1;
     background: var(--bg);
+    overflow: hidden;
 }
 
 .foot-count {
@@ -1319,6 +1372,7 @@ input.search-bare::placeholder,
     border-radius: 10px;
     box-shadow: var(--shadow);
     font-size: 0.93em;
+    outline: 0;
 }
 
 .menu.menu-ready {
@@ -1345,17 +1399,22 @@ input.search-bare::placeholder,
 }
 
 .menu-item-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.menu-item:hover {
+.menu-item:hover,
+.menu-item.focused {
     background: var(--accent);
     color: var(--accent-fg);
 }
 
-.menu-item:hover .hint {
+.menu-item:hover .hint,
+.menu-item.focused .hint {
     color: color-mix(in srgb, var(--accent-fg) 75%, transparent);
 }
 
@@ -1363,7 +1422,8 @@ input.search-bare::placeholder,
     color: var(--danger);
 }
 
-.menu-item.danger:hover {
+.menu-item.danger:hover,
+.menu-item.danger.focused {
     background: var(--danger);
     color: #fff;
 }
@@ -1384,7 +1444,32 @@ input.search-bare::placeholder,
 
 .menu-head {
     padding: 4px 10px 2px;
-    font-size: 0.75em;
+    font-size: 0.78em;
+    color: var(--muted);
+}
+
+.menu-head-icon {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.menu-head-icon.copy-mode .icon {
+    color: var(--accent);
+}
+
+.menu-copy-accent {
+    color: var(--accent);
+    font-weight: 700;
+}
+
+.menu-head-hint {
+    margin-inline-start: auto;
+    font-size: 0.85em;
+    padding: 0 5px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--bg2);
     color: var(--muted);
 }
 
@@ -1393,6 +1478,11 @@ input.search-bare::placeholder,
     flex-wrap: wrap;
     gap: 4px;
     padding: 3px 6px 4px;
+    border-radius: 6px;
+}
+
+.menu-chips.focused {
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .chip {
@@ -1568,19 +1658,27 @@ textarea.editor:focus {
 .preview {
     position: absolute;
     inset: 0;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
     z-index: 45;
     background: var(--bg);
     display: flex;
     flex-direction: column;
     outline: 0;
+    overflow: hidden;
 }
 
 .preview-head {
     display: flex;
     align-items: center;
+    min-width: 0;
     padding: 8px 10px;
     border-bottom: 1px solid var(--border);
     gap: 8px;
+    cursor: default;
+    user-select: none;
 }
 
 .preview-title {
@@ -1593,13 +1691,17 @@ textarea.editor:focus {
 
 .preview-actions {
     display: flex;
+    flex: none;
     gap: 2px;
     align-items: center;
 }
 
 .preview-body {
     flex: 1;
-    overflow: auto;
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
     padding: 10px;
     user-select: text;
     font-family: var(--card-font, 'Vazirmatn', system-ui, sans-serif);
@@ -1608,9 +1710,25 @@ textarea.editor:focus {
 .preview-foot {
     display: flex;
     align-items: center;
+    min-width: 0;
     gap: 8px;
     padding: 8px 10px;
     border-top: 1px solid var(--border);
+    background: var(--bg);
+    flex: none;
+    overflow: hidden;
+}
+
+.preview-stats {
+    min-width: 0;
+    flex-shrink: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.preview-foot .btn {
+    flex-shrink: 0;
 }
 
 .autosave-badge {
@@ -1628,6 +1746,8 @@ textarea.editor:focus {
 
 .codeview {
     display: flex;
+    min-width: 0;
+    width: 100%;
     gap: 10px;
     font-size: 0.92em;
     font-family: var(--card-font, 'Vazirmatn', system-ui, sans-serif);
@@ -1712,17 +1832,29 @@ textarea.editor {
 }
 
 .formats {
-    margin-top: 14px;
+    flex: none;
+    max-height: 148px;
+    overflow-y: auto;
+    overflow-x: hidden;
     border-top: 1px solid var(--border);
-    padding-top: 8px;
+    background: var(--bg2);
+    padding: 8px 10px;
+    user-select: text;
 }
 
 .fmt-row {
     display: grid;
-    grid-template-columns: 1.3fr 1.6fr auto;
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.6fr) auto;
     gap: 8px;
     padding: 3px 0;
     font-size: 0.88em;
+    align-items: center;
+}
+
+.fmt-row > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .files.big .file-row {
@@ -2154,7 +2286,8 @@ textarea.editor {
 }
 
 .srow:hover .srow-gear,
-.srow.modified .srow-gear {
+.srow.modified .srow-gear,
+.srow-gear:focus-visible {
     opacity: 1;
 }
 

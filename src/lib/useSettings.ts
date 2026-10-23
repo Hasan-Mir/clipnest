@@ -30,14 +30,8 @@ export const DEFAULT_SETTINGS: Settings = {
     auto_save_edit: true,
     basket_allow_cut: true,
     active_pinboard: null,
-    ignore_apps: [
-        'keepass.exe',
-        'keepassxc.exe',
-        'bitwarden.exe',
-        '1password.exe',
-        'lastpass.exe',
-        'dashlane.exe',
-    ],
+    independent_pinning: true,
+    ignore_apps: ['keepass.exe', 'keepassxc.exe', 'bitwarden.exe', '1password.exe', 'lastpass.exe', 'dashlane.exe'],
     ignore_confidential: true,
     detect_sensitive: true,
     sensitive_action: 'mask',
@@ -56,6 +50,7 @@ export const DEFAULT_SETTINGS: Settings = {
     remember_popup_size: true,
     show_toolbar: false,
     show_pinboard_counts: true,
+    wrap_categories: false,
     animations: true,
     show_thumbnails: true,
     thumbnail_size: 'medium',
@@ -143,8 +138,7 @@ export function useSettings(): [Settings | null, (s: Settings) => void] {
         const maxH = s.card_max_height > 0 ? `${Math.max(60, s.card_max_height)}px` : 'none';
         r.style.setProperty('--card-max-h', maxH);
 
-        const thumbPx =
-            s.thumbnail_size === 'small' ? '52px' : s.thumbnail_size === 'large' ? '170px' : '110px';
+        const thumbPx = s.thumbnail_size === 'small' ? '52px' : s.thumbnail_size === 'large' ? '170px' : '110px';
         r.style.setProperty('--thumb-max-h', thumbPx);
 
         const rawHl = (s.highlight_color || '').trim();

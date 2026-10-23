@@ -1,6 +1,7 @@
 import React from 'react';
 import {
     AlertTriangle,
+    ArrowRight,
     BookOpen,
     Check,
     ChevronDown,
@@ -41,6 +42,7 @@ export type IconName =
     | 'edit'
     | 'info'
     | 'copy'
+    | 'arrowRight'
     | 'eye'
     | 'bolt'
     | 'merge'
@@ -70,6 +72,7 @@ const ICON_MAP: Record<IconName, React.ComponentType<LucideProps>> = {
     edit: Pencil,
     info: Info,
     copy: Copy,
+    arrowRight: ArrowRight,
     eye: Eye,
     bolt: Zap,
     merge: GitMerge,

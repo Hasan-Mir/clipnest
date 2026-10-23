@@ -58,13 +58,14 @@ export default function TrayMenu() {
     }, [paused, qActive, lang]);
 
     return (
-        <div ref={menuRef} className="tray-menu">
+        <div ref={menuRef} role="menu" aria-label="ClipNest" className="tray-menu">
             <div className="tray-head">
                 <img className="logo-img" src="/icon.png" alt="ClipNest" draggable={false} />
                 <span className="brand">ClipNest</span>
                 <span className="spacer" />
                 <button
                     type="button"
+                    role="menuitem"
                     className={`tray-pill${paused ? ' warn' : ' ok'}`}
                     onClick={() => {
                         if (paused) {
@@ -78,10 +79,11 @@ export default function TrayMenu() {
                 </button>
             </div>
 
-            <div className="menu-sep" />
+            <div className="menu-sep" role="separator" />
 
             <button
                 type="button"
+                role="menuitem"
                 className="tray-row"
                 onClick={() => {
                     api.showPopup();
@@ -93,6 +95,7 @@ export default function TrayMenu() {
 
             <button
                 type="button"
+                role="menuitem"
                 className="tray-row"
                 onClick={() => {
                     api.queueToggle();
@@ -107,6 +110,8 @@ export default function TrayMenu() {
 
             <button
                 type="button"
+                role="menuitemcheckbox"
+                aria-checked={plain}
                 className="tray-row"
                 onClick={() => {
                     api.togglePlain();
@@ -118,11 +123,12 @@ export default function TrayMenu() {
                 <span className={`tray-dot${plain ? ' on' : ''}`} />
             </button>
 
-            <div className="menu-sep" />
+            <div className="menu-sep" role="separator" />
 
             {paused ? (
                 <button
                     type="button"
+                    role="menuitem"
                     className="tray-row accent"
                     onClick={() => {
                         api.resume();
@@ -132,32 +138,33 @@ export default function TrayMenu() {
                     <span>{t('Resume capture')}</span>
                 </button>
             ) : (
-                <div className="tray-pause-block">
+                <div className="tray-pause-block" role="group" aria-label={t('Pause capture')}>
                     <div className="tray-pause-label">
                         <Icon name="pause" size={13} />
                         <span>{t('Pause capture')}</span>
                     </div>
                     <div className="tray-chips" dir="ltr">
-                        <button type="button" className="chip" onClick={() => api.pause(15)}>
+                        <button type="button" role="menuitem" className="chip" onClick={() => api.pause(15)}>
                             15m
                         </button>
-                        <button type="button" className="chip" onClick={() => api.pause(60)}>
+                        <button type="button" role="menuitem" className="chip" onClick={() => api.pause(60)}>
                             1h
                         </button>
-                        <button type="button" className="chip" onClick={() => api.pause(480)}>
+                        <button type="button" role="menuitem" className="chip" onClick={() => api.pause(480)}>
                             8h
                         </button>
-                        <button type="button" className="chip" onClick={() => api.pause(null)}>
+                        <button type="button" role="menuitem" className="chip" onClick={() => api.pause(null)}>
                             ∞
                         </button>
                     </div>
                 </div>
             )}
 
-            <div className="menu-sep" />
+            <div className="menu-sep" role="separator" />
 
             <button
                 type="button"
+                role="menuitem"
                 className="tray-row"
                 onClick={() => {
                     api.requestEraseFromTray();
@@ -169,6 +176,7 @@ export default function TrayMenu() {
 
             <button
                 type="button"
+                role="menuitem"
                 className="tray-row"
                 onClick={() => {
                     api.openSettings();
@@ -178,10 +186,11 @@ export default function TrayMenu() {
                 <span>{t('Settings…')}</span>
             </button>
 
-            <div className="menu-sep" />
+            <div className="menu-sep" role="separator" />
 
             <button
                 type="button"
+                role="menuitem"
                 className="tray-row danger"
                 onClick={() => {
                     api.quit();

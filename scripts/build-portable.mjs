@@ -1,39 +1,63 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 
-const root = process.cwd();
-const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-const version = pkg.version || '0.2.0';
+const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+const version = pkg.version;
+const relDir = path.join('src-tauri', 'target', 'release');
+const bundleDir = path.join(relDir, 'bundle');
 
-const releaseDir = path.join(root, 'src-tauri', 'target', 'release');
-const exeSrc = path.join(releaseDir, 'clipnest.exe');
+const exeCandidates = [path.join(relDir, 'clipnest.exe'), path.join(relDir, 'ClipNest.exe')];
+const exePath = exeCandidates.find((p) => fs.existsSync(p));
 
-if (!fs.existsSync(exeSrc)) {
-    throw new Error(`Expected built binary at ${exeSrc}. Run "npm run tauri build" first.`);
+if (!exePath) {
+    console.error('Could not find release executable in', relDir);
+    process.exit(1);
 }
 
-const outRoot = path.join(releaseDir, 'bundle', 'portable');
-const stagingDir = path.join(outRoot, 'ClipNest-Portable');
-fs.rmSync(outRoot, { recursive: true, force: true });
-fs.mkdirSync(stagingDir, { recursive: true });
+const stageDir = path.join(bundleDir, 'portable-stage', 'ClipNest-Portable');
+fs.rmSync(stageDir, { recursive: true, force: true });
+fs.mkdirSync(path.join(stageDir, 'data'), { recursive: true });
 
-const portableExe = path.join(stagingDir, 'ClipNest-Portable.exe');
-fs.copyFileSync(exeSrc, portableExe);
+fs.copyFileSync(exePath, path.join(stageDir, 'ClipNest.exe'));
+
+const cliExe = path.join(relDir, 'clipnest-cli.exe');
+if (fs.existsSync(cliExe)) {
+    fs.copyFileSync(cliExe, path.join(stageDir, 'clipnest-cli.exe'));
+}
+
+const cmdShim = [
+    '@echo off',
+    'setlocal',
+    'if exist "%~dp0clipnest-cli.exe" (',
+    '  "%~dp0clipnest-cli.exe" %*',
+    '  exit /b %ERRORLEVEL%',
+    ')',
+    '"%~dp0ClipNest.exe" %*',
+    'exit /b %ERRORLEVEL%',
+    '',
+].join('\r\n');
+fs.writeFileSync(path.join(stageDir, 'clipnest.cmd'), cmdShim, 'utf8');
+fs.writeFileSync(path.join(stageDir, 'clipn.cmd'), cmdShim, 'utf8');
+
 fs.writeFileSync(
-    path.join(stagingDir, 'portable.txt'),
-    'ClipNest Portable Mode\nAll database, settings, and backup files are stored in the ./data folder next to this executable.\n',
-    'utf8'
+    path.join(stageDir, 'portable.txt'),
+    'ClipNest Portable Mode — All database, settings, and daily backups are stored in the local ./data folder.\r\n'
 );
 
-const zipName = `ClipNest_${version}_x64-portable.zip`;
-const zipPath = path.join(outRoot, zipName);
-
-if (process.platform === 'win32') {
-    execSync(
-        `powershell -NoProfile -Command "Compress-Archive -Path '${stagingDir}\\*' -DestinationPath '${zipPath}' -Force"`,
-        { stdio: 'inherit' }
-    );
+const zipOut = path.resolve(bundleDir, `ClipNest_${version}_x64-portable.zip`);
+if (fs.existsSync(zipOut)) {
+    fs.unlinkSync(zipOut);
 }
 
-console.log(`Portable build ready:\n  Folder: ${stagingDir}\n  Archive: ${zipPath}`);
+execFileSync(
+    'powershell',
+    [
+        '-NoProfile',
+        '-Command',
+        `Compress-Archive -Path '${path.resolve(stageDir)}\\*' -DestinationPath '${zipOut}' -Force`,
+    ],
+    { stdio: 'inherit' }
+);
+
+console.log('Created portable archive:', zipOut);

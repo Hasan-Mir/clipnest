@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { eventToShortcut, formatHeldModifiers } from '../lib/shortcut';
+import { digitOfKey, eventToShortcut, formatHeldModifiers, isKey } from '../lib/shortcut';
 
 function makeKeyEvent(
     overrides: Partial<{
@@ -101,9 +101,28 @@ describe('eventToShortcut & formatHeldModifiers keyboard shortcut recorder', () 
                 makeKeyEvent({
                     key: ' ',
                     code: 'Space',
+                    ctrlKey: true,
                     altKey: true,
                 })
             )
-        ).toBe('Alt+Space');
+        ).toBe('Ctrl+Alt+Space');
+    });
+
+    it('matches physical keys via isKey and digitOfKey when OS layout is Persian', () => {
+        // Ctrl+I on Persian keyboard sends key='ه', code='KeyI'
+        expect(isKey({ key: 'ه', code: 'KeyI' }, 'i')).toBe(true);
+        // Ctrl+E on Persian keyboard sends key='ث', code='KeyE'
+        expect(isKey({ key: 'ث', code: 'KeyE' }, 'e')).toBe(true);
+        // Ctrl+S on Persian keyboard sends key='س', code='KeyS'
+        expect(isKey({ key: 'س', code: 'KeyS' }, 's')).toBe(true);
+        // Ctrl+, on Persian keyboard sends key='و', code='Comma'
+        expect(isKey({ key: 'و', code: 'Comma' }, ',')).toBe(true);
+        // Ctrl+[ and Ctrl+] on Persian keyboard send 'ج' and 'چ'
+        expect(isKey({ key: 'ج', code: 'BracketLeft' }, '[')).toBe(true);
+        expect(isKey({ key: 'چ', code: 'BracketRight' }, ']')).toBe(true);
+        // Ctrl+1..9 on Persian keyboard
+        expect(digitOfKey({ key: '۱', code: 'Digit1' })).toBe(1);
+        expect(digitOfKey({ key: '9', code: 'Numpad9' })).toBe(9);
+        expect(digitOfKey({ key: '0', code: 'Digit0' })).toBeNull();
     });
 });

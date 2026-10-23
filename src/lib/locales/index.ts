@@ -13,6 +13,4 @@ export type { LocaleDefinition } from './types';
 
 export const LOCALES: LocaleDefinition[] = [en, fa, ar, es, zh, ru, de, fr, tr];
 
-export const LOCALE_MAP: Record<string, LocaleDefinition> = Object.fromEntries(
-    LOCALES.map((l) => [l.code, l])
-);
+export const LOCALE_MAP: Record<string, LocaleDefinition> = Object.fromEntries(LOCALES.map((l) => [l.code, l]));

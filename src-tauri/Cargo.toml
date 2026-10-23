@@ -4,10 +4,19 @@ version = "0.2.0"
 description = "ClipNest - a fast, private clipboard manager for Windows"
 edition = "2021"
 rust-version = "1.77"
+default-run = "clipnest"
 
 [lib]
 name = "clipnest_lib"
 crate-type = ["rlib"]
+
+[[bin]]
+name = "clipnest"
+path = "src/main.rs"
+
+[[bin]]
+name = "clipnest-cli"
+path = "src/bin/clipnest-cli.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

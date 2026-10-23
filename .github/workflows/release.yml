@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   release-windows:
-    name: Build & Publish Windows Installer & Portable
+    name: Build & Publish Windows Installer, CLI & Portable
     runs-on: windows-latest
     steps:
       - name: Checkout repository
@@ -44,11 +44,19 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Run Frontend & Rust test suites before release
+      - name: Run Frontend, CLI & Rust test suites before release
         run: |
           npm run typecheck
           npm test
           cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Build standalone console CLI binary (clipnest-cli.exe)
+        run: |
+          cargo build --release --manifest-path src-tauri/Cargo.toml --bin clipnest-cli
+          New-Item -ItemType Directory -Force -Path "packages/cli/bin" | Out-Null
+          Copy-Item "src-tauri/target/release/clipnest-cli.exe" "packages/cli/bin/clipnest-cli.exe" -Force
+          npm run build:cli
+        shell: pwsh
 
       - name: Extract release notes from CHANGELOG.md
         id: changelog
@@ -77,7 +85,7 @@ jobs:
             $notes = ($collected -join "`n").Trim()
           }
           if ([string]::IsNullOrWhiteSpace($notes)) {
-            $notes = "ClipNest $rawTag for Windows (includes NSIS Per-User/All-Users Installer and Portable ZIP)."
+            $notes = "ClipNest $rawTag for Windows (includes NSIS Per-User/All-Users Installer with CLI PATH setup and Portable ZIP)."
           }
           $eof = "EOF_" + [guid]::NewGuid().ToString("N")
           "tag=$rawTag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -96,7 +104,7 @@ jobs:
           releaseDraft: ${{ github.event.inputs.draft == 'true' }}
           prerelease: false
 
-      - name: Package & upload Portable ZIP to GitHub Release
+      - name: Package & upload Portable ZIP and CLI binary to GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -105,4 +113,8 @@ jobs:
           $zip = Get-ChildItem "src-tauri/target/release/bundle/portable/*.zip" | Select-Object -First 1
           if ($null -ne $zip) {
             gh release upload "${{ steps.changelog.outputs.tag }}" $zip.FullName --clobber
+          }
+          if (Test-Path "src-tauri/target/release/clipnest-cli.exe") {
+            Copy-Item "src-tauri/target/release/clipnest-cli.exe" "src-tauri/target/release/clipnest-cli-win32-x64.exe" -Force
+            gh release upload "${{ steps.changelog.outputs.tag }}" "src-tauri/target/release/clipnest-cli-win32-x64.exe" --clobber
           }

@@ -1,6 +1,7 @@
 //! All direct Win32 calls live here (via `windows-sys`, raw bindings, no wrappers).
 
 use std::ffi::c_void;
+use std::path::Path;
 use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::OnceLock;
@@ -274,16 +275,43 @@ pub fn read_clipboard(respect_flags: bool, max_total: usize) -> Result<Snapshot,
 
 /// Replaces the clipboard content. Registered formats are re-registered by name because
 /// their numeric ids can change between sessions. Returns the new sequence number.
+unsafe fn ensure_owner_hwnd() -> HWND {
+    let cur = OWNER_HWND.load(Ordering::SeqCst);
+    if cur != 0 {
+        return cur;
+    }
+    let hinst = GetModuleHandleW(std::ptr::null());
+    let class = wide("ClipNestCliClipboardOwner");
+    let mut wc: WNDCLASSW = std::mem::zeroed();
+    wc.lpfnWndProc = Some(DefWindowProcW);
+    wc.hInstance = hinst;
+    wc.lpszClassName = class.as_ptr();
+    RegisterClassW(&wc);
+    let hwnd =
+        CreateWindowExW(0, class.as_ptr(), class.as_ptr(), 0, 0, 0, 0, 0, HWND_MESSAGE, 0, hinst, std::ptr::null());
+    if hwnd != 0 {
+        let _ = OWNER_HWND.compare_exchange(0, hwnd, Ordering::SeqCst, Ordering::SeqCst);
+        OWNER_HWND.load(Ordering::SeqCst)
+    } else {
+        0
+    }
+}
+
+/// Reads plain UTF-16 text (`CF_UNICODETEXT`) directly from the system clipboard.
+pub fn read_clipboard_text() -> Result<String, String> {
+    unsafe {
+        if !open_clipboard_retry(0) {
+            return Err("clipboard is busy".into());
+        }
+        let text = get_bytes(CF_UNICODETEXT_ID).map(|b| crate::capture::decode_utf16(&b)).unwrap_or_default();
+        CloseClipboard();
+        Ok(text)
+    }
+}
+
 pub fn write_clipboard(items: &[(u32, String, Vec<u8>)]) -> Result<u32, String> {
     unsafe {
-        let mut owner = OWNER_HWND.load(Ordering::SeqCst);
-        for _ in 0..50 {
-            if owner != 0 {
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(20));
-            owner = OWNER_HWND.load(Ordering::SeqCst);
-        }
+        let owner = ensure_owner_hwnd();
         // A real owner window is required, otherwise SetClipboardData fails after EmptyClipboard.
         if !open_clipboard_retry(owner) {
             return Err("clipboard is busy".into());
@@ -594,6 +622,14 @@ extern "system" {
         phk_result: *mut isize,
         lpdw_disposition: *mut u32,
     ) -> i32;
+    fn RegQueryValueExW(
+        hkey: isize,
+        lp_value_name: *const u16,
+        lp_reserved: *const u32,
+        lp_type: *mut u32,
+        lp_data: *mut u8,
+        lpcb_data: *mut u32,
+    ) -> i32;
     fn RegSetValueExW(
         hkey: isize,
         lp_value_name: *const u16,
@@ -891,12 +927,97 @@ extern "system" {
         riid: *const Guid,
         ppv: *mut *mut c_void,
     ) -> i32;
+    fn ILCreateFromPathW(psz_path: *const u16) -> *mut c_void;
+    fn ILFree(pidl: *const c_void);
+    fn SHOpenFolderAndSelectItems(
+        pidl_folder: *const c_void,
+        cidl: u32,
+        apidl: *const *const c_void,
+        dw_flags: u32,
+    ) -> i32;
 }
 
 #[link(name = "ole32")]
 extern "system" {
     fn CoInitializeEx(pv_reserved: *mut c_void, dw_co_init: u32) -> i32;
     fn CoUninitialize();
+}
+
+/// Opens the parent folder(s) in Windows File Explorer and highlights ALL specified files simultaneously
+/// via `SHOpenFolderAndSelectItems` (falling back to `explorer /select` if a Shell PIDL cannot be resolved).
+pub fn reveal_files_in_explorer(paths: &[String]) -> Result<(), String> {
+    let mut groups: Vec<(String, Vec<String>)> = Vec::new();
+    for raw in paths {
+        let cleaned = raw.trim().trim_matches('"').replace('/', "\\");
+        if cleaned.is_empty() {
+            continue;
+        }
+        let parent = Path::new(&cleaned).parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+        if parent.is_empty() {
+            continue;
+        }
+        if let Some((_, list)) = groups.iter_mut().find(|(dir, _)| dir.eq_ignore_ascii_case(&parent)) {
+            if !list.iter().any(|existing| existing.eq_ignore_ascii_case(&cleaned)) {
+                list.push(cleaned);
+            }
+        } else {
+            groups.push((parent, vec![cleaned]));
+        }
+    }
+
+    if groups.is_empty() {
+        return Ok(());
+    }
+
+    unsafe {
+        // COINIT_APARTMENTTHREADED (0x2) is required by SHOpenFolderAndSelectItems.
+        let hr_init = CoInitializeEx(std::ptr::null_mut(), 0x2);
+        let should_uninit = hr_init >= 0;
+
+        for (folder, files) in &groups {
+            let wfolder = wide(folder);
+            let pidl_folder = ILCreateFromPathW(wfolder.as_ptr());
+            let mut selected_ok = false;
+
+            if !pidl_folder.is_null() {
+                let mut item_pidls: Vec<*const c_void> = Vec::with_capacity(files.len());
+                for f in files {
+                    let wf = wide(f);
+                    let pidl = ILCreateFromPathW(wf.as_ptr());
+                    if !pidl.is_null() {
+                        item_pidls.push(pidl as *const c_void);
+                    }
+                }
+                if !item_pidls.is_empty() {
+                    let hr = SHOpenFolderAndSelectItems(
+                        pidl_folder as *const c_void,
+                        item_pidls.len() as u32,
+                        item_pidls.as_ptr(),
+                        0,
+                    );
+                    if hr >= 0 {
+                        selected_ok = true;
+                    }
+                }
+                for p in item_pidls {
+                    ILFree(p);
+                }
+                ILFree(pidl_folder as *const c_void);
+            }
+
+            if !selected_ok {
+                if let Some(first) = files.first() {
+                    use std::os::windows::process::CommandExt;
+                    let _ = std::process::Command::new("explorer").raw_arg(format!("/select,\"{first}\"")).spawn();
+                }
+            }
+        }
+
+        if should_uninit {
+            CoUninitialize();
+        }
+    }
+    Ok(())
 }
 
 /// Extracts a thumbnail for an image, video, or media file via IShellItemImageFactory.
@@ -1122,4 +1243,152 @@ pub fn start_hotkey_hook(tx: Sender<u32>) {
         }
         UnhookWindowsHookEx(hook);
     });
+}
+
+// ───────────────────────────── CLI User PATH & Console Helpers ─────────────────────────────
+
+const KEY_READ_WRITE_ACCESS: u32 = 0x2001F;
+const REG_EXPAND_SZ_TYPE: u32 = 2;
+
+fn norm_path_entry(p: &str) -> String {
+    p.trim().trim_matches('"').trim_end_matches(['\\', '/']).to_lowercase()
+}
+
+/// Reads the current user's `Path` environment variable from `HKCU\Environment`.
+pub fn get_user_path() -> Result<String, String> {
+    unsafe {
+        let wsub = wide("Environment");
+        let mut hkey: isize = 0;
+        let mut disp: u32 = 0;
+        let rc = RegCreateKeyExW(
+            HKEY_CURRENT_USER_HANDLE,
+            wsub.as_ptr(),
+            0,
+            std::ptr::null(),
+            0,
+            KEY_READ_WRITE_ACCESS,
+            std::ptr::null(),
+            &mut hkey,
+            &mut disp,
+        );
+        if rc != 0 || hkey == 0 {
+            return Err(format!("RegCreateKeyExW(Environment) failed: code {rc}"));
+        }
+        let wname = wide("Path");
+        let mut dtype: u32 = 0;
+        let mut size: u32 = 0;
+        let rc_q =
+            RegQueryValueExW(hkey, wname.as_ptr(), std::ptr::null(), &mut dtype, std::ptr::null_mut(), &mut size);
+        if rc_q != 0 || size == 0 {
+            RegCloseKey(hkey);
+            return Ok(String::new());
+        }
+        let mut buf = vec![0u16; (size as usize / 2) + 2];
+        let mut actual = (buf.len() * 2) as u32;
+        let rc_read = RegQueryValueExW(
+            hkey,
+            wname.as_ptr(),
+            std::ptr::null(),
+            &mut dtype,
+            buf.as_mut_ptr() as *mut u8,
+            &mut actual,
+        );
+        RegCloseKey(hkey);
+        if rc_read != 0 {
+            return Ok(String::new());
+        }
+        let len = (actual as usize / 2).min(buf.len());
+        let end = buf[..len].iter().position(|&c| c == 0).unwrap_or(len);
+        Ok(String::from_utf16_lossy(&buf[..end]))
+    }
+}
+
+pub fn is_dir_in_user_path(dir: &str) -> bool {
+    let target = norm_path_entry(dir);
+    if target.is_empty() {
+        return false;
+    }
+    let Ok(cur) = get_user_path() else {
+        return false;
+    };
+    cur.split(';').any(|part| norm_path_entry(part) == target)
+}
+
+/// Ensures `clipnest.cmd` and `clipn.cmd` console shims exist inside `dir` so both `clipnest`
+/// and the short alias `clipn` work in CMD, PowerShell, and Git Bash.
+fn ensure_cli_shims(dir: &Path) {
+    let shim = "@echo off\r\nsetlocal\r\nif exist \"%~dp0clipnest-cli.exe\" (\r\n  \"%~dp0clipnest-cli.exe\" %*\r\n  exit /b %ERRORLEVEL%\r\n)\r\n\"%~dp0ClipNest.exe\" %*\r\nexit /b %ERRORLEVEL%\r\n";
+    for name in ["clipnest.cmd", "clipn.cmd"] {
+        let p = dir.join(name);
+        if !p.exists() {
+            let _ = std::fs::write(&p, shim.as_bytes());
+        }
+    }
+}
+
+/// Adds or removes `dir` in `HKCU\Environment` `Path` without requiring Administrator privileges,
+/// preventing duplicates and preserving all unrelated user PATH entries. Broadcasts `WM_SETTINGCHANGE`.
+pub fn sync_user_path(dir: &str, enable: bool) -> Result<bool, String> {
+    let clean_dir = dir.trim().trim_matches('"').trim_end_matches(['\\', '/']).to_string();
+    let target = norm_path_entry(&clean_dir);
+    if target.is_empty() {
+        return Err("empty directory path".into());
+    }
+    if enable {
+        ensure_cli_shims(Path::new(&clean_dir));
+    }
+    let cur = get_user_path()?;
+    let mut parts: Vec<String> = cur.split(';').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+    let exists = parts.iter().any(|p| norm_path_entry(p) == target);
+    if enable && exists {
+        return Ok(false);
+    }
+    if !enable && !exists {
+        return Ok(false);
+    }
+    if enable {
+        parts.push(clean_dir);
+    } else {
+        parts.retain(|p| norm_path_entry(p) != target);
+    }
+    let new_path = parts.join(";");
+    unsafe {
+        let wsub = wide("Environment");
+        let mut hkey: isize = 0;
+        let mut disp: u32 = 0;
+        let rc = RegCreateKeyExW(
+            HKEY_CURRENT_USER_HANDLE,
+            wsub.as_ptr(),
+            0,
+            std::ptr::null(),
+            0,
+            KEY_READ_WRITE_ACCESS,
+            std::ptr::null(),
+            &mut hkey,
+            &mut disp,
+        );
+        if rc != 0 || hkey == 0 {
+            return Err(format!("RegCreateKeyExW(Environment) failed: code {rc}"));
+        }
+        let wname = wide("Path");
+        let wdata = wide(&new_path);
+        let byte_len = (wdata.len() * 2) as u32;
+        let rc_set = RegSetValueExW(hkey, wname.as_ptr(), 0, REG_EXPAND_SZ_TYPE, wdata.as_ptr() as *const u8, byte_len);
+        RegCloseKey(hkey);
+        if rc_set != 0 {
+            return Err(format!("RegSetValueExW(Path) failed: code {rc_set}"));
+        }
+        let env_wide = wide("Environment");
+        let mut res: usize = 0;
+        SendMessageTimeoutW(
+            HWND_BROADCAST,
+            WM_SETTINGCHANGE,
+            0,
+            env_wide.as_ptr() as isize,
+            SMTO_ABORTIFHUNG,
+            1000,
+            &mut res,
+        );
+    }
+    Ok(true)
 }
