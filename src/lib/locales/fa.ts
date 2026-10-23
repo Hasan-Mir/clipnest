@@ -512,6 +512,9 @@ export const FA: Record<string, string> = {
     'Small (52px)': 'کوچک (52px)',
     'Smart search & filters': 'جستجوی هوشمند و فیلترها',
     'Smooth animations': 'انیمیشن‌های نرم',
+    'Animate card removal': 'انیمیشن حذف کارت‌ها',
+    'Smoothly collapses deleted cards so the items below glide up to fill their space (requires Smooth animations).':
+        'هنگام حذف یک کارت، کارت‌های زیرین به نرمی به بالا سر می‌خورند و جای آن را پر می‌کنند (نیازمند فعال بودن انیمیشن‌های نرم).',
     'Sort lines A→Z': 'مرتب‌سازی خطوط الف→ی',
     'Sort lines Z→A': 'مرتب‌سازی خطوط ی→الف',
     'Start with Windows': 'اجرا همراه ویندوز',

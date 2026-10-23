@@ -128,6 +128,9 @@ export const ar: LocaleDefinition = {
         'Nothing copied yet': 'لم يتم نسخ أي شيء بعد',
         'Nothing found': 'لم يتم العثور على نتائج',
         'Smooth animations': 'حركات سلسة',
+        'Animate card removal': 'حركة سلسة عند حذف البطاقات',
+        'Smoothly collapses deleted cards so the items below glide up to fill their space (requires Smooth animations).':
+            'عند حذف بطاقة، تنزلق البطاقات التي تحتها بسلاسة لملء مكانها (يتطلب تفعيل الحركات السلسة).',
         'Highlight search matches': 'تمييز نتائج البحث',
         'Virtual list rendering': 'العرض الافتراضي للقائمة',
         'Show image and media thumbnails in cards': 'إظهار مصغرات الصور والوسائط',

@@ -636,8 +636,8 @@ export function BoardDialog({
     const [name, setName] = useState(board.name);
     const [color, setColor] = useState(board.color || BOARD_COLORS[0]);
     const [max, setMax] = useState(board.max_items);
-    const [style, setStyle] = useState(board.list_style || 'inherit');
-    const [pasteMode, setPasteMode] = useState(board.paste_mode || 'inherit');
+    const [style, setStyle] = useState<string>(board.list_style || 'inherit');
+    const [pasteMode, setPasteMode] = useState<string>(board.paste_mode || 'inherit');
     const [active, setActive] = useState(isActive);
 
     const submit = () => {

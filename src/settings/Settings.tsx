@@ -62,6 +62,7 @@ const TABS: { id: TabId; label: string; keys: (keyof Settings)[] }[] = [
             'theme',
             'accent',
             'animations',
+            'delete_animation',
             'density',
             'font_size',
             'font_family',
@@ -1140,6 +1141,7 @@ export default function SettingsView() {
                     'System (Auto)',
                     'Accent colour',
                     'Smooth animations',
+                    'Animate card removal',
                     'Card density',
                     'Font size (px)',
                     'Clip items font family',
@@ -1215,6 +1217,20 @@ export default function SettingsView() {
                             hint="Enable subtle Notion-style transitions for menus, dialogs, and hover states."
                         >
                             <Toggle v={s.animations} on={(b) => set('animations', b)} label="Smooth animations" />
+                        </Row>
+                        <Row
+                            k="delete_animation"
+                            s={s}
+                            searchQuery={q}
+                            onGearMenu={openGearMenu}
+                            label="Animate card removal"
+                            hint="Smoothly collapses deleted cards so the items below glide up to fill their space (requires Smooth animations)."
+                        >
+                            <Toggle
+                                v={s.animations && (s.delete_animation ?? true)}
+                                on={(b) => save({ ...s, animations: b ? true : s.animations, delete_animation: b })}
+                                label="Animate card removal"
+                            />
                         </Row>
                         <Row
                             k="density"

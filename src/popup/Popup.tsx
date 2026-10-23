@@ -85,6 +85,25 @@ export default function Popup() {
     const seq = useRef(0);
     const hiddenAt = useRef(0);
     const dragId = useRef<number | null>(null);
+    const dropMarkRef = useRef<{ id: number; mark: DropMark } | null>(null);
+    dropMarkRef.current = dropMark;
+    const dragOverTabRef = useRef<number | null>(null);
+    dragOverTabRef.current = dragOverTabId;
+    const pointerDragState = useRef<{
+        pendingId: number | null;
+        startX: number;
+        startY: number;
+        active: boolean;
+        justDragged: boolean;
+        count: number;
+    }>({
+        pendingId: null,
+        startX: 0,
+        startY: 0,
+        active: false,
+        justDragged: false,
+        count: 1,
+    });
     const followIdRef = useRef<number | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
@@ -294,47 +313,6 @@ export default function Popup() {
         };
     }, [loadStatus, syncExplorerTarget]);
 
-    // Live cursor & Ctrl modifier tracking while dragging a card
-    // Note: Do NOT register a capture-phase 'drop' listener here that clears dragId.current before Card's onDrop!
-    useEffect(() => {
-        if (draggingId === null) {
-            return;
-        }
-        const onWindowDragOver = (e: DragEvent) => {
-            if (e.clientX > 0 || e.clientY > 0) {
-                setDragPos({ x: e.clientX, y: e.clientY });
-                if (tabsRef.current) {
-                    const r = tabsRef.current.getBoundingClientRect();
-                    const insideTabs =
-                        e.clientX >= r.left - 4 &&
-                        e.clientX <= r.right + 4 &&
-                        e.clientY >= r.top - 6 &&
-                        e.clientY <= r.bottom + 8;
-                    setDragInTabs((prev) => (prev === insideTabs ? prev : insideTabs));
-                }
-            }
-            const ctrlNow = e.ctrlKey || e.metaKey;
-            setDragCtrl((prev) => (prev === ctrlNow ? prev : ctrlNow));
-        };
-        const onWindowDragEnd = () => {
-            window.setTimeout(() => {
-                dragId.current = null;
-                setDraggingId(null);
-                setDragInTabs(false);
-                setDragOverTabId(null);
-                setDropMark(null);
-            }, 0);
-        };
-        window.addEventListener('dragover', onWindowDragOver, true);
-        window.addEventListener('drag', onWindowDragOver, true);
-        window.addEventListener('dragend', onWindowDragEnd);
-        return () => {
-            window.removeEventListener('dragover', onWindowDragOver, true);
-            window.removeEventListener('drag', onWindowDragOver, true);
-            window.removeEventListener('dragend', onWindowDragEnd);
-        };
-    }, [draggingId]);
-
     // Dynamic detection of horizontal scrollbar on the category tabs bar
     const wrapCategories = settings?.wrap_categories ?? false;
     useEffect(() => {
@@ -489,6 +467,48 @@ export default function Popup() {
         return out;
     };
 
+    // ───────────── smooth card removal animation (compatible with virtua VList) ─────────────
+    const animateAndRemoveCards = useCallback(async (ids: number[], performRemove: () => Promise<void>) => {
+        const canAnimate = (settingsRef.current?.animations ?? true) && (settingsRef.current?.delete_animation ?? true);
+        if (canAnimate && ids.length > 0 && ids.length <= 12) {
+            const wrappers: { wrapper: HTMLElement; card: HTMLElement }[] = [];
+            for (const id of ids) {
+                const cardEl = document.getElementById(`card-${id}`);
+                if (cardEl) {
+                    const parent = cardEl.parentElement;
+                    const wrapper = parent && parent.classList.contains('vlist-item') ? parent : cardEl;
+                    wrappers.push({ wrapper, card: cardEl });
+                }
+            }
+            if (wrappers.length > 0) {
+                for (const { wrapper, card } of wrappers) {
+                    const h = wrapper.offsetHeight;
+                    wrapper.style.height = `${h}px`;
+                    wrapper.style.minHeight = '0px';
+                    wrapper.style.overflow = 'hidden';
+                    wrapper.style.boxSizing = 'border-box';
+                    wrapper.style.transition =
+                        'height 210ms cubic-bezier(0.22, 1, 0.36, 1), padding 210ms cubic-bezier(0.22, 1, 0.36, 1), margin 210ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease';
+                    card.style.transition = 'transform 200ms cubic-bezier(0.22, 1, 0.36, 1), opacity 170ms ease';
+                }
+                // Force synchronous layout before starting collapse transition
+                void wrappers[0].wrapper.offsetHeight;
+                for (const { wrapper, card } of wrappers) {
+                    card.style.opacity = '0';
+                    card.style.transform = 'scale(0.95)';
+                    wrapper.style.height = '0px';
+                    wrapper.style.paddingTop = '0px';
+                    wrapper.style.paddingBottom = '0px';
+                    wrapper.style.marginTop = '0px';
+                    wrapper.style.marginBottom = '0px';
+                    wrapper.style.borderWidth = '0px';
+                }
+                await new Promise<void>((r) => window.setTimeout(r, 215));
+            }
+        }
+        await performRemove();
+    }, []);
+
     // ───────────── actions ─────────────
     const doPaste = async (mode: PasteMode, id?: number) => {
         try {
@@ -526,18 +546,19 @@ export default function Popup() {
         }
     };
 
-    const doDelete = async (hard: boolean) => {
-        const ts = targets();
-        if (!ts.length) {
+    const doDelete = async (hard: boolean, explicitIds?: number[]) => {
+        const ids = explicitIds ?? targets().map((x) => x.id);
+        if (!ids.length) {
             return;
         }
-        const ids = ts.map((x) => x.id);
         try {
-            if (tab !== null && !hard) {
-                await api.setPinboard(ids, null, tab, false);
-            } else {
-                await api.deleteItems(ids);
-            }
+            await animateAndRemoveCards(ids, async () => {
+                if (tab !== null && !hard) {
+                    await api.setPinboard(ids, null, tab, false);
+                } else {
+                    await api.deleteItems(ids);
+                }
+            });
             setMulti([]);
             focusSearchQuietly();
         } catch (e) {
@@ -684,16 +705,19 @@ export default function Popup() {
     };
 
     /** Keyboard / drag / menu / toolbar reordering. Only meaningful when no search is active. */
-    const reorder = (id: number, target: number, after: boolean) => {
-        if (query) {
-            showToast(t('Clear the search to reorder items'));
-            return;
-        }
-        followIdRef.current = id;
-        api.moveItem(id, target, after, tab)
-            .then(() => reloadRef.current())
-            .catch(fail);
-    };
+    const reorder = useCallback(
+        (id: number, target: number, after: boolean) => {
+            if (query) {
+                showToast(t('Clear the search to reorder items'));
+                return;
+            }
+            followIdRef.current = id;
+            api.moveItem(id, target, after, tab)
+                .then(() => reloadRef.current())
+                .catch(fail);
+        },
+        [query, tab, showToast, fail]
+    );
 
     const moveCardStep = (it: ClipRow, dir: -1 | 1) => {
         if (query) {
@@ -712,6 +736,188 @@ export default function Popup() {
         setSel(targetIdx);
         anchor.current = targetIdx;
     };
+
+    // Hit-test the closest visible card in the list by clientY so dragging over gaps, padding, or
+    // RichView Shadow DOM still highlights and drops onto the exact target card without any dead zones.
+    const updateCardDropMarkAtY = useCallback(
+        (clientY: number) => {
+            const activeDragId = dragId.current;
+            if (activeDragId === null || query || !listRef.current) {
+                return;
+            }
+            const cardEls = listRef.current.querySelectorAll<HTMLElement>('.card[data-card-id]');
+            let bestId: number | null = null;
+            let bestAfter = false;
+            let bestDist = Infinity;
+
+            cardEls.forEach((el) => {
+                const cid = Number(el.dataset.cardId);
+                if (!cid || cid === activeDragId) {
+                    return;
+                }
+                const r = el.getBoundingClientRect();
+                const mid = r.top + r.height / 2;
+                let dist = 0;
+                if (clientY < r.top) {
+                    dist = r.top - clientY;
+                } else if (clientY > r.bottom) {
+                    dist = clientY - r.bottom;
+                }
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    bestId = cid;
+                    bestAfter = clientY > mid;
+                }
+            });
+
+            if (bestId !== null && bestDist < 80) {
+                const mark: DropMark = bestAfter ? 'after' : 'before';
+                setDropMark((m) => (m && m.id === bestId && m.mark === mark ? m : { id: bestId!, mark }));
+            }
+        },
+        [query]
+    );
+
+    // @dnd-kit-style Pointer Sensor for card dragging (eliminates browser 🚫 cursor and Shadow DOM dead zones)
+    useEffect(() => {
+        const onPointerMove = (e: PointerEvent) => {
+            const st = pointerDragState.current;
+            if (st.pendingId === null) {
+                return;
+            }
+            const dx = e.clientX - st.startX;
+            const dy = e.clientY - st.startY;
+            if (!st.active) {
+                if (Math.hypot(dx, dy) < 5) {
+                    return;
+                }
+                st.active = true;
+                st.justDragged = true;
+                dragId.current = st.pendingId;
+                setDragCount(st.count);
+                setDraggingId(st.pendingId);
+                document.body.classList.add('dragging-card');
+            }
+            e.preventDefault();
+            setDragPos({ x: e.clientX, y: e.clientY });
+            const ctrlNow = e.ctrlKey || e.metaKey;
+            setDragCtrl((prev) => (prev === ctrlNow ? prev : ctrlNow));
+
+            const tabsEl = tabsRef.current;
+            if (tabsEl) {
+                const tr = tabsEl.getBoundingClientRect();
+                const insideTabs =
+                    e.clientX >= tr.left - 4 &&
+                    e.clientX <= tr.right + 4 &&
+                    e.clientY >= tr.top - 6 &&
+                    e.clientY <= tr.bottom + 8;
+                setDragInTabs((prev) => (prev === insideTabs ? prev : insideTabs));
+
+                if (insideTabs) {
+                    setDropMark(null);
+                    let hoveredBoard: number | null = null;
+                    const tabBtns = tabsEl.querySelectorAll<HTMLElement>('.tab[data-board-id]');
+                    tabBtns.forEach((btn) => {
+                        const br = btn.getBoundingClientRect();
+                        if (
+                            e.clientX >= br.left &&
+                            e.clientX <= br.right &&
+                            e.clientY >= br.top &&
+                            e.clientY <= br.bottom
+                        ) {
+                            const bid = Number(btn.dataset.boardId);
+                            if (bid && bid !== tab) {
+                                hoveredBoard = bid;
+                            }
+                        }
+                    });
+                    setDragOverTabId((prev) => (prev === hoveredBoard ? prev : hoveredBoard));
+                    return;
+                }
+            }
+
+            setDragInTabs(false);
+            setDragOverTabId(null);
+
+            // Auto-scroll list when dragging near top or bottom edge
+            const lst = listRef.current;
+            if (lst) {
+                const lr = lst.getBoundingClientRect();
+                const scrollTarget = (lst.querySelector('.vlist') as HTMLElement | null) ?? lst;
+                if (e.clientY >= lr.top && e.clientY < lr.top + 32) {
+                    scrollTarget.scrollTop -= 8;
+                } else if (e.clientY <= lr.bottom && e.clientY > lr.bottom - 32) {
+                    scrollTarget.scrollTop += 8;
+                }
+                if (e.clientY >= lr.top - 10 && e.clientY <= lr.bottom + 10) {
+                    updateCardDropMarkAtY(e.clientY);
+                } else {
+                    setDropMark(null);
+                }
+            }
+        };
+
+        const onPointerUp = (e: PointerEvent) => {
+            const st = pointerDragState.current;
+            if (st.pendingId === null) {
+                return;
+            }
+            const wasActive = st.active;
+            const id = st.pendingId;
+            st.pendingId = null;
+            st.active = false;
+            document.body.classList.remove('dragging-card');
+
+            if (!wasActive) {
+                return;
+            }
+
+            const targetBoardId = dragOverTabRef.current;
+            const currentDropMark = dropMarkRef.current;
+
+            dragId.current = null;
+            setDraggingId(null);
+            setDragInTabs(false);
+            setDragOverTabId(null);
+            setDropMark(null);
+
+            window.setTimeout(() => {
+                pointerDragState.current.justDragged = false;
+            }, 40);
+
+            if (targetBoardId !== null && targetBoardId !== tab) {
+                const shouldCopy = tab === null || e.ctrlKey || e.metaKey || dragCtrl;
+                const targetBoard = boards.find((b) => b.id === targetBoardId);
+                const ids = multi.includes(id) ? multi : [id];
+                api.setPinboard(ids, targetBoardId, tab, shouldCopy)
+                    .then(() => {
+                        if (targetBoard) {
+                            showToast(
+                                shouldCopy
+                                    ? t('Copied to {name}', { name: targetBoard.name })
+                                    : t('Moved to {name}', { name: targetBoard.name })
+                            );
+                        }
+                    })
+                    .catch(fail);
+                return;
+            }
+
+            if (currentDropMark && currentDropMark.id !== id) {
+                reorder(id, currentDropMark.id, currentDropMark.mark === 'after');
+            }
+        };
+
+        window.addEventListener('pointermove', onPointerMove, { passive: false });
+        window.addEventListener('pointerup', onPointerUp);
+        window.addEventListener('pointercancel', onPointerUp);
+        return () => {
+            window.removeEventListener('pointermove', onPointerMove);
+            window.removeEventListener('pointerup', onPointerUp);
+            window.removeEventListener('pointercancel', onPointerUp);
+            document.body.classList.remove('dragging-card');
+        };
+    }, [tab, boards, multi, dragCtrl, reorder, updateCardDropMarkAtY, showToast, fail]);
 
     const openMenu = (it: ClipRow, x: number, y: number) => {
         const idx = items.findIndex((i) => i.id === it.id);
@@ -829,7 +1035,11 @@ export default function Popup() {
             e.push({
                 label: t('Remove from category'),
                 onClick: () => {
-                    api.setPinboard(ids, null, tab, false).catch(fail);
+                    if (!isMainTab) {
+                        doDelete(false, ids);
+                    } else {
+                        api.setPinboard(ids, null, tab, false).catch(fail);
+                    }
                 },
             });
         }
@@ -865,7 +1075,7 @@ export default function Popup() {
                 label: t('Delete permanently'),
                 danger: true,
                 onClick: () => {
-                    api.deleteItems(ids).catch(fail);
+                    doDelete(true, ids);
                 },
             });
         } else {
@@ -874,7 +1084,7 @@ export default function Popup() {
                 hint: 'Del',
                 danger: true,
                 onClick: () => {
-                    api.deleteItems(ids).catch(fail);
+                    doDelete(true, ids);
                 },
             });
         }
@@ -1124,6 +1334,9 @@ export default function Popup() {
     }, []);
 
     const onCardClick = (it: ClipRow, e: React.MouseEvent) => {
+        if (pointerDragState.current.justDragged) {
+            return;
+        }
         const idx = items.findIndex((i) => i.id === it.id);
         if (idx < 0) {
             return;
@@ -1186,6 +1399,7 @@ export default function Popup() {
         click: onCardClick,
         doubleClick: onCardDoubleClick,
         menu: openMenu,
+        pointerDragStart: (_: ClipRow, __: React.PointerEvent) => {},
         dragStart: (_: ClipRow, __: React.DragEvent) => {},
         dragOver: (_: ClipRow, __: boolean) => {},
         drop: (_: ClipRow, __: boolean, ___?: number) => {},
@@ -1194,6 +1408,18 @@ export default function Popup() {
         click: onCardClick,
         doubleClick: onCardDoubleClick,
         menu: openMenu,
+        pointerDragStart: (it, e) => {
+            const count = multi.includes(it.id) && multi.length > 1 ? multi.length : 1;
+            pointerDragState.current = {
+                pendingId: it.id,
+                startX: e.clientX,
+                startY: e.clientY,
+                active: false,
+                justDragged: false,
+                count,
+            };
+            setDragCtrl(e.ctrlKey || e.metaKey);
+        },
         dragStart: (it, e) => {
             dragId.current = it.id;
             const count = multi.includes(it.id) && multi.length > 1 ? multi.length : 1;
@@ -1236,6 +1462,10 @@ export default function Popup() {
         []
     );
     const stableMenu = useCallback((it: ClipRow, x: number, y: number) => handlers.current.menu(it, x, y), []);
+    const stablePointerDragStart = useCallback(
+        (it: ClipRow, e: React.PointerEvent) => handlers.current.pointerDragStart(it, e),
+        []
+    );
     const stableDragStart = useCallback((it: ClipRow, e: React.DragEvent) => handlers.current.dragStart(it, e), []);
     const stableDragOver = useCallback((it: ClipRow, after: boolean) => handlers.current.dragOver(it, after), []);
     const stableDrop = useCallback(
@@ -1283,12 +1513,39 @@ export default function Popup() {
             onClick={stableClick}
             onDoubleClick={stableDoubleClick}
             onContext={stableMenu}
+            onPointerDragStart={stablePointerDragStart}
             onDragStart={stableDragStart}
             onDragOver={stableDragOver}
             onDrop={stableDrop}
             onDragEnd={stableDragEnd}
         />
     );
+
+    const handleListDragOver = (e: React.DragEvent) => {
+        if (dragId.current !== null) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            setDragInTabs(false);
+            setDragOverTabId(null);
+            updateCardDropMarkAtY(e.clientY);
+        }
+    };
+
+    const handleListDrop = (e: React.DragEvent) => {
+        if (dragId.current !== null) {
+            e.preventDefault();
+            const id = Number(e.dataTransfer.getData('text/clip-id')) || dragId.current;
+            const currentDropMark = dropMarkRef.current;
+            dragId.current = null;
+            setDraggingId(null);
+            setDragInTabs(false);
+            setDragOverTabId(null);
+            setDropMark(null);
+            if (id && currentDropMark && currentDropMark.id !== id) {
+                reorder(id, currentDropMark.id, currentDropMark.mark === 'after');
+            }
+        }
+    };
 
     return (
         <div
@@ -1556,6 +1813,7 @@ export default function Popup() {
                             key={b.id}
                             type="button"
                             role="tab"
+                            data-board-id={b.id}
                             aria-selected={tab === b.id}
                             aria-controls="clip-list"
                             className={`tab${tab === b.id ? ' active' : ''}${isDropTarget ? ' drop-target' : ''}${
@@ -1701,8 +1959,10 @@ export default function Popup() {
                         role="listbox"
                         aria-label={t('Clipboard')}
                         aria-multiselectable="true"
-                        className="list"
+                        className={`list${draggingId !== null ? ' is-dragging-card' : ''}`}
                         ref={listRef}
+                        onDragOver={handleListDragOver}
+                        onDrop={handleListDrop}
                     >
                         {res.error && <div className="empty err">{res.error}</div>}
                         {!res.error && items.length === 0 && (
@@ -1722,8 +1982,10 @@ export default function Popup() {
                         role="listbox"
                         aria-label={t('Clipboard')}
                         aria-multiselectable="true"
-                        className="list vlist-host"
+                        className={`list vlist-host${draggingId !== null ? ' is-dragging-card' : ''}`}
                         ref={listRef}
+                        onDragOver={handleListDragOver}
+                        onDrop={handleListDrop}
                     >
                         <VList ref={vlistRef} className="vlist">
                             {items.map((it, i) => (

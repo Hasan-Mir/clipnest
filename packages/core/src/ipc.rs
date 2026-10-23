@@ -2247,7 +2247,7 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
                     "--clear" => mode = "clear",
                     "--add" => mode = "add",
                     "--remove" | "--rm" => mode = "remove",
-                    other => tag_parts.push(other.clone()),
+                    other => tag_parts.push(other),
                 }
             }
             ("tag".into(), json!({ "id": id_str, "tags": tag_parts.join(" "), "mode": mode }), None)

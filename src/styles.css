@@ -2179,8 +2179,19 @@ textarea.editor {
     min-width: 740px;
     min-height: 520px;
     background: var(--bg);
-    user-select: text;
+    user-select: none;
+    -webkit-user-select: none;
     position: relative;
+}
+
+.settings .slabel > .muted.small,
+.settings .ssection > p.muted.small,
+.settings .guide-card p,
+.settings .about-meta p,
+.settings .cap-note {
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: text;
 }
 
 .snav {
@@ -2609,6 +2620,17 @@ code {
     user-select: none;
 }
 
+.card .body .rich-host,
+.list.is-dragging-card .card * {
+    pointer-events: none;
+}
+
+body.dragging-card,
+body.dragging-card * {
+    cursor: grabbing !important;
+    user-select: none !important;
+}
+
 .appicon {
     width: 14px;
     height: 14px;
@@ -2656,18 +2678,36 @@ code {
 
 .swatches {
     display: flex;
-    gap: 6px;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    padding: 2px 0;
 }
 
-.sw {
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
+.sw,
+.swatch-pick {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
     border: 2px solid transparent;
+    flex: none;
+    cursor: pointer;
+    transition:
+        transform 0.14s ease,
+        border-color 0.14s ease,
+        box-shadow 0.14s ease;
 }
 
-.sw.on {
+.sw:hover,
+.swatch-pick:hover {
+    transform: scale(1.06);
+}
+
+.sw.on,
+.swatch-pick.on {
     border-color: var(--text);
+    transform: scale(1.08);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--text) 25%, transparent);
 }
 
 .winbox {

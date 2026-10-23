@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 pub use clipnest_core::models::{AppRule, AutoRule, BasketEntry, CustomAction, Queue, Settings};
 
 use parking_lot::{Mutex, RwLock};

@@ -201,19 +201,21 @@ export function suggestCommand(unknown: string): string | null {
 
 async function readStdinFromProcess(): Promise<string> {
     return new Promise((resolve, reject) => {
-        const chunks: Buffer[] = [];
+        let out = '';
         let total = 0;
-        process.stdin.on('data', (chunk: Buffer) => {
-            total += chunk.length;
+        process.stdin.setEncoding('utf8');
+        process.stdin.on('data', (chunk: string | Buffer) => {
+            const str = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+            total += Buffer.byteLength(str, 'utf8');
             if (total > MAX_STDIN_BYTES) {
                 reject(
                     new Error(`Input from stdin exceeds maximum size limit (${MAX_STDIN_BYTES / (1024 * 1024)} MB)`)
                 );
                 return;
             }
-            chunks.push(chunk);
+            out += str;
         });
-        process.stdin.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+        process.stdin.on('end', () => resolve(out));
         process.stdin.on('error', (err: Error) => reject(err));
     });
 }

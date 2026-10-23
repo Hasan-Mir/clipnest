@@ -74,13 +74,34 @@ const BROWSER_F_KEYS = new Set([
     'BrowserHome',
 ]);
 
+function isEditableInput(el: Element | null): boolean {
+    if (!el) {
+        return false;
+    }
+    const tag = el.tagName;
+    if (tag === 'TEXTAREA') {
+        return true;
+    }
+    if (tag === 'INPUT') {
+        const type = ((el as HTMLInputElement).type || 'text').toLowerCase();
+        return !['checkbox', 'radio', 'button', 'color', 'range', 'file', 'submit', 'reset'].includes(type);
+    }
+    return (el as HTMLElement).isContentEditable === true;
+}
+
 // Block WebView2's built-in browser accelerators (Print, Find bar, Reload, History, Downloads,
-// Caret browsing, DevTools, Zoom, Back/Forward navigation, etc.) in the capture phase so
-// Chromium overlays never steal focus from ClipNest regardless of OS keyboard layout.
+// Caret browsing, DevTools, Zoom, Back/Forward navigation, Select-All outside inputs, etc.) in
+// the capture phase so Chromium overlays never steal focus from ClipNest regardless of OS keyboard layout.
 window.addEventListener(
     'keydown',
     (e) => {
         const ck = e.ctrlKey || e.metaKey;
+
+        // Prevent Ctrl+A from selecting all UI text across the window when focus is not inside a text input/textarea.
+        if (ck && isKey(e, 'a') && !isEditableInput(document.activeElement)) {
+            e.preventDefault();
+            return;
+        }
 
         if (ck && isKey(e, 'f')) {
             e.preventDefault();

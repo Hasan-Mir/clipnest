@@ -136,6 +136,7 @@ export interface Settings {
     show_pinboard_counts: boolean;
     wrap_categories: boolean;
     animations: boolean;
+    delete_animation: boolean;
     show_thumbnails: boolean;
     thumbnail_size: 'small' | 'medium' | 'large';
     virtual_scroll: boolean;

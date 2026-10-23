@@ -52,6 +52,7 @@ export const DEFAULT_SETTINGS: Settings = {
     show_pinboard_counts: true,
     wrap_categories: false,
     animations: true,
+    delete_animation: true,
     show_thumbnails: true,
     thumbnail_size: 'medium',
     virtual_scroll: true,
@@ -116,6 +117,7 @@ export function useSettings(): [Settings | null, (s: Settings) => void] {
 
         r.dataset.density = s.density;
         r.dataset.animations = s.animations ? 'on' : 'off';
+        r.dataset.deleteAnimation = s.animations && (s.delete_animation ?? true) ? 'on' : 'off';
         r.style.setProperty('--accent', s.accent);
         r.style.setProperty('--accent-fg', contrastOn(s.accent));
         r.style.setProperty('--fs', `${s.font_size}px`);

@@ -113,6 +113,7 @@ interface Props {
     onClick: (it: ClipRow, e: React.MouseEvent) => void;
     onDoubleClick: (it: ClipRow, e: React.MouseEvent) => void;
     onContext: (it: ClipRow, x: number, y: number) => void;
+    onPointerDragStart: (it: ClipRow, e: React.PointerEvent) => void;
     onDragStart: (it: ClipRow, e: React.DragEvent) => void;
     onDragOver: (it: ClipRow, after: boolean) => void;
     onDrop: (it: ClipRow, after: boolean, droppedId?: number) => void;
@@ -267,6 +268,7 @@ function CardImpl(p: Props) {
     return (
         <div
             id={`card-${item.id}`}
+            data-card-id={item.id}
             role="option"
             aria-selected={selected || multi}
             aria-label={srSummary}
@@ -279,7 +281,11 @@ function CardImpl(p: Props) {
                 e.preventDefault();
                 p.onContext(item, e.clientX, e.clientY);
             }}
-            draggable
+            onPointerDown={(e) => {
+                if (e.button === 0 && !(e.target as HTMLElement).closest('button')) {
+                    p.onPointerDragStart(item, e);
+                }
+            }}
             onDragStart={(e) => {
                 e.dataTransfer.setData('text/clip-id', String(item.id));
                 e.dataTransfer.effectAllowed = 'copyMove';
