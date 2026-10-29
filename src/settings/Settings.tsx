@@ -649,6 +649,245 @@ export default function SettingsView() {
         return matchesSearch(q, ...keywords);
     };
 
+    const showGeneral = showTab('general', [
+        'language',
+        'Language',
+        'Choose the UI language and text direction (LTR / RTL).',
+        'autostart',
+        'Start with Windows',
+        'Launch ClipNest automatically in the system tray when you sign in to Windows.',
+        'explorer_context_menu',
+        'Windows File Explorer context menu',
+        'Adds ClipNest to the right-click context menu of folders and files in Windows Explorer to view and paste copied files or collect files into the Drop Basket.',
+        'max_items',
+        'Maximum history items',
+        '0 = unlimited. Pinned and category items are never removed.',
+        'retention_days',
+        'Keep history for (days)',
+        '0 = forever.',
+        'max_image_mb',
+        'Largest image to store (MB)',
+        'Images above this size in megabytes are skipped to keep the database fast.',
+        'Erase history',
+        'Removes unpinned history, with an option in the confirmation dialog to also delete pinned items and categories.',
+        'Reset all settings…',
+        'Restores all preferences, shortcuts, and appearance options to factory defaults without deleting your clips.',
+    ]);
+
+    const showClipboard = showTab('clipboard', [
+        'store_rich',
+        'Keep text styling (HTML / RTF)',
+        'On: colours, fonts and backgrounds are stored and can be pasted back. Off: only plain text is stored (smaller database).',
+        'list_style',
+        'List display',
+        '“Original style” draws each card exactly as it was copied (VS Code colours, backgrounds, fonts). “Plain text” shows only the text.',
+        'default_mode',
+        'Default paste (Enter)',
+        '“Keep formatting” restores every stored format. “Plain text” pastes only the text.',
+        'direct_paste',
+        'Paste directly into the app',
+        'Off = the item is only copied; you press Ctrl+V yourself.',
+        'move_to_top',
+        'Move used item to the top',
+        'Moves a card to the top of the history list whenever you paste or copy it.',
+        'independent_pinning',
+        'Independent pinning per category',
+        'When enabled (default), pinning an item inside a category only pins it in that category, without pinning it in the main Clipboard tab.',
+        'card_paste_click',
+        'Paste card with mouse',
+        'Choose whether a single click or a double-click pastes a card (single-click always selects).',
+        'ctrl_click_action',
+        'Ctrl + Click on card',
+        'What happens when you hold Ctrl and click a card.',
+        'ctrl_shift_click_action',
+        'Ctrl + Shift + Click on card',
+        'What happens when you hold Ctrl + Shift and click a card.',
+        'auto_save_edit',
+        'Auto-save edits in preview',
+        'Automatically saves text changes in the inline preview editor after a short pause without requiring Ctrl+S.',
+        'queue_fifo',
+        'Paste queue: order',
+        'Whether the Paste Queue outputs items in FIFO (first copied first) or LIFO (last copied first) order.',
+        'queue_intercept',
+        'Paste queue: take over Ctrl+V',
+        'While the queue has items, Ctrl+V pastes the next one.',
+        'basket_allow_cut',
+        'Drop Basket: allow Cut (move files after verified copy)',
+        'When enabled, files cut with Ctrl+X are moved only after destination copy and exact byte size are verified on disk.',
+        'Per-application rules',
+        'Executable',
+        'Paste as',
+        'Keystroke',
+    ]);
+
+    const showAppearance = showTab('appearance', [
+        'theme',
+        'Theme',
+        'Choose the colour scheme for the popup, queue, and settings windows (System follows Windows Dark/Light mode automatically).',
+        'accent',
+        'Accent colour',
+        'Choose the primary highlight colour for borders, badges, active controls, and default search highlights.',
+        'animations',
+        'Smooth animations',
+        'Enable subtle Notion-style transitions for menus, dialogs, and hover states.',
+        'delete_animation',
+        'Animate card removal',
+        'Smoothly collapses deleted cards so the items below glide up to fill their space (requires Smooth animations).',
+        'density',
+        'Card density',
+        'Choose how much vertical padding each card uses in the popup list.',
+        'font_size',
+        'Font size (px)',
+        'Base font size in pixels across the popup, queue, and settings windows.',
+        'font_family',
+        'Clip items font family',
+        'Choose any installed system font on your computer for rendering clipboard cards and previews.',
+        'card_lines',
+        'Text lines per card',
+        'How many lines of text are previewed on each card before truncating.',
+        'card_max_height',
+        'Maximum card height (px)',
+        'Maximum vertical height of each card body in the list (60 to 600 px).',
+        'show_thumbnails',
+        'Show image and media thumbnails in cards',
+        'Renders inline image and video/media previews inside cards in the popup list.',
+        'thumbnail_size',
+        'Thumbnail size',
+        'Maximum height of image and media thumbnails inside cards.',
+        'virtual_scroll',
+        'Virtual list rendering',
+        'Off renders the entire list into the DOM normally; On renders only visible items for peak performance',
+        'highlight_matches',
+        'Highlight search matches',
+        'Highlights matched characters and words inside cards and previews while searching.',
+        'highlight_color',
+        'Highlight text color (transparent = keep text color)',
+        'Use “accent” to automatically follow your Accent colour, or pick any custom colour.',
+        'highlight_bg',
+        'Highlight background color (e.g. #ffe043 for yellow marker)',
+        'Background colour behind matched characters (use transparent for text-only highlight).',
+        'Highlight presets',
+        'Quickly switch between Accent color match, VS Code blue, yellow marker background, or high contrast.',
+        'popup_position',
+        'Popup opens at',
+        'Choose where the popup appears on screen when opened with the global shortcut.',
+        'popup_width',
+        'Popup width (px)',
+        'Default width of the popup window in logical pixels (minimum 340 px).',
+        'popup_height',
+        'Popup height (px)',
+        'Default height of the popup window in logical pixels (minimum 380 px).',
+        'remember_popup_size',
+        'Preserve popup size when resized with mouse',
+        'Automatically saves the new width and height when you drag the edges of the popup window.',
+        'show_toolbar',
+        'Side toolbar (CopyQ style)',
+        'Quick buttons next to the list: preview, pin, tags, copy, formats, edit, merge, actions, delete (can also be toggled from the popup header).',
+        'show_pinboard_counts',
+        'Show item count on category tabs',
+        'Displays a small badge with the number of items next to each category tab in the popup.',
+        'wrap_categories',
+        'Wrap category tabs onto multiple lines',
+        'On: wraps category tabs into multiple rows (like VS Code wrapTabs). Off: scrolls category tabs horizontally with mouse wheel or click-and-drag.',
+    ]);
+
+    const showPrivacy = showTab('privacy', [
+        'capture_protection',
+        'Screen-capture protection',
+        'Applied instantly to the popup, queue and settings windows. Needs Windows 10 2004+ for “Invisible”. Does not work inside Remote Desktop sessions.',
+        'ignore_confidential',
+        'Respect “do not record” flags',
+        'Password managers mark their clipboard data; ClipNest then never stores it.',
+        'detect_sensitive',
+        'Detect sensitive data',
+        'Card numbers (Luhn), API keys (sk-…, ghp_…, AKIA…), private keys, JWTs.',
+        ...(s.detect_sensitive
+            ? ['sensitive_action', 'When detected', 'How Sensitive clips are handled when detected.']
+            : []),
+        ...(s.detect_sensitive && s.sensitive_action === 'mask_delete'
+            ? [
+                  'sensitive_ttl_min',
+                  'Auto-delete after (minutes)',
+                  'How many minutes before a masked sensitive clip is permanently deleted.',
+              ]
+            : []),
+        'Ignored applications',
+        'Nothing copied from these executables is stored.',
+    ]);
+
+    const showShortcuts = showTab('shortcuts', [
+        'shortcut_open',
+        'Open ClipNest',
+        'Global hotkey to show or hide the main ClipNest popup.',
+        'shortcut_queue',
+        'Paste queue on/off',
+        'Global hotkey to open or close the Paste Queue / Drop Basket window.',
+        'shortcut_plain_toggle',
+        'Toggle plain-text mode',
+        'Global hotkey to toggle between rich formatting and plain-text paste mode.',
+        'shortcut_pause',
+        'Pause / resume capture',
+        'Global hotkey to pause or resume clipboard capturing.',
+    ]);
+
+    const showRules = showTab('rules', [
+        'Automatic rules',
+        'When copied from app(s)',
+        'and text matches (regex)',
+        'Item type',
+    ]);
+
+    const showActions = showTab('actions', ['Custom actions', '+ Add action']);
+
+    const showBackup = showTab('backup', [
+        'auto_backup',
+        'Daily automatic backup',
+        'Automatically creates a compressed daily snapshot in the backups folder.',
+        'backup_keep',
+        'Backups to keep',
+        'How many recent daily backup files to retain before deleting older ones.',
+        'Export history',
+        'Saves everything (items, formats, categories) to a file you choose.',
+        'Import / restore',
+        'Merges an export or a daily backup into the current history. Nothing is overwritten or deleted.',
+        'Export / import settings',
+        'Settings, rules, actions and shortcuts as a JSON file.',
+        'Back up now',
+        'Create a compressed snapshot of the SQLite database right now.',
+        'Data folder',
+        'Database, settings.json and backups.',
+        'Erase history',
+        'Removes unpinned history, with an option in the confirmation dialog to also delete pinned items and categories.',
+        'Reset all settings…',
+        'Restores all preferences, shortcuts, and appearance options to factory defaults without deleting your clips.',
+        'Quit ClipNest',
+        'Exit ClipNest completely and stop background clipboard monitoring.',
+    ]);
+
+    const showHelp = showTab('help', [
+        'Help & Guide',
+        'Getting started',
+        'Smart search & filters',
+        'Categories & active tab',
+        'Paste Queue & Drop Basket',
+        'Windows File Explorer context menu',
+        'Text transforms & Persian tools',
+    ]);
+
+    const showAbout = showTab('about', ['About', 'ClipNest', 'Version', 'Privacy']);
+
+    const hasSearchResults =
+        showGeneral ||
+        showClipboard ||
+        showAppearance ||
+        showPrivacy ||
+        showShortcuts ||
+        showRules ||
+        showActions ||
+        showBackup ||
+        showHelp ||
+        showAbout;
+
     const localeOptions = LOCALES.map((l) => ({
         value: l.code,
         label: l.name,
@@ -718,18 +957,7 @@ export default function SettingsView() {
                 ))}
             </nav>
             <main className="spane">
-                {showTab('general', [
-                    'General',
-                    'Language',
-                    'Language / زبان',
-                    'Start with Windows',
-                    'Windows File Explorer context menu',
-                    'Maximum history items',
-                    'Keep history for (days)',
-                    'Largest image to store (MB)',
-                    'Erase history',
-                    'Reset all settings…',
-                ]) && (
+                {showGeneral && (
                     <section className="ssection">
                         {renderSectionHeader('general', 'General')}
                         <Row
@@ -826,23 +1054,7 @@ export default function SettingsView() {
                     </section>
                 )}
 
-                {showTab('clipboard', [
-                    'Copy & Paste',
-                    'Keep text styling (HTML / RTF)',
-                    'List display',
-                    'Default paste (Enter)',
-                    'Paste directly into the app',
-                    'Move used item to the top',
-                    'Independent pinning per category',
-                    'Paste card with mouse',
-                    'Ctrl + Click on card',
-                    'Ctrl + Shift + Click on card',
-                    'Auto-save edits in preview',
-                    'Paste queue: order',
-                    'Paste queue: take over Ctrl+V',
-                    'Drop Basket: allow Cut (move files after verified copy)',
-                    'Per-application rules',
-                ]) && (
+                {showClipboard && (
                     <section className="ssection">
                         {renderSectionHeader('clipboard', 'Copy & Paste')}
                         <Row
@@ -1135,33 +1347,7 @@ export default function SettingsView() {
                     </section>
                 )}
 
-                {showTab('appearance', [
-                    'Appearance',
-                    'Theme',
-                    'System (Auto)',
-                    'Accent colour',
-                    'Smooth animations',
-                    'Animate card removal',
-                    'Card density',
-                    'Font size (px)',
-                    'Clip items font family',
-                    'Text lines per card',
-                    'Maximum card height (px)',
-                    'Show image and media thumbnails in cards',
-                    'Thumbnail size',
-                    'Virtual list rendering',
-                    'Highlight search matches',
-                    'Highlight text color (transparent = keep text color)',
-                    'Highlight background color (e.g. #ffe043 for yellow marker)',
-                    'Highlight presets',
-                    'Popup opens at',
-                    'Popup width (px)',
-                    'Popup height (px)',
-                    'Preserve popup size when resized with mouse',
-                    'Side toolbar (CopyQ style)',
-                    'Show item count on category tabs',
-                    'Wrap category tabs onto multiple lines',
-                ]) && (
+                {showAppearance && (
                     <section className="ssection">
                         {renderSectionHeader('appearance', 'Appearance')}
                         <Row
@@ -1568,15 +1754,7 @@ export default function SettingsView() {
                     </section>
                 )}
 
-                {showTab('privacy', [
-                    'Privacy & Screen capture',
-                    'Screen-capture protection',
-                    'Respect “do not record” flags',
-                    'Detect sensitive data',
-                    'When detected',
-                    'Auto-delete after (minutes)',
-                    'Ignored applications',
-                ]) && (
+                {showPrivacy && (
                     <section className="ssection">
                         {renderSectionHeader('privacy', 'Privacy & Screen capture')}
                         <Row
@@ -1686,15 +1864,7 @@ export default function SettingsView() {
                     </section>
                 )}
 
-                {showTab('shortcuts', [
-                    'Shortcuts',
-                    'Global shortcuts',
-                    'Open ClipNest',
-                    'Paste queue on/off',
-                    'Toggle plain-text mode',
-                    'Pause / resume capture',
-                    'Inside the popup',
-                ]) && (
+                {showShortcuts && (
                     <section className="ssection">
                         {renderSectionHeader('shortcuts', 'Global shortcuts')}
                         <p className="muted small">
@@ -1805,12 +1975,7 @@ export default function SettingsView() {
                     </section>
                 )}
 
-                {showTab('rules', [
-                    'Automatic rules',
-                    'When copied from app(s)',
-                    'and text matches (regex)',
-                    'Item type',
-                ]) && (
+                {showRules && (
                     <section className="ssection">
                         {renderSectionHeader('rules', 'Automatic rules')}
                         <p className="muted small">
@@ -1988,7 +2153,7 @@ export default function SettingsView() {
                     </section>
                 )}
 
-                {showTab('actions', ['Custom actions', '+ Add action']) && (
+                {showActions && (
                     <section className="ssection">
                         {renderSectionHeader('actions', 'Custom actions')}
                         <p className="muted small">
@@ -2056,19 +2221,7 @@ export default function SettingsView() {
                     </section>
                 )}
 
-                {showTab('backup', [
-                    'Backup & Data',
-                    'Daily automatic backup',
-                    'Backups to keep',
-                    'Export history',
-                    'Import / restore',
-                    'Export / import settings',
-                    'Back up now',
-                    'Data folder',
-                    'Erase history',
-                    'Reset all settings…',
-                    'Quit ClipNest',
-                ]) && (
+                {showBackup && (
                     <section className="ssection">
                         {renderSectionHeader('backup', 'Backup & Data')}
                         <p className="muted small">
@@ -2233,15 +2386,7 @@ export default function SettingsView() {
                     </section>
                 )}
 
-                {showTab('help', [
-                    'Help & Guide',
-                    'Getting started',
-                    'Smart search & filters',
-                    'Categories & active tab',
-                    'Paste Queue & Drop Basket',
-                    'Windows File Explorer context menu',
-                    'Text transforms & Persian tools',
-                ]) && (
+                {showHelp && (
                     <section className="ssection">
                         <div className="spane-head">
                             <h2>{t('Help & Guide')}</h2>
@@ -2328,7 +2473,7 @@ export default function SettingsView() {
                     </section>
                 )}
 
-                {showTab('about', ['About', 'ClipNest', 'Version', 'Privacy']) && (
+                {showAbout && (
                     <section className="ssection">
                         <div className="spane-head">
                             <h2>{t('About')}</h2>
@@ -2371,6 +2516,13 @@ export default function SettingsView() {
                             </div>
                         </div>
                     </section>
+                )}
+
+                {!hasSearchResults && (
+                    <div className="empty spane-empty" role="status">
+                        <Icon name="search" size={32} />
+                        <span>{t('Nothing found')}</span>
+                    </div>
                 )}
 
                 {msg && (

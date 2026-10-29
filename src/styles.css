@@ -2292,6 +2292,22 @@ textarea.editor {
     padding: 18px 26px 60px;
 }
 
+.spane-empty {
+    height: 100%;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--muted);
+    user-select: none;
+}
+
+.spane-empty .icon {
+    opacity: 0.5;
+}
+
 .ssection {
     margin-bottom: 28px;
 }
