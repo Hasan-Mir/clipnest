@@ -485,6 +485,68 @@ pub async fn basket_toggle_cut(app: AppHandle, id: i64) -> Res<()> {
     Ok(())
 }
 
+/// Every file / folder / image of the Drop Basket as its own row (grouping is done by the UI).
+#[tauri::command]
+pub async fn basket_get(state: State<'_, AppState>) -> Res<Vec<crate::queue::BasketRow>> {
+    Ok(crate::queue::get_basket_rows(&state))
+}
+
+#[tauri::command]
+pub async fn basket_remove_keys(app: AppHandle, keys: Vec<String>) -> Res<()> {
+    crate::queue::remove_keys(&app, &keys);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn basket_set_cut(app: AppHandle, keys: Vec<String>, cut: bool) -> Res<()> {
+    crate::queue::set_cut(&app, &keys, cut);
+    Ok(())
+}
+
+/// The icon Windows Explorer shows for a path (file-type icon, folder icon, …) as a PNG data URL.
+#[tauri::command]
+pub async fn basket_file_icon(path: String) -> Res<Option<String>> {
+    let res = tauri::async_runtime::spawn_blocking(move || {
+        let (w, h, rgba) = crate::platform::win::extract_shell_icon_rgba(&path, 48)?;
+        let img = image::RgbaImage::from_raw(w, h, rgba)?;
+        let png = crate::capture::encode_png(&image::DynamicImage::ImageRgba8(img))?;
+        Some(data_url(&png))
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(res)
+}
+
+/// "Open file location": selects the files/folders in Windows Explorer. Items that no longer exist fall
+/// back to opening their closest existing parent folder.
+#[tauri::command]
+pub async fn reveal_paths(paths: Vec<String>) -> Res<()> {
+    let existing: Vec<String> =
+        paths.iter().map(|p| p.trim().to_string()).filter(|p| !p.is_empty() && Path::new(p).exists()).collect();
+    if !existing.is_empty() {
+        return crate::platform::win::reveal_files_in_explorer(&existing);
+    }
+    for raw in &paths {
+        let mut cur = Path::new(raw.trim()).parent();
+        while let Some(dir) = cur {
+            if dir.exists() {
+                use std::os::windows::process::CommandExt;
+                let _ = std::process::Command::new("explorer").raw_arg(format!("\"{}\"", dir.display())).spawn();
+                return Ok(());
+            }
+            cur = dir.parent();
+        }
+    }
+    Err("The location no longer exists".into())
+}
+
+/// The queue webview calls this once it has rendered, so the window can be shown without a black flash.
+#[tauri::command]
+pub async fn queue_ready(app: AppHandle) -> Res<()> {
+    crate::windowing::queue_frontend_ready(&app);
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn basket_paste_here(app: AppHandle) -> Res<usize> {
     crate::queue::basket_paste_here(&app)
@@ -492,7 +554,9 @@ pub async fn basket_paste_here(app: AppHandle) -> Res<usize> {
 
 #[tauri::command]
 pub async fn basket_paste_to_folder(app: AppHandle) -> Res<Option<usize>> {
-    crate::queue::basket_paste_to_folder(&app)
+    tauri::async_runtime::spawn_blocking(move || crate::queue::basket_paste_to_folder(&app))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

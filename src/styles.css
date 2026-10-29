@@ -383,8 +383,10 @@ mark.shl {
     border-radius: 7px;
     padding: 5px 9px;
     font-size: 0.82em;
-    line-height: 1.3;
-    max-width: 260px;
+    line-height: 1.45;
+    max-width: 280px;
+    word-break: break-word;
+    overflow-wrap: anywhere;
     box-shadow: var(--shadow);
     animation: tipIn 120ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -411,6 +413,8 @@ mark.shl {
     padding: 6px 10px;
     cursor: default;
     min-height: 36px;
+    /* The title bar (logo, name, window/pin/settings buttons) keeps its normal order in RTL languages. */
+    direction: ltr;
 }
 
 .logo-img {
@@ -488,7 +492,7 @@ mark.shl {
 /* ───────── search bar (no inner border/outline) ───────── */
 .searchrow {
     margin: 4px 10px 6px;
-    padding: 0 6px 0 9px;
+    padding-inline: 9px 6px;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -530,7 +534,8 @@ input.search-bare,
     color: var(--text);
     user-select: text;
     min-width: 0;
-    line-height: 1;
+    line-height: 1.4;
+    text-align: start;
 }
 
 input.search-bare::placeholder,
@@ -539,7 +544,8 @@ input.search-bare::placeholder,
 .cselect-search input::placeholder {
     color: var(--muted);
     opacity: 1;
-    line-height: 1;
+    line-height: 1.4;
+    text-align: start;
 }
 
 .mini {
@@ -1237,18 +1243,18 @@ input.search-bare::placeholder,
 
 .cselect-btn {
     width: 100%;
-    min-height: 31px;
+    min-height: 33px;
     display: inline-flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    padding: 0 10px;
+    padding: 2px 10px;
     border-radius: 7px;
     background: var(--bg2);
     border: 1px solid var(--border);
     color: var(--text);
     text-align: start;
-    line-height: 1.15;
+    line-height: 1.5;
     transition:
         border-color 0.16s ease,
         box-shadow 0.16s ease,
@@ -1273,7 +1279,10 @@ input.search-bare::placeholder,
     white-space: nowrap;
     display: inline-flex;
     align-items: center;
-    line-height: 1.2;
+    /* Persian/Arabic glyphs have tall ascenders and deep descenders: generous line-height + vertical
+       padding prevents overflow:hidden from clipping dots under پ/ی/چ/ن/ص. */
+    line-height: 1.65;
+    padding-block: 2px;
 }
 
 .cselect-chev {
@@ -1334,13 +1343,13 @@ input.search-bare::placeholder,
     align-items: center;
     justify-content: space-between;
     gap: 10px;
-    min-height: 29px;
+    min-height: 31px;
     padding: 4px 10px;
     border-radius: 6px;
     cursor: pointer;
     color: var(--text);
     font-size: 0.94em;
-    line-height: 1.2;
+    line-height: 1.5;
     white-space: nowrap;
     transition:
         background-color 0.12s ease,
@@ -1348,7 +1357,7 @@ input.search-bare::placeholder,
 }
 
 .cselect-opt.two-line {
-    min-height: 44px;
+    min-height: 46px;
     padding: 6px 10px;
 }
 
@@ -1363,6 +1372,8 @@ input.search-bare::placeholder,
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    line-height: 1.55;
+    padding-block: 1px;
 }
 
 .cselect-opt.two-line .cselect-opt-label {
@@ -1373,7 +1384,8 @@ input.search-bare::placeholder,
     font-size: 0.8em;
     font-weight: 400;
     color: var(--muted);
-    line-height: 1.15;
+    line-height: 1.4;
+    padding-block: 1px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1434,12 +1446,12 @@ input.search-bare::placeholder,
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    min-height: 28px;
+    min-height: 30px;
     padding: 4px 10px;
     border-radius: 6px;
     cursor: default;
     white-space: nowrap;
-    line-height: 1.2;
+    line-height: 1.5;
 }
 
 .menu-item-label {
@@ -1449,6 +1461,8 @@ input.search-bare::placeholder,
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    line-height: 1.6;
+    padding-block: 1px;
 }
 
 .menu-item:hover,
@@ -2036,6 +2050,262 @@ textarea.editor {
     padding: 0 8px;
 }
 
+/* ───────── Drop Basket rows, groups, progress and error dialog ───────── */
+.brow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    min-width: 0;
+}
+
+.brow.in-group {
+    background: transparent;
+    border-color: transparent;
+    border-radius: 6px;
+    padding: 4px 8px;
+}
+
+.brow.in-group:hover {
+    background: var(--card-hover);
+}
+
+.brow.missing .bname {
+    text-decoration: line-through;
+    color: var(--muted);
+}
+
+.nicon {
+    width: 24px;
+    height: 24px;
+    flex: 0 0 24px;
+    object-fit: contain;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+}
+
+.bmain {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.bname {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.45;
+}
+
+/* Smaller, grey path line: never overflows, the full path is shown in the tooltip. */
+.bpath {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.74em;
+    line-height: 1.35;
+    color: var(--muted);
+    opacity: 0.85;
+    text-align: left;
+}
+
+:root[dir='rtl'] .bpath {
+    text-align: right;
+}
+
+.bwarn {
+    font-size: 0.74em;
+    line-height: 1.35;
+    color: var(--warn);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.brow.failed {
+    border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+}
+
+.brow.failed .bwarn {
+    color: var(--danger);
+    white-space: normal;
+    word-break: break-word;
+}
+
+.bgroup {
+    display: flex;
+    flex-direction: column;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.bgroup > .bghead {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    cursor: pointer;
+}
+
+.bgroup > .bghead:hover {
+    background: var(--card-hover);
+}
+
+.bgroup.open > .bghead {
+    border-bottom: 1px solid var(--border);
+}
+
+.bgroup-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 4px 4px 22px;
+}
+
+:root[dir='rtl'] .bgroup-body {
+    padding: 4px 22px 4px 4px;
+}
+
+.bchev {
+    display: inline-flex;
+    color: var(--muted);
+    flex: 0 0 auto;
+}
+
+.bcount {
+    font-size: 0.74em;
+    font-weight: 700;
+    min-width: 20px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 99px;
+    background: color-mix(in srgb, var(--accent) 18%, var(--bg2));
+    color: var(--accent);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+
+.bcut-wrap {
+    display: inline-flex;
+    flex: 0 0 auto;
+}
+
+/* Direction-aware glyphs (chevron-right, arrow-right) are mirrored in right-to-left languages. */
+:root[dir='rtl'] .icon-dir {
+    transform: scaleX(-1);
+}
+
+.bprog {
+    padding: 8px 10px 6px;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.bprog-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.86em;
+    font-weight: 600;
+}
+
+.bprog-count {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.bprog-bar {
+    height: 6px;
+    border-radius: 99px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    overflow: hidden;
+}
+
+.bprog-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 99px;
+    transition: width 0.16s ease-out;
+}
+
+.bprog-cur {
+    font-size: 0.76em;
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-height: 1.3em;
+}
+
+.bprog-fail {
+    color: var(--danger);
+    font-weight: 600;
+}
+
+.qmodal-back {
+    position: absolute;
+    inset: 0;
+    z-index: 200;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+}
+
+.qmodal {
+    width: 100%;
+    max-height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+}
+
+.qmodal-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--danger);
+}
+
+.qmodal-note p {
+    margin: 0 0 4px;
+    font-size: 0.84em;
+}
+
+.qmodal-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.qmodal-foot {
+    display: flex;
+    justify-content: flex-end;
+}
+
 /* ───────── custom system tray window ───────── */
 :root[data-view='tray'],
 :root[data-view='tray'] body,
@@ -2058,6 +2328,7 @@ textarea.editor {
 .tray-head {
     display: flex;
     align-items: center;
+    direction: ltr;
     gap: 7px;
     padding: 4px 8px 6px;
 }
@@ -2217,6 +2488,7 @@ textarea.editor {
     display: flex;
     align-items: center;
     justify-content: center;
+    direction: ltr;
     gap: 10px;
     font-weight: 800;
     padding: 6px 10px;
@@ -2243,7 +2515,7 @@ textarea.editor {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 0 6px 0 9px;
+    padding-inline: 9px 6px;
     height: 32px;
     margin-bottom: 8px;
     background: var(--bg);
@@ -2264,12 +2536,12 @@ textarea.editor {
 .snav > button {
     display: flex;
     align-items: center;
-    min-height: 33px;
+    min-height: 34px;
     text-align: start;
-    padding: 0 11px;
+    padding: 2px 11px;
     border-radius: 8px;
     color: var(--muted);
-    line-height: 1.15;
+    line-height: 1.45;
     transition:
         background-color 0.14s ease,
         color 0.14s ease;
@@ -2518,9 +2790,9 @@ textarea.editor {
 .pill {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 3px;
     min-height: 26px;
-    padding: 0 4px 0 10px;
+    padding-inline: 10px 3px;
     border-radius: 99px;
     background: var(--bg2);
     border: 1px solid var(--border);
@@ -2529,9 +2801,21 @@ textarea.editor {
 
 .pill button {
     color: var(--muted);
-    padding: 0 5px;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border-radius: 50%;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
+    transition:
+        background-color 0.14s ease,
+        color 0.14s ease;
+}
+
+.pill button:hover {
+    color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 18%, transparent);
 }
 
 .addrow {

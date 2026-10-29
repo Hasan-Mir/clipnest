@@ -68,6 +68,8 @@ pub struct Settings {
     pub ctrl_shift_click_action: String,
     pub auto_save_edit: bool,
     pub basket_allow_cut: bool,
+    /// Drop Basket: show files that live in the same folder as one collapsible group.
+    pub basket_group_by_folder: bool,
     pub active_pinboard: Option<i64>,
     pub independent_pinning: bool,
     // Privacy
@@ -145,6 +147,7 @@ impl Default for Settings {
             ctrl_shift_click_action: "paste_plain".into(),
             auto_save_edit: true,
             basket_allow_cut: true,
+            basket_group_by_folder: true,
             active_pinboard: None,
             independent_pinning: true,
             ignore_apps: vec![
@@ -211,6 +214,9 @@ impl Settings {
 pub struct BasketEntry {
     pub id: i64,
     pub cut: bool,
+    /// One entry per collected path (a clip may hold several files). `None` for images.
+    #[serde(default)]
+    pub path: Option<String>,
 }
 
 pub struct Queue {

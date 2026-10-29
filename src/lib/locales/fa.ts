@@ -593,6 +593,44 @@ export const FA: Record<string, string> = {
         '«استایل اصلی» هر کارت را دقیقاً مثل زمان کپی نشان می‌دهد (رنگ‌های VS Code و پس‌زمینه و فونت). «متن ساده» فقط متن را نشان می‌دهد.',
     JSON: 'JSON',
     '— none —': '— هیچ —',
+    CUT: 'برش (CUT)',
+    COPY: 'کپی (COPY)',
+    'Open folder location': 'باز کردن محل پوشه',
+    'Open file location': 'باز کردن محل فایل',
+    'The source no longer exists': 'فایل یا پوشه‌ی مبدأ دیگر وجود ندارد',
+    'in {name}': 'در {name}',
+    '{n} item(s)': '{n} آیتم',
+    'Finishing…': 'در حال نهایی‌سازی…',
+    'Pasting…': 'در حال پیست…',
+    '{n} failed': '{n} ناموفق',
+    'Some items failed': 'برخی آیتم‌ها با خطا مواجه شدند',
+    '{failed} of {total} item(s) could not be pasted': '{failed} از {total} آیتم پیست نشد',
+    'Because of the errors, no original file was deleted.': 'به‌خاطر بروز خطا، هیچ فایل اصلی‌ای از مبدأ حذف نشد.',
+    '{n} item(s) were copied successfully and stay in the destination folder.':
+        '{n} آیتم با موفقیت کپی شد و در پوشه‌ی مقصد باقی می‌ماند.',
+    Close: 'بستن',
+    'Drop Basket: group files by folder': 'سبد فایل (Drop Basket): گروه‌بندی فایل‌ها بر اساس پوشه',
+    'When enabled, files that live in the same folder are shown as one expandable group. When disabled, every file is listed separately.':
+        'در صورت فعال بودن، فایل‌هایی که در یک پوشه قرار دارند به‌صورت یک گروه قابل باز شدن نمایش داده می‌شوند. در صورت غیرفعال بودن، هر فایل جداگانه لیست می‌شود.',
+    'Invalid path': 'مسیر نامعتبر است',
+    'The destination is inside the folder being copied': 'پوشه‌ی مقصد داخل همان پوشه‌ای است که در حال کپی شدن است',
+    'Cannot create the destination folder': 'امکان ساخت پوشه‌ی مقصد وجود ندارد',
+    'Image data not found': 'داده‌ی تصویر یافت نشد',
+    'Copy failed': 'کپی ناموفق بود',
+    'The copy could not be re-verified, so the original was left untouched':
+        'تأیید مجدد فایل کپی‌شده ممکن نبود؛ بنابراین فایل اصلی بدون تغییر باقی ماند',
+    'Copied successfully, but the original could not be removed': 'کپی با موفقیت انجام شد، اما حذف فایل اصلی ممکن نبود',
+    'New Category…': 'دسته‌بندی جدید…',
+    'Category name': 'نام دسته‌بندی',
+    'Delete category': 'حذف دسته‌بندی',
+    'Hold Ctrl to copy': 'برای کپی کلید Ctrl را نگه دارید',
+    'When enabled, category tabs wrap into multiple rows instead of scrolling horizontally (similar to VS Code wrapTabs).':
+        'در صورت فعال بودن، تب‌های دسته‌بندی به جای اسکرول افقی در چند سطر نمایش داده می‌شوند (مشابه wrapTabs در VS Code).',
+    'When enabled, pinning an item inside a category only pins it within that category without pinning it in the main Clipboard tab or other categories.':
+        'در صورت فعال بودن، پین کردن یک آیتم داخل یک دسته‌بندی فقط آن را در همان دسته‌بندی پین می‌کند و در تب اصلی کلیپ‌بورد یا سایر دسته‌بندی‌ها پین نمی‌شود.',
+    'Create colour-coded Categories with + or Ctrl+N and drag cards onto any tab (hold Ctrl while dragging to copy between categories). Right-click a Category tab and enable Active category so all new copies go straight into that tab automatically.':
+        'با دکمه‌ی + یا کلیدهای Ctrl+N دسته‌بندی‌های رنگی بسازید و کارت‌ها را روی هر تب بکشید (برای کپی کردن بین دسته‌بندی‌ها هنگام کشیدن کلید Ctrl را نگه دارید). روی تب هر دسته‌بندی راست‌کلیک کرده و «دسته‌بندی فعال» را روشن کنید تا تمام کپی‌های جدید مستقیماً وارد همان تب شوند.',
+    'Delete (or remove from category)': 'حذف (یا برداشتن از دسته‌بندی)',
 };
 
 export const fa: LocaleDefinition = {

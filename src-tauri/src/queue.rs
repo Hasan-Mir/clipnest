@@ -3,16 +3,17 @@
 //!    While the queue holds items in Queue mode, Ctrl+V is intercepted globally and pastes the next item.
 //! 2. Basket (Collector) mode: collect files (CF_HDROP) and images across folders/web pages while ignoring
 //!    plain text copies, then batch-paste all at once via CF_HDROP or directly into a picked destination folder
-//!    with verified safe move (Cut) support.
+//!    with verified safe move (Cut) support, live progress reporting, and non-destructive error handling.
 
 use crate::capture::build_hdrop;
 use crate::classify;
 use crate::db::{self, ClipRow, NewClip, StoredFormat};
 use crate::platform::win;
 use crate::state::{AppState, BasketEntry};
+use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
@@ -43,28 +44,54 @@ pub fn sync_intercept(app: &AppHandle) {
     }
 }
 
+/// Stable identity of a basket entry: `<clip id>|<path>` (path is empty for images).
+pub fn entry_key(id: i64, path: &Option<String>) -> String {
+    format!("{}|{}", id, path.as_deref().unwrap_or(""))
+}
+
+fn parse_key(k: &str) -> Option<(i64, Option<String>)> {
+    let (id, path) = k.split_once('|')?;
+    let id = id.parse::<i64>().ok()?;
+    Some((id, if path.is_empty() { None } else { Some(path.to_string()) }))
+}
+
+fn split_paths(plain: &str) -> Vec<String> {
+    plain.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).map(|l| l.to_string()).collect()
+}
+
 pub fn push_captured(app: &AppHandle, id: i64, kind: &str, is_cut: bool) {
-    let allow_cut = app.state::<AppState>().settings.read().basket_allow_cut;
-    {
-        let st = app.state::<AppState>();
-        let mut q = st.queue.lock();
+    let st = app.state::<AppState>();
+    let allow_cut = st.settings.read().basket_allow_cut;
+    let is_basket = {
+        let q = st.queue.lock();
         if !q.active {
             return;
         }
-        if q.mode == "basket" {
-            // Smart Context Filtering: only file and image clips enter the Drop Basket.
-            if kind != "file" && kind != "image" {
-                return;
-            }
-            let cut_flag = is_cut && allow_cut && kind == "file";
-            if let Some(existing) = q.basket.iter_mut().find(|e| e.id == id) {
+        q.mode == "basket"
+    };
+    if is_basket {
+        // Smart Context Filtering: only file and image clips enter the Drop Basket.
+        if kind != "file" && kind != "image" {
+            return;
+        }
+        let cut_flag = is_cut && allow_cut && kind == "file";
+        // One basket entry per collected path, so a multi-file copy shows every file individually.
+        let paths: Vec<Option<String>> = if kind == "file" {
+            let plain = { db::get_plain(&st.db.lock(), id).map(|(_, p)| p).unwrap_or_default() };
+            split_paths(&plain).into_iter().map(Some).collect()
+        } else {
+            vec![None]
+        };
+        let mut q = st.queue.lock();
+        for path in paths {
+            if let Some(existing) = q.basket.iter_mut().find(|e| e.id == id && e.path == path) {
                 existing.cut = cut_flag;
             } else {
-                q.basket.push(BasketEntry { id, cut: cut_flag });
+                q.basket.push(BasketEntry { id, cut: cut_flag, path });
             }
-        } else {
-            q.items.push(id);
         }
+    } else {
+        st.queue.lock().items.push(id);
     }
     changed(app);
     sync_intercept(app);
@@ -106,13 +133,32 @@ pub fn set_mode(app: &AppHandle, mode: &str) {
     sync_intercept(app);
 }
 
+/// Sets the Copy/Cut flag of the given entries. The flag is read again at paste time, so changing it
+/// while the folder dialog is open is honoured.
+pub fn set_cut(app: &AppHandle, keys: &[String], cut: bool) {
+    let allow_cut = app.state::<AppState>().settings.read().basket_allow_cut;
+    let parsed: Vec<(i64, Option<String>)> = keys.iter().filter_map(|k| parse_key(k)).collect();
+    {
+        let st = app.state::<AppState>();
+        let mut q = st.queue.lock();
+        for e in q.basket.iter_mut() {
+            if e.path.is_some() && parsed.iter().any(|(id, p)| *id == e.id && *p == e.path) {
+                e.cut = cut && allow_cut;
+            }
+        }
+    }
+    changed(app);
+}
+
+/// Toggles Copy/Cut of every entry that belongs to the clip (legacy/CLI command).
 pub fn toggle_cut(app: &AppHandle, id: i64) {
     let allow_cut = app.state::<AppState>().settings.read().basket_allow_cut;
     {
         let st = app.state::<AppState>();
         let mut q = st.queue.lock();
-        if let Some(entry) = q.basket.iter_mut().find(|e| e.id == id) {
-            entry.cut = if allow_cut { !entry.cut } else { false };
+        let next = !q.basket.iter().filter(|e| e.id == id && e.path.is_some()).all(|e| e.cut);
+        for e in q.basket.iter_mut().filter(|e| e.id == id && e.path.is_some()) {
+            e.cut = next && allow_cut;
         }
     }
     changed(app);
@@ -125,17 +171,86 @@ pub fn get_items(state: &AppState) -> Vec<ClipRow> {
     };
     let conn = state.db.lock();
     if mode == "basket" {
-        basket
-            .iter()
-            .filter_map(|e| {
-                let mut row = db::get_row(&conn, e.id)?;
+        let mut out: Vec<ClipRow> = Vec::new();
+        for e in &basket {
+            if out.iter().any(|r| r.id == e.id) {
+                continue;
+            }
+            if let Some(mut row) = db::get_row(&conn, e.id) {
                 row.cut = e.cut;
-                Some(row)
-            })
-            .collect()
+                out.push(row);
+            }
+        }
+        out
     } else {
         db::get_rows(&conn, &ids)
     }
+}
+
+/// One row of the Drop Basket as shown in the UI: a single file, folder or image.
+#[derive(Serialize, Clone, Debug)]
+pub struct BasketRow {
+    pub key: String,
+    pub id: i64,
+    pub kind: String,
+    pub path: Option<String>,
+    pub name: String,
+    pub parent: Option<String>,
+    pub is_dir: bool,
+    pub exists: bool,
+    pub cut: bool,
+    pub img_w: Option<i64>,
+    pub img_h: Option<i64>,
+}
+
+pub fn get_basket_rows(state: &AppState) -> Vec<BasketRow> {
+    let basket = state.queue.lock().basket.clone();
+    // Read the database first, then touch the file system without holding the DB lock.
+    let metas: Vec<(BasketEntry, String, Option<i64>, Option<i64>)> = {
+        let conn = state.db.lock();
+        basket
+            .into_iter()
+            .filter_map(|e| db::get_row(&conn, e.id).map(|r| (e, r.kind.clone(), r.img_w, r.img_h)))
+            .collect()
+    };
+    let mut out = Vec::with_capacity(metas.len());
+    for (e, kind, img_w, img_h) in metas {
+        let key = entry_key(e.id, &e.path);
+        match &e.path {
+            Some(p) => {
+                let path = Path::new(p);
+                let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| p.clone());
+                let parent = path.parent().map(|x| x.to_string_lossy().to_string()).filter(|x| !x.is_empty());
+                out.push(BasketRow {
+                    key,
+                    id: e.id,
+                    kind: "file".into(),
+                    path: Some(p.clone()),
+                    name,
+                    parent,
+                    is_dir: path.is_dir(),
+                    exists: path.exists(),
+                    cut: e.cut,
+                    img_w: None,
+                    img_h: None,
+                });
+            }
+            None => out.push(BasketRow {
+                key,
+                id: e.id,
+                kind,
+                path: None,
+                name: String::new(),
+                parent: None,
+                is_dir: false,
+                exists: true,
+                cut: false,
+                img_w,
+                img_h,
+            }),
+        }
+    }
+    out
 }
 
 pub fn remove(app: &AppHandle, id: i64) {
@@ -149,6 +264,17 @@ pub fn remove(app: &AppHandle, id: i64) {
     }
     changed(app);
     sync_intercept(app);
+}
+
+/// Removes individual basket entries (a file, or a whole folder group) by key.
+pub fn remove_keys(app: &AppHandle, keys: &[String]) {
+    let parsed: Vec<(i64, Option<String>)> = keys.iter().filter_map(|k| parse_key(k)).collect();
+    {
+        let st = app.state::<AppState>();
+        let mut q = st.queue.lock();
+        q.basket.retain(|e| !parsed.iter().any(|(id, p)| *id == e.id && *p == e.path));
+    }
+    changed(app);
 }
 
 pub fn clear(app: &AppHandle) {
@@ -165,7 +291,7 @@ pub fn clear(app: &AppHandle) {
     sync_intercept(app);
 }
 
-/// Materializes an image clip to `%TEMP%\ClipNestDrops\clipnest_image_<id>_<ts>.png`.
+/// Materializes an image clip to `%TEMP%\ClipNestDrops\clipnest-image-<id>-<ts>.png`.
 fn materialize_image(conn: &rusqlite::Connection, id: i64, dir: &Path) -> Result<PathBuf, String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let png = db::get_format_data(conn, id, "PNG").ok_or("image data not found")?;
@@ -174,8 +300,10 @@ fn materialize_image(conn: &rusqlite::Connection, id: i64, dir: &Path) -> Result
     Ok(file_path)
 }
 
-/// Batch "Paste All Here": materializes collected images in `%TEMP%\ClipNestDrops\`, builds a
+/// Batch "Paste All Here": materializes collected images in `%TEMP%\\ClipNestDrops\\`, builds a
 /// single combined `CF_HDROP` with `Preferred DropEffect`, writes to the OS clipboard, and sends Ctrl+V.
+/// The Copy/Cut flags are read NOW (at paste time). A "move" effect is only used when every collected
+/// file is marked Cut, so a file marked Copy can never be moved by accident.
 pub fn basket_paste_here(app: &AppHandle) -> Result<usize, String> {
     let st = app.state::<AppState>();
     let allow_cut = st.settings.read().basket_allow_cut;
@@ -185,27 +313,29 @@ pub fn basket_paste_here(app: &AppHandle) -> Result<usize, String> {
     }
     let temp_drops = std::env::temp_dir().join("ClipNestDrops");
     let mut all_paths: Vec<String> = Vec::new();
-    let mut any_cut = false;
+    let mut file_entries = 0usize;
+    let mut cut_entries = 0usize;
     let mut has_temp_image = false;
     {
         let conn = st.db.lock();
         for entry in &basket {
-            let Some((kind, plain)) = db::get_plain(&conn, entry.id) else {
-                continue;
-            };
-            if kind == "file" {
-                for line in plain.lines().map(|l| l.trim()).filter(|l| !l.is_empty()) {
-                    if Path::new(line).exists() && !all_paths.iter().any(|p| p.eq_ignore_ascii_case(line)) {
-                        all_paths.push(line.to_string());
+            match &entry.path {
+                Some(p) => {
+                    if Path::new(p).exists() {
+                        file_entries += 1;
+                        if entry.cut && allow_cut {
+                            cut_entries += 1;
+                        }
+                        if !all_paths.iter().any(|x| x.eq_ignore_ascii_case(p)) {
+                            all_paths.push(p.clone());
+                        }
                     }
                 }
-                if entry.cut && allow_cut {
-                    any_cut = true;
-                }
-            } else if kind == "image" {
-                if let Ok(p) = materialize_image(&conn, entry.id, &temp_drops) {
-                    all_paths.push(p.to_string_lossy().to_string());
-                    has_temp_image = true;
+                None => {
+                    if let Ok(p) = materialize_image(&conn, entry.id, &temp_drops) {
+                        all_paths.push(p.to_string_lossy().to_string());
+                        has_temp_image = true;
+                    }
                 }
             }
         }
@@ -213,15 +343,18 @@ pub fn basket_paste_here(app: &AppHandle) -> Result<usize, String> {
     if all_paths.is_empty() {
         return Err("No valid files or images found in Drop Basket".into());
     }
+    let all_cut = allow_cut && file_entries > 0 && cut_entries == file_entries && !has_temp_image;
     let hdrop_bytes = build_hdrop(&all_paths);
-    let drop_effect: u32 = if any_cut && allow_cut && !has_temp_image { 2 } else { 1 };
+    let drop_effect: u32 = if all_cut { 2 } else { 1 };
     let pref_id = win::register_format("Preferred DropEffect");
     let mut clip_items = vec![(win::CF_HDROP_ID, "CF_HDROP".to_string(), hdrop_bytes)];
     if pref_id != 0 {
         clip_items.push((pref_id, "Preferred DropEffect".to_string(), drop_effect.to_le_bytes().to_vec()));
     }
+    st.self_write_at.store(db::now_ms(), Ordering::SeqCst);
     let seq = win::write_clipboard(&clip_items)?;
     st.self_seq.store(seq, Ordering::SeqCst);
+    st.self_write_at.store(db::now_ms(), Ordering::SeqCst);
 
     let fg = win::foreground();
     let target = if fg != 0 && !win::is_own_window(fg) { fg } else { st.target_hwnd.load(Ordering::SeqCst) };
@@ -229,12 +362,12 @@ pub fn basket_paste_here(app: &AppHandle) -> Result<usize, String> {
     std::thread::spawn(move || {
         if target != 0 {
             win::focus_window(target);
-            std::thread::sleep(Duration::from_millis(35));
+            std::thread::sleep(Duration::from_millis(60));
         }
         win::send_paste_keys("ctrl+v");
     });
-    if any_cut && allow_cut && !has_temp_image {
-        st.queue.lock().basket.clear();
+    if all_cut {
+        st.queue.lock().basket.retain(|e| e.path.is_none());
         changed(app);
     }
     Ok(count)
@@ -271,13 +404,55 @@ fn same_canonical_path(a: &Path, b: &Path) -> bool {
     }
 }
 
-fn copy_file_verified(src: &Path, dst: &Path) -> Result<(), String> {
+/// Byte counter of the item currently being copied; reports a 0..1 fraction through `cb`.
+struct ByteProgress<'a> {
+    total: u64,
+    done: u64,
+    cb: &'a mut dyn FnMut(f64),
+}
+
+impl<'a> ByteProgress<'a> {
+    fn add(&mut self, n: u64) {
+        self.done += n;
+        let f = if self.total == 0 { 1.0 } else { self.done as f64 / self.total as f64 };
+        (self.cb)(f);
+    }
+}
+
+fn dir_size(path: &Path) -> u64 {
+    let mut total = 0u64;
+    if let Ok(rd) = std::fs::read_dir(path) {
+        for entry in rd.flatten() {
+            if let Ok(ft) = entry.file_type() {
+                if ft.is_dir() {
+                    total += dir_size(&entry.path());
+                } else if ft.is_file() {
+                    total += entry.metadata().map(|m| m.len()).unwrap_or(0);
+                }
+            }
+        }
+    }
+    total
+}
+
+fn copy_file_verified(src: &Path, dst: &Path, prog: &mut ByteProgress) -> Result<(), String> {
+    use std::io::{Read, Write};
     let src_meta = std::fs::metadata(src).map_err(|e| format!("Cannot read {}: {e}", src.display()))?;
     let expected_len = src_meta.len();
     {
         let mut reader = std::fs::File::open(src).map_err(|e| format!("Cannot open {}: {e}", src.display()))?;
         let mut writer = std::fs::File::create(dst).map_err(|e| format!("Cannot create {}: {e}", dst.display()))?;
-        std::io::copy(&mut reader, &mut writer).map_err(|e| format!("Copy failed for {}: {e}", src.display()))?;
+        let mut buf = vec![0u8; 1024 * 1024];
+        loop {
+            let n = match reader.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => n,
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(e) => return Err(format!("Copy failed for {}: {e}", src.display())),
+            };
+            writer.write_all(&buf[..n]).map_err(|e| format!("Write failed for {}: {e}", dst.display()))?;
+            prog.add(n as u64);
+        }
         writer.sync_all().map_err(|e| format!("Disk sync failed for {}: {e}", dst.display()))?;
     }
     let dst_meta = std::fs::metadata(dst).map_err(|e| format!("Verification failed for {}: {e}", dst.display()))?;
@@ -292,7 +467,7 @@ fn copy_file_verified(src: &Path, dst: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn copy_dir_verified(src: &Path, dst: &Path) -> Result<(), String> {
+fn copy_dir_verified(src: &Path, dst: &Path, prog: &mut ByteProgress) -> Result<(), String> {
     std::fs::create_dir_all(dst).map_err(|e| format!("Cannot create directory {}: {e}", dst.display()))?;
     for entry in std::fs::read_dir(src).map_err(|e| format!("Cannot read directory {}: {e}", src.display()))? {
         let entry = entry.map_err(|e| e.to_string())?;
@@ -300,108 +475,377 @@ fn copy_dir_verified(src: &Path, dst: &Path) -> Result<(), String> {
         let dp = dst.join(entry.file_name());
         let ft = entry.file_type().map_err(|e| e.to_string())?;
         if ft.is_dir() {
-            copy_dir_verified(&sp, &dp)?;
+            copy_dir_verified(&sp, &dp, prog)?;
         } else if ft.is_file() {
-            copy_file_verified(&sp, &dp)?;
+            copy_file_verified(&sp, &dp, prog)?;
+        } else {
+            // Symlinks / junctions / special files are never silently skipped: a Cut would otherwise
+            // delete something that was not copied.
+            return Err(format!("Unsupported entry (link or special file): {}", sp.display()));
         }
     }
     Ok(())
 }
 
-/// Transfers a list of BasketEntry items into `dest_dir` with verified copy/move semantics.
-pub fn transfer_entries_to_dir(app: &AppHandle, entries: &[BasketEntry], dest_dir: &Path) -> Result<usize, String> {
-    let st = app.state::<AppState>();
-    let allow_cut = st.settings.read().basket_allow_cut;
-    std::fs::create_dir_all(dest_dir).map_err(|e| e.to_string())?;
+fn write_image_verified(dest_dir: &Path, id: i64, png: &[u8]) -> Result<PathBuf, String> {
+    use std::io::Write;
+    let fname = format!("clipnest-image-{}-{}.png", id, db::now_ms());
+    let dst = unique_dest_path(dest_dir, &fname, None);
+    let res = (|| -> Result<(), String> {
+        let mut f = std::fs::File::create(&dst).map_err(|e| e.to_string())?;
+        f.write_all(png).map_err(|e| e.to_string())?;
+        f.sync_all().map_err(|e| e.to_string())?;
+        let meta = std::fs::metadata(&dst).map_err(|e| e.to_string())?;
+        if meta.len() != png.len() as u64 {
+            return Err(format!("Image verification failed for {}", dst.display()));
+        }
+        Ok(())
+    })();
+    match res {
+        Ok(()) => Ok(dst),
+        Err(e) => {
+            let _ = std::fs::remove_file(&dst);
+            Err(e)
+        }
+    }
+}
 
-    let mut transferred = 0usize;
-    let mut completed_cut_ids: Vec<i64> = Vec::new();
+/// Live progress of a Drop Basket transfer (event `basket-progress`).
+#[derive(Serialize, Clone, Debug)]
+pub struct TransferProgress {
+    pub done: usize,
+    pub failed: usize,
+    pub total: usize,
+    pub current: String,
+    /// 0..1 fraction of the item that is being copied right now.
+    pub fraction: f64,
+    /// "copy" | "finalize"
+    pub phase: String,
+}
 
-    for entry in entries {
-        let item_data = {
-            let conn = st.db.lock();
-            db::get_plain(&conn, entry.id).map(|(k, p)| {
-                let png = if k == "image" { db::get_format_data(&conn, entry.id, "PNG") } else { None };
-                (k, p, png)
-            })
-        };
-        let Some((kind, plain, png_opt)) = item_data else {
+/// An item that could not be transferred.
+#[derive(Serialize, Clone, Debug)]
+pub struct TransferFailure {
+    pub key: String,
+    pub id: i64,
+    pub path: Option<String>,
+    pub name: String,
+    pub is_dir: bool,
+    pub exists: bool,
+    /// Machine-readable cause (translated by the UI): source_missing | invalid_path | dest_inside_source |
+    /// dest_create | image_missing | copy_failed | reverify_failed | cut_not_removed.
+    pub code: String,
+    /// Raw technical detail (usually the OS error), may be empty.
+    pub reason: String,
+}
+
+/// Final result of a Drop Basket transfer (event `basket-finished`).
+#[derive(Serialize, Clone, Debug)]
+pub struct TransferReport {
+    pub total: usize,
+    pub done: usize,
+    pub failed: Vec<TransferFailure>,
+    /// True when at least one item was marked Cut but no original was deleted because something failed.
+    pub cut_skipped: bool,
+    pub dest: String,
+}
+
+struct Reporter {
+    app: AppHandle,
+    total: usize,
+    last: Instant,
+}
+
+impl Reporter {
+    fn new(app: AppHandle, total: usize) -> Self {
+        let last = Instant::now().checked_sub(Duration::from_secs(1)).unwrap_or_else(Instant::now);
+        Reporter { app, total, last }
+    }
+
+    fn emit(&mut self, p: TransferProgress, force: bool) {
+        if !force && self.last.elapsed() < Duration::from_millis(80) {
+            return;
+        }
+        self.last = Instant::now();
+        let _ = self.app.emit("basket-progress", p);
+    }
+}
+
+fn failure_for(en: &BasketEntry, code: &str, reason: String) -> TransferFailure {
+    let (name, is_dir, exists) = match &en.path {
+        Some(p) => {
+            let path = Path::new(p);
+            (
+                path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| p.clone()),
+                path.is_dir(),
+                path.exists(),
+            )
+        }
+        None => ("image".to_string(), false, false),
+    };
+    TransferFailure {
+        key: entry_key(en.id, &en.path),
+        id: en.id,
+        path: en.path.clone(),
+        name,
+        is_dir,
+        exists,
+        code: code.to_string(),
+        reason,
+    }
+}
+
+fn dest_inside_source(src: &Path, dest_dir: &Path) -> bool {
+    match (std::fs::canonicalize(src), std::fs::canonicalize(dest_dir)) {
+        (Ok(cs), Ok(cd)) => cd.starts_with(&cs),
+        _ => false,
+    }
+}
+
+struct Copied {
+    id: i64,
+    path: Option<String>,
+    src: PathBuf,
+    dst: PathBuf,
+    is_dir: bool,
+    cut: bool,
+}
+
+/// Core two-phase transfer engine (independent of Tauri `AppHandle` for deterministic unit testing):
+///  1. copy + verify every item (a failure never stops the remaining items), reporting live progress;
+///  2. ONLY if phase 1 had no failure at all, the originals of items marked Cut are removed.
+/// Returns `(TransferReport, completed_cut_entries)`.
+pub fn transfer_core<F, P>(
+    mut get_png: F,
+    allow_cut: bool,
+    entries: &[BasketEntry],
+    dest_dir: &Path,
+    mut on_progress: P,
+) -> (TransferReport, Vec<(i64, Option<String>)>)
+where
+    F: FnMut(i64) -> Option<Vec<u8>>,
+    P: FnMut(TransferProgress, bool),
+{
+    let total = entries.len();
+    let mut report = TransferReport {
+        total,
+        done: 0,
+        failed: Vec::new(),
+        cut_skipped: false,
+        dest: dest_dir.to_string_lossy().to_string(),
+    };
+    on_progress(
+        TransferProgress { done: 0, failed: 0, total, current: String::new(), fraction: 0.0, phase: "copy".into() },
+        true,
+    );
+
+    if let Err(e) = std::fs::create_dir_all(dest_dir) {
+        for en in entries {
+            report.failed.push(failure_for(en, "dest_create", e.to_string()));
+        }
+        return (report, Vec::new());
+    }
+
+    let mut copied: Vec<Copied> = Vec::new();
+    for en in entries {
+        let label = en
+            .path
+            .as_deref()
+            .and_then(|p| Path::new(p).file_name())
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "image".to_string());
+        on_progress(
+            TransferProgress {
+                done: report.done,
+                failed: report.failed.len(),
+                total,
+                current: label.clone(),
+                fraction: 0.0,
+                phase: "copy".into(),
+            },
+            true,
+        );
+
+        let Some(p) = &en.path else {
+            // Browser image stored in the database.
+            match get_png(en.id) {
+                None => report.failed.push(failure_for(en, "image_missing", String::new())),
+                Some(png) => match write_image_verified(dest_dir, en.id, &png) {
+                    Ok(_) => report.done += 1,
+                    Err(e) => report.failed.push(failure_for(en, "copy_failed", e)),
+                },
+            }
             continue;
         };
-        if kind == "image" {
-            let Some(png) = png_opt else {
-                continue;
+
+        let src = PathBuf::from(p);
+        if !src.exists() {
+            report.failed.push(failure_for(en, "source_missing", String::new()));
+            continue;
+        }
+        let Some(fname) = src.file_name().map(|n| n.to_string_lossy().to_string()) else {
+            report.failed.push(failure_for(en, "invalid_path", String::new()));
+            continue;
+        };
+        let is_dir = src.is_dir();
+        if is_dir && dest_inside_source(&src, dest_dir) {
+            report.failed.push(failure_for(en, "dest_inside_source", String::new()));
+            continue;
+        }
+        let dst = unique_dest_path(dest_dir, &fname, Some(&src));
+        if same_canonical_path(&src, &dst) {
+            // Already lives in the destination folder: nothing to copy, and never delete it for a Cut.
+            report.done += 1;
+            continue;
+        }
+        let total_bytes = if is_dir { dir_size(&src) } else { std::fs::metadata(&src).map(|m| m.len()).unwrap_or(0) };
+        let res = {
+            let done_now = report.done;
+            let failed_now = report.failed.len();
+            let mut cb = |f: f64| {
+                on_progress(
+                    TransferProgress {
+                        done: done_now,
+                        failed: failed_now,
+                        total,
+                        current: label.clone(),
+                        fraction: f.clamp(0.0, 1.0),
+                        phase: "copy".into(),
+                    },
+                    false,
+                );
             };
-            let fname = format!("clipnest-image-{}-{}.png", entry.id, db::now_ms());
-            let dst = unique_dest_path(dest_dir, &fname, None);
-            {
-                use std::io::Write;
-                let mut f = std::fs::File::create(&dst).map_err(|e| e.to_string())?;
-                f.write_all(&png).map_err(|e| e.to_string())?;
-                f.sync_all().map_err(|e| e.to_string())?;
+            let mut prog = ByteProgress { total: total_bytes, done: 0, cb: &mut cb };
+            if is_dir {
+                copy_dir_verified(&src, &dst, &mut prog)
+            } else {
+                copy_file_verified(&src, &dst, &mut prog)
             }
-            let meta = std::fs::metadata(&dst).map_err(|e| e.to_string())?;
-            if meta.len() != png.len() as u64 {
-                return Err(format!("Image verification failed for {}", dst.display()));
+        };
+        match res {
+            Ok(()) => {
+                report.done += 1;
+                copied.push(Copied { id: en.id, path: en.path.clone(), src, dst, is_dir, cut: en.cut && allow_cut });
             }
-            transferred += 1;
-        } else if kind == "file" {
-            let mut all_paths_ok = true;
-            for line in plain.lines().map(|l| l.trim()).filter(|l| !l.is_empty()) {
-                let src = PathBuf::from(line);
-                if !src.exists() {
-                    all_paths_ok = false;
-                    continue;
+            Err(e) => {
+                // Remove only what this operation created (the destination name was unique).
+                if is_dir {
+                    let _ = std::fs::remove_dir_all(&dst);
+                } else {
+                    let _ = std::fs::remove_file(&dst);
                 }
-                let Some(fname) = src.file_name().map(|n| n.to_string_lossy().to_string()) else {
-                    all_paths_ok = false;
-                    continue;
-                };
-                let dst = unique_dest_path(dest_dir, &fname, Some(&src));
-                if same_canonical_path(&src, &dst) {
-                    transferred += 1;
-                    continue;
-                }
-                if src.is_dir() {
-                    copy_dir_verified(&src, &dst)?;
-                    if entry.cut && allow_cut {
-                        std::fs::remove_dir_all(&src).map_err(|e| {
-                            format!(
-                                "Verified copy succeeded, but could not remove source folder {}: {e}",
-                                src.display()
-                            )
-                        })?;
-                    }
-                    transferred += 1;
-                } else if src.is_file() {
-                    copy_file_verified(&src, &dst)?;
-                    if entry.cut && allow_cut {
-                        std::fs::remove_file(&src).map_err(|e| {
-                            format!("Verified copy succeeded, but could not remove source file {}: {e}", src.display())
-                        })?;
-                    }
-                    transferred += 1;
-                }
-            }
-            if entry.cut && allow_cut && all_paths_ok {
-                completed_cut_ids.push(entry.id);
+                report.failed.push(failure_for(en, "copy_failed", e));
             }
         }
     }
 
-    if !completed_cut_ids.is_empty() {
-        let mut q = st.queue.lock();
-        q.basket.retain(|e| !completed_cut_ids.contains(&e.id));
-        drop(q);
+    // Phase 2: move semantics — only when EVERYTHING copied fine.
+    let mut completed: Vec<(i64, Option<String>)> = Vec::new();
+    if copied.iter().any(|c| c.cut) {
+        if !report.failed.is_empty() {
+            report.cut_skipped = true;
+        } else {
+            on_progress(
+                TransferProgress {
+                    done: report.done,
+                    failed: 0,
+                    total,
+                    current: String::new(),
+                    fraction: 1.0,
+                    phase: "finalize".into(),
+                },
+                true,
+            );
+            for c in copied.iter().filter(|c| c.cut) {
+                let en = BasketEntry { id: c.id, cut: true, path: c.path.clone() };
+                let intact = if c.is_dir {
+                    c.dst.is_dir()
+                } else {
+                    match (std::fs::metadata(&c.src), std::fs::metadata(&c.dst)) {
+                        (Ok(a), Ok(b)) => b.is_file() && a.len() == b.len(),
+                        _ => false,
+                    }
+                };
+                if !intact {
+                    report.failed.push(failure_for(&en, "reverify_failed", String::new()));
+                    continue;
+                }
+                let removed = if c.is_dir { std::fs::remove_dir_all(&c.src) } else { std::fs::remove_file(&c.src) };
+                match removed {
+                    Ok(()) => completed.push((c.id, c.path.clone())),
+                    Err(e) => report.failed.push(failure_for(&en, "cut_not_removed", e.to_string())),
+                }
+            }
+        }
+    }
+    (report, completed)
+}
+
+fn run_transfer_inner(app: &AppHandle, entries: &[BasketEntry], dest_dir: &Path) -> TransferReport {
+    let st = app.state::<AppState>();
+    let allow_cut = st.settings.read().basket_allow_cut;
+    let mut reporter = Reporter::new(app.clone(), entries.len());
+    let (report, completed) = transfer_core(
+        |id| {
+            let conn = st.db.lock();
+            db::get_format_data(&conn, id, "PNG")
+        },
+        allow_cut,
+        entries,
+        dest_dir,
+        |p, force| reporter.emit(p, force),
+    );
+    if !completed.is_empty() {
+        st.queue.lock().basket.retain(|e| !completed.iter().any(|(id, p)| *id == e.id && *p == e.path));
         changed(app);
     }
+    report
+}
 
-    Ok(transferred)
+/// Runs a transfer and announces the result (`basket-finished`) to the UI.
+pub fn run_transfer(app: &AppHandle, entries: &[BasketEntry], dest_dir: &Path) -> TransferReport {
+    let report = run_transfer_inner(app, entries, dest_dir);
+    let _ = app.emit("basket-finished", report.clone());
+    report
+}
+
+/// Synchronous variant for callers that want a plain result (Explorer context menu, popup paste to folder).
+pub fn transfer_entries_to_dir(app: &AppHandle, entries: &[BasketEntry], dest_dir: &Path) -> Result<usize, String> {
+    let report = run_transfer(app, entries, dest_dir);
+    if report.failed.is_empty() {
+        Ok(report.done)
+    } else {
+        Err(format!(
+            "{} of {} item(s) failed ({}: {})",
+            report.failed.len(),
+            report.total,
+            report.failed[0].code,
+            report.failed[0].reason
+        ))
+    }
+}
+
+/// Builds one basket entry per path of a clip (or one image entry).
+fn entries_for_clip(app: &AppHandle, id: i64) -> Vec<BasketEntry> {
+    let st = app.state::<AppState>();
+    let Some((kind, plain)) = db::get_plain(&st.db.lock(), id) else {
+        return Vec::new();
+    };
+    if kind == "image" {
+        vec![BasketEntry { id, cut: false, path: None }]
+    } else if kind == "file" {
+        split_paths(&plain).into_iter().map(|p| BasketEntry { id, cut: false, path: Some(p) }).collect()
+    } else {
+        Vec::new()
+    }
 }
 
 /// Copies the specified clip IDs (files, folders, or images) directly into `dest_dir`.
 pub fn paste_clips_to_dir(app: &AppHandle, ids: &[i64], dest_dir: &Path) -> Result<usize, String> {
-    let entries: Vec<BasketEntry> = ids.iter().map(|&id| BasketEntry { id, cut: false }).collect();
+    let entries: Vec<BasketEntry> = ids.iter().flat_map(|&id| entries_for_clip(app, id)).collect();
+    if entries.is_empty() {
+        return Ok(0);
+    }
     transfer_entries_to_dir(app, &entries, dest_dir)
 }
 
@@ -468,8 +912,8 @@ pub fn collect_file_from_explorer(app: &AppHandle, path_str: &str) -> Result<i64
         let mut q = st.queue.lock();
         q.active = true;
         q.mode = "basket".into();
-        if !q.basket.iter().any(|e| e.id == id) {
-            q.basket.push(BasketEntry { id, cut: false });
+        if !q.basket.iter().any(|e| e.id == id && e.path.as_deref() == Some(clean_path.as_str())) {
+            q.basket.push(BasketEntry { id, cut: false, path: Some(clean_path) });
         }
     }
     crate::windowing::show_queue(app);
@@ -479,23 +923,50 @@ pub fn collect_file_from_explorer(app: &AppHandle, path_str: &str) -> Result<i64
     Ok(id)
 }
 
-/// Batch "Paste All to Folder…": opens a native folder picker dialog and copies/moves all
-/// collected files, directories, and browser images into that folder. Original files marked CUT
-/// are deleted ONLY after the destination copy completes and its exact byte size is verified on disk.
+/// Clears the "transfer running" flag even if the worker thread panics.
+struct BusyGuard(AppHandle);
+
+impl Drop for BusyGuard {
+    fn drop(&mut self) {
+        self.0.state::<AppState>().transfer_busy.store(false, Ordering::SeqCst);
+    }
+}
+
+/// Batch "Paste All to Folder…": opens a native folder picker, then copies/moves all collected files,
+/// directories and browser images in a background thread while the UI shows live progress
+/// (`basket-progress`) and the final report (`basket-finished`).
+///
+/// The basket (including every Copy/Cut flag) is read AFTER the dialog closes, so toggling Copy/Cut or
+/// removing items while the dialog is open is honoured. Originals are deleted only after every copy
+/// succeeded and was verified.
 pub fn basket_paste_to_folder(app: &AppHandle) -> Result<Option<usize>, String> {
     use tauri_plugin_dialog::DialogExt;
     let st = app.state::<AppState>();
-    let basket = st.queue.lock().basket.clone();
-    if basket.is_empty() {
+    if st.queue.lock().basket.is_empty() {
         return Ok(Some(0));
+    }
+    if st.transfer_busy.load(Ordering::SeqCst) {
+        return Err("A transfer is already running".into());
     }
     let picked = app.dialog().file().blocking_pick_folder();
     let Some(picked) = picked else {
         return Ok(None);
     };
     let dest_dir = picked.into_path().map_err(|e| e.to_string())?;
-    let transferred = transfer_entries_to_dir(app, &basket, &dest_dir)?;
-    Ok(Some(transferred))
+    let basket = st.queue.lock().basket.clone();
+    if basket.is_empty() {
+        return Ok(Some(0));
+    }
+    if st.transfer_busy.swap(true, Ordering::SeqCst) {
+        return Err("A transfer is already running".into());
+    }
+    let total = basket.len();
+    let app2 = app.clone();
+    std::thread::spawn(move || {
+        let _guard = BusyGuard(app2.clone());
+        let _ = run_transfer(&app2, &basket, &dest_dir);
+    });
+    Ok(Some(total))
 }
 
 /// Called when the intercepted Ctrl+V is pressed.
@@ -532,4 +1003,113 @@ pub fn on_paste_hotkey(app: &AppHandle) {
         changed(&app);
         sync_intercept(&app);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_test_dir(tag: &str) -> PathBuf {
+        let d =
+            std::env::temp_dir().join(format!("clipnest_basket_test_{}_{}_{}", tag, std::process::id(), db::now_ms()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn entry_key_and_parse_key_roundtrip() {
+        let p = Some(r"C:\Users\me\file.txt".to_string());
+        let k = entry_key(42, &p);
+        assert_eq!(k, r"42|C:\Users\me\file.txt");
+        assert_eq!(parse_key(&k), Some((42, p)));
+
+        let k_img = entry_key(7, &None);
+        assert_eq!(k_img, "7|");
+        assert_eq!(parse_key(&k_img), Some((7, None)));
+    }
+
+    #[test]
+    fn split_paths_handles_multiline_hdrop_text() {
+        let raw = "  C:\\a\\one.txt \r\n\n C:\\a\\two.txt  \n";
+        assert_eq!(split_paths(raw), vec!["C:\\a\\one.txt".to_string(), "C:\\a\\two.txt".to_string()]);
+    }
+
+    #[test]
+    fn transfer_core_copies_files_dirs_and_images_and_moves_cut_when_all_succeed() {
+        let root = temp_test_dir("ok");
+        let src_dir = root.join("src");
+        let dst_dir = root.join("dst");
+        std::fs::create_dir_all(&src_dir).unwrap();
+
+        let f1 = src_dir.join("alpha.txt");
+        let f2 = src_dir.join("beta.txt");
+        let sub = src_dir.join("nested");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(&f1, b"alpha-bytes").unwrap();
+        std::fs::write(&f2, b"beta-bytes-12345").unwrap();
+        std::fs::write(sub.join("inside.txt"), b"nested-content").unwrap();
+
+        let entries = vec![
+            BasketEntry { id: 1, cut: false, path: Some(f1.to_string_lossy().to_string()) },
+            BasketEntry { id: 2, cut: true, path: Some(f2.to_string_lossy().to_string()) },
+            BasketEntry { id: 3, cut: false, path: Some(sub.to_string_lossy().to_string()) },
+            BasketEntry { id: 4, cut: false, path: None },
+        ];
+        let mut progress_events = 0usize;
+        let (report, completed_cuts) = transfer_core(
+            |id| if id == 4 { Some(vec![137, 80, 78, 71, 13, 10, 26, 10]) } else { None },
+            true,
+            &entries,
+            &dst_dir,
+            |_p, _force| progress_events += 1,
+        );
+
+        assert_eq!(report.total, 4);
+        assert_eq!(report.done, 4);
+        assert!(report.failed.is_empty());
+        assert!(!report.cut_skipped);
+        assert!(progress_events >= 4);
+        assert_eq!(completed_cuts.len(), 1);
+        assert!(f1.exists(), "Copy item must remain at source");
+        assert!(!f2.exists(), "Cut item must be removed from source after verified copy");
+        assert_eq!(std::fs::read(dst_dir.join("alpha.txt")).unwrap(), b"alpha-bytes");
+        assert_eq!(std::fs::read(dst_dir.join("beta.txt")).unwrap(), b"beta-bytes-12345");
+        assert_eq!(std::fs::read(dst_dir.join("nested").join("inside.txt")).unwrap(), b"nested-content");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn transfer_core_continues_on_error_and_never_deletes_cut_originals() {
+        let root = temp_test_dir("err_safe");
+        let src_dir = root.join("src");
+        let dst_dir = root.join("dst");
+        std::fs::create_dir_all(&src_dir).unwrap();
+
+        let cut_file = src_dir.join("important.txt");
+        let missing_file = src_dir.join("gone.txt");
+        std::fs::write(&cut_file, b"must-never-be-lost").unwrap();
+
+        let entries = vec![
+            BasketEntry { id: 10, cut: true, path: Some(cut_file.to_string_lossy().to_string()) },
+            BasketEntry { id: 11, cut: true, path: Some(missing_file.to_string_lossy().to_string()) },
+            BasketEntry { id: 12, cut: false, path: Some(src_dir.to_string_lossy().to_string()) },
+        ];
+        // Copying `src_dir` into `src_dir/sub_dest` must fail with `dest_inside_source`
+        let sub_dest = src_dir.join("sub_dest");
+        let (report, completed_cuts) = transfer_core(|_| None, true, &entries, &sub_dest, |_, _| {});
+
+        assert_eq!(report.total, 3);
+        assert_eq!(report.done, 1, "Valid file should still be copied");
+        assert_eq!(report.failed.len(), 2);
+        assert_eq!(report.failed[0].code, "source_missing");
+        assert_eq!(report.failed[1].code, "dest_inside_source");
+        assert!(report.cut_skipped, "Cut deletion must be skipped when any item fails");
+        assert!(completed_cuts.is_empty());
+        assert!(cut_file.exists(), "Original Cut file must remain untouched on disk");
+        assert_eq!(std::fs::read(sub_dest.join("important.txt")).unwrap(), b"must-never-be-lost");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

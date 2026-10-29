@@ -22,6 +22,11 @@ pub fn spawn(app: AppHandle) {
         while rx.recv().is_ok() {
             // Apps often fire several updates for a single copy: wait briefly and coalesce.
             std::thread::sleep(Duration::from_millis(40));
+            // Ctrl+C immediately followed by Ctrl+V: while Ctrl or V is physically held, the user is most
+            // likely about to paste. Reading the clipboard now would keep it open (and force the source app
+            // to render delayed formats) right when the target app wants it, making the first Ctrl+V fail
+            // intermittently. Wait for Ctrl/V to be released before opening the clipboard.
+            wait_for_ctrl_release();
             while rx.try_recv().is_ok() {}
             let a = app.clone();
             let res = std::panic::catch_unwind(AssertUnwindSafe(|| process(&a)));
@@ -32,6 +37,39 @@ pub fn spawn(app: AppHandle) {
             }
         }
     });
+}
+
+/// Blocks (up to ~1.2 s) while Ctrl or V is physically held, then leaves a short grace period
+/// (re-checking that neither key was pressed again) so an immediate Ctrl+V paste completes first.
+fn wait_for_ctrl_release() {
+    const VK_CONTROL: u16 = 0x11;
+    const VK_LCONTROL: u16 = 0xA2;
+    const VK_RCONTROL: u16 = 0xA3;
+    const VK_V: u16 = 0x56;
+    let is_busy_key =
+        || win::is_down(VK_CONTROL) || win::is_down(VK_LCONTROL) || win::is_down(VK_RCONTROL) || win::is_down(VK_V);
+    let mut waited = false;
+    for _ in 0..80 {
+        if !is_busy_key() {
+            break;
+        }
+        waited = true;
+        std::thread::sleep(Duration::from_millis(15));
+    }
+    if waited {
+        for _ in 0..8 {
+            std::thread::sleep(Duration::from_millis(15));
+            if is_busy_key() {
+                for _ in 0..40 {
+                    if !is_busy_key() {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(15));
+                }
+                break;
+            }
+        }
+    }
 }
 
 fn has_name(fmts: &[RawFormat], name: &str) -> bool {
@@ -55,7 +93,10 @@ fn is_cut_drop_effect(fmts: &[RawFormat]) -> bool {
 
 fn process(app: &AppHandle) -> Result<(), String> {
     let st = app.state::<AppState>();
-    if win::sequence_number() == st.self_seq.load(Ordering::SeqCst) {
+    let now = db::now_ms();
+    if win::sequence_number() == st.self_seq.load(Ordering::SeqCst)
+        || (now - st.self_write_at.load(Ordering::SeqCst)).abs() < 450
+    {
         return Ok(()); // our own write (paste)
     }
     if st.is_paused() {

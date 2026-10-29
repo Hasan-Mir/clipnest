@@ -5,10 +5,13 @@ import {
     BookOpen,
     Check,
     ChevronDown,
+    ChevronRight,
     ChevronUp,
     Copy,
     Eye,
+    File,
     Folder,
+    FolderSymlink,
     GitMerge,
     Info,
     List,
@@ -51,6 +54,9 @@ export type IconName =
     | 'plus'
     | 'up'
     | 'chevronDown'
+    | 'chevronRight'
+    | 'file'
+    | 'folderSymlink'
     | 'check'
     | 'list'
     | 'richText'
@@ -81,6 +87,9 @@ const ICON_MAP: Record<IconName, React.ComponentType<LucideProps>> = {
     plus: Plus,
     up: ChevronUp,
     chevronDown: ChevronDown,
+    chevronRight: ChevronRight,
+    file: File,
+    folderSymlink: FolderSymlink,
     check: Check,
     list: List,
     richText: Type,
@@ -97,5 +106,6 @@ export function Icon({ name, size = 14 }: { name: IconName | string; size?: numb
     if (!Comp) {
         return null;
     }
-    return <Comp className="icon" size={size} strokeWidth={2} aria-hidden />;
+    const dirClass = name === 'chevronRight' || name === 'arrowRight' ? ' icon-dir' : '';
+    return <Comp className={`icon${dirClass}`} size={size} strokeWidth={2} aria-hidden />;
 }

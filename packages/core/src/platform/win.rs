@@ -322,7 +322,7 @@ pub fn write_clipboard(items: &[(u32, String, Vec<u8>)]) -> Result<u32, String> 
             if fmt == 0 {
                 continue;
             }
-            let h = GlobalAlloc(GMEM_MOVEABLE, data.len().max(1));
+            let h = GlobalAlloc(GMEM_MOVEABLE | 0x0040, data.len().max(1));
             if h.is_null() {
                 continue;
             }
@@ -536,9 +536,6 @@ pub fn set_capture_protection(hwnd: isize, mode: &str) -> bool {
     }
 }
 
-/// Marks a frameless Tauri window as non-activating (`WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW`)
-/// without stripping `WS_THICKFRAME` from `GWL_STYLE` (preserving Tauri's `WM_NCCALCSIZE` client rect
-/// so no unpainted white Win32 border appears around the WebView).
 #[link(name = "dwmapi")]
 extern "system" {
     fn DwmSetWindowAttribute(hwnd: isize, dwattribute: u32, pvattribute: *const c_void, cbattribute: u32) -> i32;
@@ -560,6 +557,9 @@ pub fn round_window_corners(hwnd: isize) {
     }
 }
 
+/// Marks a frameless Tauri window as non-activating (`WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW`)
+/// without stripping `WS_THICKFRAME` from `GWL_STYLE` (preserving Tauri's `WM_NCCALCSIZE` client rect
+/// so no unpainted white Win32 border appears around the WebView).
 pub fn make_no_activate(hwnd: isize) {
     unsafe {
         if hwnd == 0 || IsWindow(hwnd) == 0 {
@@ -726,20 +726,61 @@ pub fn sync_explorer_context_menu(enabled: bool, lang: &str) -> Result<(), Strin
     let exe_str = exe.to_string_lossy().to_string();
     let icon_val = format!("\"{exe_str}\",0");
 
-    let (lbl_view_bg, lbl_basket_bg, lbl_view_dir, lbl_collect_file) = if lang == "fa" {
-        (
+    let (lbl_view_bg, lbl_basket_bg, lbl_view_dir, lbl_collect_file) = match lang {
+        "fa" => (
             "ClipNest — مشاهده و پیست فایل‌های کپی‌شده در اینجا",
             "ClipNest — پیست سبد فایل‌ها (Drop Basket) در اینجا",
             "ClipNest — مشاهده و پیست فایل‌های کپی‌شده در این پوشه",
             "ClipNest — افزودن فایل به سبد (Drop Basket)",
-        )
-    } else {
-        (
+        ),
+        "ar" => (
+            "ClipNest — عرض ولصق الملفات المنسوخة هنا",
+            "ClipNest — لصق سلة الملفات (Drop Basket) هنا",
+            "ClipNest — عرض ولصق الملفات المنسوخة في هذا المجلد",
+            "ClipNest — إضافة الملف إلى سلة الملفات (Drop Basket)",
+        ),
+        "de" => (
+            "ClipNest — Kopierte Dateien hier anzeigen & einfügen",
+            "ClipNest — Dateikorb (Drop Basket) hier einfügen",
+            "ClipNest — Kopierte Dateien im Ordner anzeigen & einfügen",
+            "ClipNest — Datei zum Dateikorb (Drop Basket) hinzufügen",
+        ),
+        "es" => (
+            "ClipNest — Ver y pegar archivos copiados aquí",
+            "ClipNest — Pegar cesta de archivos (Drop Basket) aquí",
+            "ClipNest — Ver y pegar archivos copiados en la carpeta",
+            "ClipNest — Añadir archivo a la cesta (Drop Basket)",
+        ),
+        "fr" => (
+            "ClipNest — Afficher et coller les fichiers copiés ici",
+            "ClipNest — Coller le panier de fichiers (Drop Basket) ici",
+            "ClipNest — Afficher et coller les fichiers copiés dans le dossier",
+            "ClipNest — Ajouter le fichier au panier (Drop Basket)",
+        ),
+        "ru" => (
+            "ClipNest — Показать и вставить скопированные файлы сюда",
+            "ClipNest — Вставить корзину файлов (Drop Basket) сюда",
+            "ClipNest — Показать и вставить скопированные файлы в папку",
+            "ClipNest — Добавить файл в корзину (Drop Basket)",
+        ),
+        "tr" => (
+            "ClipNest — Kopyalanan Dosyaları Burada Görüntüle ve Yapıştır",
+            "ClipNest — Dosya Sepetini (Drop Basket) Buraya Yapıştır",
+            "ClipNest — Kopyalanan Dosyaları Klasörde Görüntüle ve Yapıştır",
+            "ClipNest — Dosyayı Dosya Sepetine (Drop Basket) Ekle",
+        ),
+        "zh" => (
+            "ClipNest — 在此处查看并粘贴已复制的文件",
+            "ClipNest — 在此处粘贴文件篮 (Drop Basket)",
+            "ClipNest — 在文件夹中查看并粘贴已复制的文件",
+            "ClipNest — 将文件添加到文件篮 (Drop Basket)",
+        ),
+        _ => (
             "ClipNest — View & Paste Copied Files Here",
             "ClipNest — Paste Drop Basket Here",
             "ClipNest — View & Paste Copied Files in Folder",
             "ClipNest — Add File to Drop Basket",
-        )
+        ),
     };
 
     // 1. Folder background right-click: View & Paste Copied Files Here
@@ -1073,6 +1114,48 @@ pub fn extract_shell_thumbnail_rgba(path: &str, max_side: i32) -> Option<(u32, u
             if hr_img < 0 || hbmp == 0 {
                 hr_img = ((*factory.lp_vtbl).get_image)(factory_ptr, sz, SIIGBF_RESIZETOFIT, &mut hbmp);
             }
+            if hr_img >= 0 && hbmp != 0 {
+                out = hbitmap_to_rgba(hbmp);
+                DeleteObject(hbmp);
+            }
+            ((*factory.lp_vtbl).release)(factory_ptr);
+        }
+        if should_uninit {
+            CoUninitialize();
+        }
+        out
+    }
+}
+
+/// Extracts the icon Windows Explorer shows for a file/folder (file-type icon, folder icon, exe/lnk icon …)
+/// via IShellItemImageFactory with `SIIGBF_ICONONLY` (never a content thumbnail).
+pub fn extract_shell_icon_rgba(path: &str, side: i32) -> Option<(u32, u32, Vec<u8>)> {
+    const IID_ISHELL_ITEM_IMAGE_FACTORY: Guid = Guid {
+        data1: 0xbcc18b79,
+        data2: 0xba16,
+        data3: 0x442f,
+        data4: [0x80, 0xc4, 0x8a, 0x59, 0xc3, 0x0c, 0x46, 0x3b],
+    };
+    // SIIGBF_BIGGERSIZEOK (0x01) | SIIGBF_ICONONLY (0x04)
+    const SIIGBF_ICON: i32 = 0x01 | 0x04;
+
+    unsafe {
+        let hr_init = CoInitializeEx(std::ptr::null_mut(), 0); // COINIT_MULTITHREADED
+        let should_uninit = hr_init >= 0;
+        let wpath = wide(path);
+        let mut factory_ptr: *mut c_void = std::ptr::null_mut();
+        let hr = SHCreateItemFromParsingName(
+            wpath.as_ptr(),
+            std::ptr::null_mut(),
+            &IID_ISHELL_ITEM_IMAGE_FACTORY,
+            &mut factory_ptr,
+        );
+        let mut out = None;
+        if hr >= 0 && !factory_ptr.is_null() {
+            let factory = &*(factory_ptr as *const IShellItemImageFactoryRaw);
+            let mut hbmp: isize = 0;
+            let sz = POINT { x: side, y: side };
+            let hr_img = ((*factory.lp_vtbl).get_image)(factory_ptr, sz, SIIGBF_ICON, &mut hbmp);
             if hr_img >= 0 && hbmp != 0 {
                 out = hbitmap_to_rgba(hbmp);
                 DeleteObject(hbmp);

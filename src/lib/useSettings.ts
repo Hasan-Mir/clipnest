@@ -29,6 +29,7 @@ export const DEFAULT_SETTINGS: Settings = {
     ctrl_shift_click_action: 'paste_plain',
     auto_save_edit: true,
     basket_allow_cut: true,
+    basket_group_by_folder: true,
     active_pinboard: null,
     independent_pinning: true,
     ignore_apps: ['keepass.exe', 'keepassxc.exe', 'bitwarden.exe', '1password.exe', 'lastpass.exe', 'dashlane.exe'],

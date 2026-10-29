@@ -89,6 +89,59 @@ export interface Status {
     popup_pinned: boolean;
 }
 
+/** One file / folder / image of the Drop Basket. */
+export interface BasketRow {
+    key: string;
+    id: number;
+    kind: 'file' | 'image' | string;
+    path: string | null;
+    name: string;
+    parent: string | null;
+    is_dir: boolean;
+    exists: boolean;
+    cut: boolean;
+    img_w: number | null;
+    img_h: number | null;
+}
+
+export interface TransferProgress {
+    done: number;
+    failed: number;
+    total: number;
+    current: string;
+    fraction: number;
+    phase: 'copy' | 'finalize' | string;
+}
+
+export type TransferErrorCode =
+    | 'source_missing'
+    | 'invalid_path'
+    | 'dest_inside_source'
+    | 'dest_create'
+    | 'image_missing'
+    | 'copy_failed'
+    | 'reverify_failed'
+    | 'cut_not_removed';
+
+export interface TransferFailure {
+    key: string;
+    id: number;
+    path: string | null;
+    name: string;
+    is_dir: boolean;
+    exists: boolean;
+    code: TransferErrorCode | string;
+    reason: string;
+}
+
+export interface TransferReport {
+    total: number;
+    done: number;
+    failed: TransferFailure[];
+    cut_skipped: boolean;
+    dest: string;
+}
+
 export interface ShortcutConflict {
     status: 'ok' | 'conflict_app' | 'conflict_os' | 'hook_override' | 'invalid';
     message: string;
@@ -113,6 +166,7 @@ export interface Settings {
     ctrl_shift_click_action: 'paste_plain' | 'paste' | 'copy_only';
     auto_save_edit: boolean;
     basket_allow_cut: boolean;
+    basket_group_by_folder: boolean;
     active_pinboard: number | null;
     independent_pinning: boolean;
     ignore_apps: string[];
@@ -212,6 +266,12 @@ export const api = {
     queueClear: () => invoke<void>('queue_clear'),
     queueSetFifo: (fifo: boolean) => invoke<void>('queue_set_fifo', { fifo }),
     basketToggleCut: (id: number) => invoke<void>('basket_toggle_cut', { id }),
+    basketGet: () => invoke<BasketRow[]>('basket_get'),
+    basketRemoveKeys: (keys: string[]) => invoke<void>('basket_remove_keys', { keys }),
+    basketSetCut: (keys: string[], cut: boolean) => invoke<void>('basket_set_cut', { keys, cut }),
+    basketFileIcon: (path: string) => invoke<string | null>('basket_file_icon', { path }),
+    revealPaths: (paths: string[]) => invoke<void>('reveal_paths', { paths }),
+    queueReady: () => invoke<void>('queue_ready'),
     basketPasteHere: () => invoke<number>('basket_paste_here'),
     basketPasteToFolder: () => invoke<number | null>('basket_paste_to_folder'),
     showPopup: () => invoke<void>('show_popup_cmd'),
@@ -236,6 +296,11 @@ export const api = {
 
 export function on(event: string, cb: () => void): Promise<UnlistenFn> {
     return listen(event, () => cb());
+}
+
+/** Subscribes to an event that carries a payload. */
+export function onPayload<T>(event: string, cb: (payload: T) => void): Promise<UnlistenFn> {
+    return listen<T>(event, (e) => cb(e.payload));
 }
 
 export function errText(e: unknown): string {

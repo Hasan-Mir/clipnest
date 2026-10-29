@@ -38,7 +38,10 @@ fn card_bg_for_theme(theme: &str) -> Color {
 /// Configures native DWM rounded corners on startup for pre-created frameless windows (`popup` and `tray`).
 pub fn init_startup_windows(app: &AppHandle) {
     let theme = app.state::<AppState>().settings.read().theme.clone();
-    for label in ["popup", "tray"] {
+    // Pre-create the (hidden) Paste Queue window so its webview is already loaded the first time it is
+    // opened, instead of showing a black window for a moment.
+    let _ = ensure_window(app, "queue");
+    for label in ["popup", "tray", "queue"] {
         if let Some(w) = app.get_webview_window(label) {
             if label == "tray" {
                 let _ = w.set_background_color(Some(card_bg_for_theme(&theme)));
@@ -77,8 +80,17 @@ pub fn apply_capture_protection(app: &AppHandle) {
 pub fn hide_popup(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("popup") {
         if w.is_visible().unwrap_or(false) {
+            let had_focus = win::is_own_window(win::foreground());
             let _ = w.hide();
             let _ = app.emit("popup-hidden", ());
+            // If the popup itself held focus when hidden (e.g. Escape, Copy only, or direct_paste=false),
+            // return focus to the previously active target window so the user's first Ctrl+V works immediately.
+            if had_focus {
+                let target = app.state::<AppState>().target_hwnd.load(Ordering::SeqCst);
+                if target != 0 && !win::is_own_window(target) {
+                    win::focus_window(target);
+                }
+            }
         }
     }
 }
@@ -188,7 +200,13 @@ fn ensure_window(app: &AppHandle, label: &str) -> Option<WebviewWindow> {
         return Some(w);
     }
     let theme = app.state::<AppState>().settings.read().theme.clone();
-    let bg = if label == "tray" { card_bg_for_theme(&theme) } else { BG_DARK };
+    let bg = if label == "tray" {
+        card_bg_for_theme(&theme)
+    } else if label == "queue" {
+        window_bg_for_theme(&theme)
+    } else {
+        BG_DARK
+    };
     let base = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into())).background_color(bg);
     let built = if label == "settings" {
         base.title("ClipNest Settings").inner_size(900.0, 680.0).min_inner_size(740.0, 520.0).center().build()
@@ -205,8 +223,8 @@ fn ensure_window(app: &AppHandle, label: &str) -> Option<WebviewWindow> {
             .build()
     } else {
         base.title("Paste Queue")
-            .inner_size(310.0, 380.0)
-            .min_inner_size(280.0, 280.0)
+            .inner_size(360.0, 380.0)
+            .min_inner_size(330.0, 280.0)
             .decorations(false)
             .resizable(true)
             .shadow(true)
@@ -249,15 +267,45 @@ pub fn open_settings(app: &AppHandle) {
     }
 }
 
+/// Shows the Paste Queue window. The window is created hidden (`visible(false)`) and is only made visible
+/// once its webview reported that it has rendered (`queue_ready` command), so it never appears as an empty
+/// black rectangle. A timeout makes sure it is shown even if the page never reports in.
 pub fn show_queue(app: &AppHandle) {
-    let w = ensure_window(app, "queue");
-    let Some(w) = w else { return };
+    if ensure_window(app, "queue").is_none() {
+        return;
+    }
+    let st = app.state::<AppState>();
+    if st.queue_ready.load(Ordering::SeqCst) {
+        present_queue(app);
+        return;
+    }
+    st.queue_show_pending.store(true, Ordering::SeqCst);
+    let app2 = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(2500));
+        if app2.state::<AppState>().queue_show_pending.swap(false, Ordering::SeqCst) {
+            present_queue(&app2);
+        }
+    });
+}
+
+/// Called by the queue webview once its first frame has been rendered.
+pub fn queue_frontend_ready(app: &AppHandle) {
+    let st = app.state::<AppState>();
+    st.queue_ready.store(true, Ordering::SeqCst);
+    if st.queue_show_pending.swap(false, Ordering::SeqCst) {
+        present_queue(app);
+    }
+}
+
+fn present_queue(app: &AppHandle) {
+    let Some(w) = app.get_webview_window("queue") else { return };
     if let Some(h) = hwnd_of(&w) {
         win::round_window_corners(h);
         win::make_no_activate(h);
         let (x, y) = win::cursor_pos();
         let (_, t, r, _) = win::work_area_at(x, y);
-        let width = w.outer_size().map(|s| s.width as i32).unwrap_or(310);
+        let width = w.outer_size().map(|s| s.width as i32).unwrap_or(360);
         let _ = w.set_position(PhysicalPosition::new(r - width - 16, t + 16));
         win::show_no_activate(h);
         apply_protection_to(app, &w);
@@ -265,6 +313,7 @@ pub fn show_queue(app: &AppHandle) {
 }
 
 pub fn hide_queue(app: &AppHandle) {
+    app.state::<AppState>().queue_show_pending.store(false, Ordering::SeqCst);
     if let Some(w) = app.get_webview_window("queue") {
         if let Some(h) = hwnd_of(&w) {
             win::hide_window(h);

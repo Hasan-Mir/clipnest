@@ -73,8 +73,10 @@ pub fn write_item(app: &AppHandle, id: i64, plain: bool) -> Result<(), String> {
             items.push((t.fmt_id, t.name, t.data));
         }
     }
+    st.self_write_at.store(db::now_ms(), Ordering::SeqCst);
     let seq = win::write_clipboard(&items)?;
     st.self_seq.store(seq, Ordering::SeqCst);
+    st.self_write_at.store(db::now_ms(), Ordering::SeqCst);
     Ok(())
 }
 

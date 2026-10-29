@@ -468,45 +468,45 @@ export default function Popup() {
     };
 
     // ───────────── smooth card removal animation (compatible with virtua VList) ─────────────
+    // IMPORTANT: only the card itself is faded/scaled — its layout box is never collapsed. virtua caches the
+    // measured size of every row by index, so collapsing a row to 0px made it cache "0" for that index; after
+    // the real removal the neighbouring rows were rendered with stale sizes (two rows vanished, and the list
+    // kept showing already-deleted rows). Fading without touching layout leaves the cache untouched.
     const animateAndRemoveCards = useCallback(async (ids: number[], performRemove: () => Promise<void>) => {
         const canAnimate = (settingsRef.current?.animations ?? true) && (settingsRef.current?.delete_animation ?? true);
+        const cards: HTMLElement[] = [];
         if (canAnimate && ids.length > 0 && ids.length <= 12) {
-            const wrappers: { wrapper: HTMLElement; card: HTMLElement }[] = [];
             for (const id of ids) {
                 const cardEl = document.getElementById(`card-${id}`);
                 if (cardEl) {
-                    const parent = cardEl.parentElement;
-                    const wrapper = parent && parent.classList.contains('vlist-item') ? parent : cardEl;
-                    wrappers.push({ wrapper, card: cardEl });
+                    cards.push(cardEl);
                 }
             }
-            if (wrappers.length > 0) {
-                for (const { wrapper, card } of wrappers) {
-                    const h = wrapper.offsetHeight;
-                    wrapper.style.height = `${h}px`;
-                    wrapper.style.minHeight = '0px';
-                    wrapper.style.overflow = 'hidden';
-                    wrapper.style.boxSizing = 'border-box';
-                    wrapper.style.transition =
-                        'height 210ms cubic-bezier(0.22, 1, 0.36, 1), padding 210ms cubic-bezier(0.22, 1, 0.36, 1), margin 210ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease';
-                    card.style.transition = 'transform 200ms cubic-bezier(0.22, 1, 0.36, 1), opacity 170ms ease';
+            if (cards.length > 0) {
+                for (const card of cards) {
+                    card.style.transition = 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1), opacity 160ms ease';
+                    card.style.pointerEvents = 'none';
                 }
-                // Force synchronous layout before starting collapse transition
-                void wrappers[0].wrapper.offsetHeight;
-                for (const { wrapper, card } of wrappers) {
+                void cards[0].offsetHeight;
+                for (const card of cards) {
                     card.style.opacity = '0';
                     card.style.transform = 'scale(0.95)';
-                    wrapper.style.height = '0px';
-                    wrapper.style.paddingTop = '0px';
-                    wrapper.style.paddingBottom = '0px';
-                    wrapper.style.marginTop = '0px';
-                    wrapper.style.marginBottom = '0px';
-                    wrapper.style.borderWidth = '0px';
                 }
-                await new Promise<void>((r) => window.setTimeout(r, 215));
+                await new Promise<void>((r) => window.setTimeout(r, 185));
             }
         }
-        await performRemove();
+        try {
+            await performRemove();
+        } catch (e) {
+            // Removal failed: restore the cards (they stay in the list).
+            for (const card of cards) {
+                card.style.transition = '';
+                card.style.opacity = '';
+                card.style.transform = '';
+                card.style.pointerEvents = '';
+            }
+            throw e;
+        }
     }, []);
 
     // ───────────── actions ─────────────
@@ -1684,7 +1684,8 @@ export default function Popup() {
                     className="search-bare"
                     value={query}
                     spellCheck={false}
-                    dir="auto"
+                    // An empty box follows the UI direction so the placeholder is aligned properly in RTL.
+                    dir={query ? 'auto' : isRtl() ? 'rtl' : 'ltr'}
                     placeholder={smode === 'regex' ? t('Regular expression…') : t('Type to search your clipboard')}
                     onChange={(e) => {
                         setQuery(e.target.value);
@@ -1991,7 +1992,7 @@ export default function Popup() {
                     >
                         <VList ref={vlistRef} className="vlist">
                             {items.map((it, i) => (
-                                <div key={it.id} className="vlist-item">
+                                <div key={i} className="vlist-item">
                                     {renderCard(it, i)}
                                 </div>
                             ))}

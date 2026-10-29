@@ -176,5 +176,480 @@ export const de: LocaleDefinition = {
         'Data folder': 'Datenordner',
         'Open in Explorer': 'Im Explorer öffnen',
         'Show in Explorer': 'Im Explorer anzeigen',
+        '(any)': '(beliebig)',
+        '+ Add action': '+ Aktion hinzufügen',
+        '+ Add rule': '+ Regel hinzufügen',
+        '+ New Pinboard': '+ Neue Kategorie',
+        '0 = forever.': '0 = unbegrenzt.',
+        '0 = unlimited. Pinned and pinboard items are never removed.':
+            '0 = unbegrenzt. Angeheftete und Kategorien-Einträge werden nie entfernt.',
+        '0 = unlimited. Pinned and category items are never removed.':
+            '0 = unbegrenzt. Angeheftete und Kategorien-Einträge werden nie entfernt.',
+        'Accent colour': 'Akzentfarbe',
+        'Choose the primary highlight colour for borders, badges, active controls, and default search highlights.':
+            'Primäre Hervorhebungsfarbe für Rahmen, Badges, aktive Steuerelemente und Suchtreffer wählen.',
+        'Action finished': 'Aktion abgeschlossen',
+        'Action finished: new item': 'Aktion abgeschlossen: neuer Eintrag',
+        'Actions ▸': 'Aktionen ▸',
+        Active: 'Aktiv',
+        'Active and available': 'Aktiv und verfügbar',
+        Add: 'Hinzufügen',
+        'Add tag': 'Tag hinzufügen',
+        'Adds ClipNest to the right-click context menu of folders and files in Windows Explorer to view and paste copied files or collect files into the Drop Basket.':
+            'Fügt ClipNest zum Rechtsklick-Kontextmenü von Ordnern und Dateien im Windows Explorer hinzu, um kopierte Dateien anzuzeigen/einzufügen oder im Dateikorb zu sammeln.',
+        'Already registered by another running application or Windows':
+            'Bereits von einer anderen laufenden Anwendung oder Windows registriert',
+        'On: wraps category tabs into multiple rows (like VS Code wrapTabs). Off: scrolls category tabs horizontally with mouse wheel or click-and-drag.':
+            'Ein: bricht Kategorien-Tabs mehrzeilig um (wie VS Code wrapTabs). Aus: scrollt Tabs horizontal per Mausrad oder Ziehen.',
+        'When enabled (default), pinning an item inside a category only pins it in that category, without pinning it in the main Clipboard tab.':
+            'Wenn aktiviert (Standard), wird ein angehefteter Eintrag innerhalb einer Kategorie nur dort angeheftet und nicht im Haupt-Tab „Zwischenablage“.',
+        'Applied instantly to the popup, queue and settings windows. Needs Windows 10 2004+ for “Invisible”. Does not work inside Remote Desktop sessions.':
+            'Wird sofort auf Popup-, Warteschlangen- und Einstellungsfenster angewendet. „Unsichtbar“ erfordert Windows 10 2004+. Funktioniert nicht in Remotedesktop-Sitzungen.',
+        'Arabic Yeh/Kaf → Persian (ی ک)': 'Arabisches Yeh/Kaf → Persisch (ی ک)',
+        'Auto-delete after (minutes)': 'Automatisch löschen nach (Minuten)',
+        'Auto-delete after N minutes': 'Automatisch nach N Minuten löschen',
+        'Automatically saves text changes in the inline preview editor after a short pause without requiring Ctrl+S.':
+            'Speichert Textänderungen im Vorschau-Editor nach kurzer Pause automatisch ohne Strg+S.',
+        'Available (captured via low-level keyboard hook)': 'Verfügbar (über Low-Level-Tastatur-Hook erfasst)',
+        'Available (no conflict in Windows)': 'Verfügbar (kein Konflikt in Windows)',
+        'Back up now': 'Jetzt sichern',
+        'Backups to keep': 'Aufzubewahrende Backups',
+        'Base64 decode': 'Base64 dekodieren',
+        'Base64 encode': 'Base64 kodieren',
+        'Basket is empty — copy files in Explorer or images in your browser.':
+            'Der Dateikorb ist leer — kopieren Sie Dateien im Explorer oder Bilder im Browser.',
+        'Black rectangle (CopyQ style)': 'Schwarzes Rechteck (CopyQ-Stil)',
+        'Cannot apply: {e}': 'Kann nicht angewendet werden: {e}',
+        'Card density': 'Kartendichte',
+        'Card numbers (Luhn), API keys (sk-…, ghp_…, AKIA…), private keys, JWTs.':
+            'Kartennummern (Luhn), API-Schlüssel (sk-…, ghp_…, AKIA…), private Schlüssel, JWTs.',
+        Case: 'Groß-/Kleinschreibung',
+        'Category settings…': 'Kategorie-Einstellungen…',
+        'Choose any installed system font on your computer for rendering clipboard cards and previews.':
+            'Wählen Sie eine auf Ihrem Computer installierte Systemschriftart für Karten und Vorschauen.',
+        'Choose how much vertical padding each card uses in the popup list.':
+            'Wählen Sie den vertikalen Innenabstand jeder Karte in der Liste.',
+        'Choose the colour scheme for the popup, queue, and settings windows.':
+            'Farbschema für Popup-, Warteschlangen- und Einstellungsfenster wählen.',
+        'Choose the colour scheme for the popup, queue, and settings windows (System follows Windows Dark/Light mode automatically).':
+            'Farbschema für Popup-, Warteschlangen- und Einstellungsfenster wählen (System folgt automatisch dem dunklen/hellen Modus von Windows).',
+        'Choose the primary highlight colour for borders, badges, and active controls.':
+            'Primäre Hervorhebungsfarbe für Rahmen, Badges und aktive Steuerelemente wählen.',
+        'Choose the UI language and text direction (LTR / RTL).':
+            'Sprache der Benutzeroberfläche und Textrichtung (LTR / RTL) wählen.',
+        'Choose where the popup appears on screen when opened with the global shortcut.':
+            'Wählen Sie, wo das Popup beim Öffnen über das globale Tastenkürzel erscheint.',
+        'Clear the search to reorder items': 'Suche leeren, um Einträge neu anzuordnen',
+        'Click to toggle between Copy and Cut':
+            'Klicken, um zwischen Kopieren (Copy) und Ausschneiden (Cut) zu wechseln',
+        'Close queue': 'Warteschlange schließen',
+        'Collapse whitespace': 'Leerzeichen zusammenfassen',
+        Color: 'Farbe',
+        Comfortable: 'Komfortabel',
+        Compact: 'Kompakt',
+        CONSTANT_CASE: 'CONSTANT_CASE',
+        'Conflicts with Windows system shortcut (Alt+Tab / Alt+F4)':
+            'Konflikt mit Windows-Systemtastenkürzel (Alt+Tab / Alt+F4)',
+        'Copied {v}': '{v} kopiert',
+        'Copy item': 'Eintrag kopieren',
+        'Copy {n} items': '{n} Einträge kopieren',
+        'Copy something — it is added here.': 'Kopieren Sie etwas — es wird hier hinzugefügt.',
+        'Count chars / words / lines': 'Zeichen / Wörter / Zeilen zählen',
+        'Create a compressed snapshot of the SQLite database right now.':
+            'Erstellt sofort ein komprimiertes Backup der SQLite-Datenbank.',
+        'Create backup': 'Backup erstellen',
+        'Create colour-coded Categories with + or Ctrl+N and drag cards onto any tab (hold Ctrl while dragging from a category to copy instead of move). Right-click a Category tab and enable Active category so all new copies go straight into that tab automatically.':
+            'Erstellen Sie farbige Kategorien mit + oder Strg+N und ziehen Sie Karten auf einen Tab (Strg gedrückt halten, um zu kopieren statt zu verschieben). Rechtsklick auf einen Tab → „Aktive Kategorie“, damit neue Kopien direkt dort landen.',
+        'Ctrl + Click on card': 'Strg + Klick auf Karte',
+        'Ctrl + Shift + Click on card': 'Strg + Umschalt + Klick auf Karte',
+        'Ctrl+S save · Esc cancel': 'Strg+S speichern · Esc abbrechen',
+        'Custom action': 'Benutzerdefinierte Aktion',
+        'Custom title (empty to clear)': 'Benutzerdefinierter Titel (leer lassen zum Löschen)',
+        'Daily automatic backup': 'Tägliches automatisches Backup',
+        'Automatically creates a compressed daily snapshot in the backups folder.':
+            'Erstellt automatisch täglich ein komprimiertes Backup im Backup-Ordner.',
+        Dark: 'Dunkel',
+        'Database encryption and per-tab locking are not part of this version.':
+            'Datenbankverschlüsselung und Tab-Sperren sind nicht Teil dieser Version.',
+        'Database, settings.json and backups.': 'Datenbank, settings.json und Backups.',
+        'Decode JWT': 'JWT dekodieren',
+        Default: 'Standard',
+        'Default (Vazirmatn / System)': 'Standard (Vazirmatn / System)',
+        'Default height of the popup window in logical pixels.': 'Standardhöhe des Popup-Fensters in logischen Pixeln.',
+        'Default height of the popup window in logical pixels (minimum 380 px).':
+            'Standardhöhe des Popup-Fensters in logischen Pixeln (mindestens 380 px).',
+        'Default paste (Enter)': 'Standard-Einfügen (Eingabetaste)',
+        'Default paste mode': 'Standard-Einfügemodus',
+        'Default width of the popup window in logical pixels.':
+            'Standardbreite des Popup-Fensters in logischen Pixeln.',
+        'Default width of the popup window in logical pixels (minimum 340 px).':
+            'Standardbreite des Popup-Fensters in logischen Pixeln (mindestens 340 px).',
+        'Delete "{name}" and its {n} item(s)?': '„{name}“ und die {n} enthaltenen Einträge löschen?',
+        'Delete (or remove inside a category)': 'Löschen (oder aus Kategorie entfernen)',
+        'Delete permanently': 'Dauerhaft löschen',
+        'Delete pinboard…': 'Kategorie löschen…',
+        'Delete category…': 'Kategorie löschen…',
+        'Delete {n} items': '{n} Einträge löschen',
+        'Detect sensitive data': 'Sensible Daten erkennen',
+        'Do not store': 'Nicht speichern',
+        'Double-click (single-click selects)': 'Doppelklick (Einzelklick wählt aus)',
+        'Drop Basket: allow Cut (move files after verified copy)':
+            'Dateikorb: Ausschneiden erlauben (Dateien nach geprüfter Kopie verschieben)',
+        'When enabled, files cut with Ctrl+X are moved only after destination copy and exact byte size are verified on disk.':
+            'Wenn aktiviert, werden mit Strg+X ausgeschnittene Dateien erst verschoben, nachdem die Zielkopie und die exakte Bytegröße geprüft wurden.',
+        'Edit (Ctrl+E)': 'Bearbeiten (Strg+E)',
+        'Enable subtle Notion-style transitions for menus, dialogs, and hover states.':
+            'Sanfte Übergänge im Notion-Stil für Menüs, Dialoge und Hover-Effekte aktivieren.',
+        Encode: 'Kodierung',
+        'Engine & Architecture': 'Engine & Architektur',
+        English: 'Englisch',
+        'Erase all unpinned history?': 'Gesamten nicht angehefteten Verlauf löschen?',
+        'Every copy is written to disk immediately (SQLite WAL, full fsync), so a power cut cannot lose a completed copy.':
+            'Jeder Kopiervorgang wird sofort auf die Festplatte geschrieben (SQLite WAL, vollständiges fsync), sodass kein abgeschlossener Eintrag verloren geht.',
+        Executable: 'Programmdatei (.exe)',
+        'Exit ClipNest completely and stop background clipboard monitoring.':
+            'ClipNest vollständig beenden und die Hintergrundüberwachung stoppen.',
+        'Export / import settings': 'Einstellungen exportieren / importieren',
+        'Export history': 'Verlauf exportieren',
+        'Export…': 'Exportieren…',
+        'Farsi digits (۰۱۲۳۴۵۶۷۸۹)': 'Persische Ziffern (۰۱۲۳۴۵۶۷۸۹)',
+        'First copied → first pasted': 'Zuerst kopiert → zuerst eingefügt (FIFO)',
+        'Font size (px)': 'Schriftgröße (px)',
+        'Base font size in pixels across the popup, queue, and settings windows.':
+            'Basisschriftgröße in Pixeln für Popup-, Warteschlangen- und Einstellungsfenster.',
+        'Formats (Ctrl+I)': 'Formate (Strg+I)',
+        'Formats (MIME inspector)': 'Formate (MIME-Inspektor)',
+        'Global hotkey to pause or resume clipboard capturing.':
+            'Globales Tastenkürzel zum Pausieren oder Fortsetzen der Erfassung.',
+        'Globalhotkey to pause or resume clipboard capturing.':
+            'Globales Tastenkürzel zum Pausieren oder Fortsetzen der Erfassung.',
+        'Global hotkey to open or close the Paste Queue / Drop Basket window.':
+            'Globales Tastenkürzel zum Öffnen oder Schließen der Einfüge-Warteschlange / des Dateikorbs.',
+        'Global hotkey to show or hide the main ClipNest popup.':
+            'Globales Tastenkürzel zum Ein- oder Ausblenden des ClipNest-Hauptfensters.',
+        'Global hotkey to toggle between rich formatting and plain-text paste mode.':
+            'Globales Tastenkürzel zum Umschalten zwischen Originalformatierung und Nur-Text-Modus.',
+        'High Contrast': 'Hoher Kontrast',
+        'Highlight background color (e.g. #ffe043 for yellow marker)':
+            'Hintergrundfarbe der Hervorhebung (z. B. #ffe043 für Textmarker-Gelb)',
+        'Background colour behind matched characters (use transparent for text-only highlight).':
+            'Hintergrundfarbe hinter gefundenen Zeichen (transparent für reine Texthervorhebung).',
+        'Highlight presets': 'Hervorhebungs-Vorlagen',
+        'Quickly switch between Accent color match, VS Code blue, yellow marker background, or high contrast.':
+            'Schnell zwischen Akzentfarbe, VS-Code-Blau, gelbem Textmarker oder hohem Kontrast wechseln.',
+        'Quickly switch between VS Code text highlight, yellow marker background, or high contrast.':
+            'Schnell zwischen VS-Code-Blau, gelbem Textmarker oder hohem Kontrast wechseln.',
+        'Highlights matched characters and words inside cards and previews while searching.':
+            'Hebt gefundene Zeichen und Wörter in Karten und Vorschauen während der Suche hervor.',
+        'Highlight text color (transparent = keep text color)':
+            'Textfarbe der Hervorhebung (transparent = Textfarbe beibehalten)',
+        'Use “accent” to automatically follow your Accent colour, or pick any custom colour.':
+            '„accent“ verwenden, um automatisch der Akzentfarbe zu folgen, oder eigene Farbe wählen.',
+        'Text colour applied to matched characters when searching (e.g. #2ea8ff for VS Code blue).':
+            'Textfarbe für gefundene Zeichen bei der Suche (z. B. #2ea8ff für VS-Code-Blau).',
+        'History erased': 'Verlauf gelöscht',
+        'Hold Ctrl to copy instead of move': 'Strg gedrückt halten, um zu kopieren statt zu verschieben',
+        'HTML escape': 'HTML-Maskierung (Escape)',
+        'HTML unescape': 'HTML-Demaskierung (Unescape)',
+        'How Sensitive clips are handled when detected.': 'Wie erkannte sensible Einträge behandelt werden.',
+        'How many lines of text are previewed on each card before truncating.':
+            'Wie viele Textzeilen pro Karte vor dem Kürzen angezeigt werden.',
+        'How many minutes before a masked sensitive clip is permanently deleted.':
+            'Nach wie vielen Minuten ein maskierter sensibler Eintrag endgültig gelöscht wird.',
+        'How many recent daily backup files to retain before deleting older ones.':
+            'Wie viele tägliche Backup-Dateien aufbewahrt werden, bevor ältere gelöscht werden.',
+        'Ignore output': 'Ausgabe ignorieren',
+        'Ignored applications': 'Ignorierte Anwendungen',
+        'Images above this size in megabytes are skipped to keep the database fast.':
+            'Bilder über dieser Größe in Megabyte werden übersprungen, um die Datenbank schnell zu halten.',
+        'Import / restore': 'Importieren / Wiederherstellen',
+        'Imported {n} new item(s)': '{n} neue(r) Eintrag/Einträge importiert',
+        'Import…': 'Importieren…',
+        'Include the Windows key': 'Windows-Taste einbeziehen',
+        Info: 'Info',
+        'Invalid shortcut combination': 'Ungültige Tastenkombination',
+        'Invisible in captures': 'In Bildschirmaufnahmen unsichtbar',
+        'Item type': 'Eintragstyp',
+        'Join lines': 'Zeilen verbinden',
+        'Join lines (dense)': 'Zeilen verbinden (ohne Leerzeichen)',
+        'Keep formatting': 'Formatierung beibehalten',
+        'Keep history for (days)': 'Verlauf aufbewahren für (Tage)',
+        'Keep plain text only': 'Nur einfachen Text behalten',
+        'Keep text styling (HTML / RTF)': 'Textformatierung speichern (HTML / RTF)',
+        'Keeps original formatting': 'Behält die ursprüngliche Formatierung bei',
+        Keystroke: 'Tastenkombination',
+        'Large (170px)': 'Groß (170px)',
+        'Largest image to store (MB)': 'Maximale Bildgröße zum Speichern (MB)',
+        'Last copied → first pasted': 'Zuletzt kopiert → zuerst eingefügt (LIFO)',
+        'Last position': 'Letzte Position',
+        'Launch ClipNest automatically in the system tray when you sign in to Windows.':
+            'ClipNest beim Anmelden in Windows automatisch im System-Tray starten.',
+        Light: 'Hell',
+        Lines: 'Zeilen',
+        'List display': 'Listenanzeige',
+        'Loading…': 'Wird geladen…',
+        'Match Accent': 'Wie Akzentfarbe',
+        'Maximum vertical height of each card body in the list (60 to 600 px).':
+            'Maximale vertikale Höhe jedes Karteninhalts in der Liste (60 bis 600 px).',
+        'Maximum height of image and media thumbnails inside cards.':
+            'Maximale Höhe von Bild- und Medien-Vorschaubildern in Karten.',
+        'Maximum history items': 'Maximale Anzahl an Verlaufseinträgen',
+        'Maximum items (0 = unlimited, oldest are deleted)':
+            'Maximale Einträge (0 = unbegrenzt, älteste werden gelöscht)',
+        'Medium (110px)': 'Mittel (110px)',
+        'Merge selected': 'Auswahl zusammenführen',
+        'Merge {n} items — separator': '{n} Einträge zusammenführen — Trennzeichen',
+        'Merge {n} items…': '{n} Einträge zusammenführen…',
+        'Merged into a new item': 'Zu einem neuen Eintrag zusammengeführt',
+        'Merges an export or a daily backup into the current history. Nothing is overwritten or deleted.':
+            'Führt einen Export oder ein tägliches Backup mit dem aktuellen Verlauf zusammen. Nichts wird überschrieben oder gelöscht.',
+        'Minify JSON': 'JSON minimieren',
+        Minutes: 'Minuten',
+        More: 'Mehr',
+        'Mouse pointer': 'Mauszeiger',
+        'Move item': 'Eintrag verschieben',
+        'Move up': 'Nach oben',
+        'Move down': 'Nach unten',
+        'Move up (Alt+↑)': 'Nach oben (Alt+↑)',
+        'Move down (Alt+↓)': 'Nach unten (Alt+↓)',
+        'Move to pinboard': 'In Kategorie verschieben',
+        'Move to category': 'In Kategorie verschieben',
+        'Move used item to the top': 'Verwendeten Eintrag nach oben schieben',
+        'Moves a card to the top of the history list whenever you paste or copy it.':
+            'Schiebt eine Karte an den Anfang des Verlaufs, sobald Sie sie einfügen oder kopieren.',
+        'Move {n} items': '{n} Einträge verschieben',
+        'My action': 'Meine Aktion',
+        Name: 'Name',
+        'New copies are automatically placed in this pinboard and the popup opens on this tab':
+            'Neue Kopien landen automatisch in dieser Kategorie und das Popup öffnet sich auf diesem Tab',
+        'New copies are automatically placed in this category and the popup opens on this tab':
+            'Neue Kopien landen automatisch in dieser Kategorie und das Popup öffnet sich auf diesem Tab',
+        'New pinboard': 'Neue Kategorie',
+        'New pinboard (Ctrl+N)': 'Neue Kategorie (Strg+N)',
+        'New category (Ctrl+N)': 'Neue Kategorie (Strg+N)',
+        'No change': 'Keine Änderung',
+        'No raw formats stored.': 'Keine Rohformate gespeichert.',
+        'Normalize chars & English digits (ی ک 123)': 'Zeichen & englische Ziffern normalisieren (ی ک 123)',
+        'Normalize Persian (ی ک ۱۲۳)': 'Persisch normalisieren (ی ک ۱۲۳)',
+        'Nothing copied from these executables is stored.':
+            'Nichts, was aus diesen Programmen kopiert wird, wird gespeichert.',
+        'Number lines': 'Zeilen nummerieren',
+        'OLED black': 'OLED-Schwarz',
+        Off: 'Aus',
+        'Off = the item is only copied; you press Ctrl+V yourself.':
+            'Aus = der Eintrag wird nur kopiert; Sie drücken selbst Strg+V.',
+        'Off renders the entire list into the DOM normally; On renders only visible items for peak performance':
+            'Aus rendert die gesamte Liste im DOM; Ein rendert nur sichtbare Elemente für maximale Leistung',
+        'On: colours, fonts and backgrounds are stored and can be pasted back. Off: only plain text is stored (smaller database).':
+            'Ein: Farben, Schriften und Hintergründe werden gespeichert. Aus: Nur einfacher Text wird gespeichert (kleinere Datenbank).',
+        'Only files and images are collected here (plain text copies are ignored).':
+            'Hier werden nur Dateien und Bilder gesammelt (reine Textkopien werden ignoriert).',
+        Open: 'Öffnen',
+        'Open ClipNest': 'ClipNest öffnen',
+        'Open in browser': 'Im Browser öffnen',
+        'Open link': 'Link öffnen',
+        'Order (click to reverse)': 'Reihenfolge (Klicken zum Umkehren)',
+        'Output → clipboard': 'Ausgabe → Zwischenablage',
+        'Output → new item': 'Ausgabe → neuer Eintrag',
+        'Overrides Windows Clipboard History (Win+V) via low-level keyboard hook':
+            'Überschreibt den Windows-Zwischenablageverlauf (Win+V) per Low-Level-Tastatur-Hook',
+        'Overrides the default for a specific target app (executable name). Example: Word keeps formatting, terminals get plain text.':
+            'Überschreibt den Standard für eine bestimmte Zielanwendung (Dateiname). Beispiel: Word behält Formatierung, Terminals erhalten reinen Text.',
+        PascalCase: 'PascalCase',
+        'Password managers mark their clipboard data; ClipNest then never stores it.':
+            'Passwort-Manager markieren ihre Zwischenablagedaten; ClipNest speichert diese dann niemals.',
+        'Paste card with mouse': 'Karte mit der Maus einfügen',
+        'Choose whether a single click or a double-click pastes a card (single-click always selects).':
+            'Wählen Sie, ob ein Einzelklick oder Doppelklick eine Karte einfügt (Einzelklick wählt immer aus).',
+        'Paste into folder': 'In Ordner einfügen',
+        'Paste queue / Drop Basket': 'Einfüge-Warteschlange / Dateikorb',
+        'Paste as': 'Einfügen als',
+        'Paste directly into the app': 'Direkt in die Anwendung einfügen',
+        'Paste plain': 'Nur Text einfügen',
+        'Paste queue': 'Einfüge-Warteschlange',
+        'Paste queue on/off': 'Einfüge-Warteschlange ein/aus',
+        'Paste queue: order': 'Einfüge-Warteschlange: Reihenfolge',
+        'Whether the Paste Queue outputs items in FIFO (first copied first) or LIFO (last copied first) order.':
+            'Gibt an, ob die Warteschlange Elemente nach FIFO (zuerst kopiert) oder LIFO (zuletzt kopiert) ausgibt.',
+        'Paste queue: take over Ctrl+V': 'Einfüge-Warteschlange: Strg+V übernehmen',
+        'Paste with formatting': 'Mit Formatierung einfügen',
+        'Paste {n} items merged': '{n} Einträge zusammengeführt einfügen',
+        'Pasted {n} item(s)': '{n} Element(e) eingefügt',
+        'Pause / resume capture': 'Erfassung pausieren / fortsetzen',
+        'Pause capture': 'Erfassung pausieren',
+        'Paused · resume': 'Pausiert · fortsetzen',
+        'Per-application rules': 'Regeln pro Anwendung',
+        Persian: 'Persisch',
+        'Pin on top': 'Oben anheften',
+        'Pin to': 'Anheften an',
+        Pinboard: 'Kategorie',
+        'Pinboard settings': 'Kategorie-Einstellungen',
+        'Pinboard settings…': 'Kategorie-Einstellungen…',
+        'Pinned to {name}': 'Angeheftet an {name}',
+        'Plain text only': 'Nur einfacher Text',
+        'Plain-text mode': 'Nur-Text-Modus',
+        'Plain-text mode (click to turn off)': 'Nur-Text-Modus (Klicken zum Ausschalten)',
+        'Popup height (px)': 'Popup-Höhe (px)',
+        'Popup opens at': 'Popup öffnet sich bei',
+        'Popup width (px)': 'Popup-Breite (px)',
+        'Preserve popup size when resized with mouse': 'Popup-Größe beim Ändern mit der Maus speichern',
+        'Automatically saves the new width and height when you drag the edges of the popup window.':
+            'Speichert automatisch die neue Breite und Höhe, wenn Sie die Ränder des Popup-Fensters ziehen.',
+        'Press keys…': 'Tasten drücken…',
+        'Prettify JSON': 'JSON formatieren',
+        'Quick buttons next to the list: preview, pin, tags, copy, formats, edit, merge, actions, delete.':
+            'Schnellschaltflächen neben der Liste: Vorschau, Anheften, Tags, Kopieren, Formate, Bearbeiten, Zusammenführen, Aktionen, Löschen.',
+        'Quick buttons next to the list: preview, pin, tags, copy, formats, edit, merge, actions, delete (can also be toggled from the popup header).':
+            'Schnellschaltflächen neben der Liste: Vorschau, Anheften, Tags, Kopieren, Formate, Bearbeiten, Zusammenführen, Aktionen, Löschen (auch über die Kopfzeile umschaltbar).',
+        'Recently seen:': 'Kürzlich gesehen:',
+        Remove: 'Entfernen',
+        'Remove blank lines': 'Leerzeilen entfernen',
+        'Remove duplicate lines': 'Doppelte Zeilen entfernen',
+        'Remove from pinboard': 'Aus Kategorie entfernen',
+        'Removes everything except pinned items and pinboards.':
+            'Löscht alles außer angehefteten Einträgen und Kategorien.',
+        'Removes unpinned history, with an option in the confirmation dialog to also delete pinned items and pinboards.':
+            'Löscht den nicht angehefteten Verlauf (mit Option im Bestätigungsdialog, auch angeheftete Einträge und Kategorien zu löschen).',
+        'Removes unpinned history, with an option in the confirmation dialog to also delete pinned items and categories.':
+            'Löscht den nicht angehefteten Verlauf (mit Option im Bestätigungsdialog, auch angeheftete Einträge und Kategorien zu löschen).',
+        'Rename item': 'Eintrag umbenennen',
+        Reset: 'Zurücksetzen',
+        'Reset all settings to their default values?': 'Alle Einstellungen auf die Standardwerte zurücksetzen?',
+        'Respect “do not record” flags': '„Nicht aufzeichnen“-Markierungen beachten',
+        'Restores all preferences, shortcuts, and appearance options to factory defaults without deleting your clips.':
+            'Setzt alle Einstellungen, Tastenkürzel und Darstellungsoptionen auf die Werkseinstellungen zurück, ohne Ihre Einträge zu löschen.',
+        'Resume capture': 'Erfassung fortsetzen',
+        'Reverse lines': 'Zeilenreihenfolge umkehren',
+        'Rule name': 'Regelname',
+        'Run custom action': 'Benutzerdefinierte Aktion ausführen',
+        'Run on every new copy, in order. A rule applies when ALL of its filled-in conditions match. Example: app “keepass”, action “Do not store”; or pattern “^https?://”, action “Move to pinboard”.':
+            'Wird bei jedem neuen Kopiervorgang der Reihe nach ausgeführt. Eine Regel greift, wenn ALLE ausgefüllten Bedingungen zutreffen. Beispiel: App „keepass“, Aktion „Nicht speichern“; oder Muster „^https?://“, Aktion „In Kategorie verschieben“.',
+        'Run on every new copy, in order. A rule applies when ALL of its filled-in conditions match. Example: app “keepass”, action “Do not store”; or pattern “^https?://”, action “Move to category”.':
+            'Wird bei jedem neuen Kopiervorgang der Reihe nach ausgeführt. Eine Regel greift, wenn ALLE ausgefüllten Bedingungen zutreffen. Beispiel: App „keepass“, Aktion „Nicht speichern“; oder Muster „^https?://“, Aktion „In Kategorie verschieben“.',
+        'Same as global setting': 'Wie globale Einstellung',
+        'Saved (rich formatting dropped)': 'Gespeichert (Formatierung entfernt)',
+        'Saved: {p}': 'Gespeichert: {p}',
+        'Saves everything (items, formats, pinboards) to a file you choose.':
+            'Speichert alles (Einträge, Formate, Kategorien) in einer ausgewählten Datei.',
+        'Saves everything (items, formats, categories) to a file you choose.':
+            'Speichert alles (Einträge, Formate, Kategorien) in einer ausgewählten Datei.',
+        'Screen centre': 'Bildschirmmitte',
+        'Screen-capture protection': 'Bildschirmaufnahme-Schutz',
+        'Select several items first (Shift+↑/↓)': 'Wählen Sie zuerst mehrere Einträge aus (Umschalt+↑/↓)',
+        'Sentence case': 'Satzanfang groß',
+        'Settings imported': 'Einstellungen importiert',
+        'Settings reset to defaults': 'Einstellungen auf Standard zurückgesetzt',
+        'Settings, rules, actions and shortcuts as a JSON file.':
+            'Einstellungen, Regeln, Aktionen und Tastenkürzel als JSON-Datei.',
+        'Shell commands (run with cmd /C) that receive the item’s text on stdin. They appear under “Actions” in the item menu and can be used by automatic rules.':
+            'Shell-Befehle (ausgeführt mit cmd /C), die den Text des Eintrags über stdin erhalten. Sie erscheinen unter „Aktionen“ im Kontextmenü und können in Regeln genutzt werden.',
+        'Shortcuts that include the Windows key (for example Win+V) are handled by a keyboard hook. Windows keeps Win+V for its own clipboard history: if it still opens, turn that off in Windows Settings → System → Clipboard.':
+            'Tastenkürzel mit der Windows-Taste (z. B. Win+V) werden über einen Tastatur-Hook verarbeitet. Falls sich der Windows-Zwischenablageverlauf weiterhin öffnet, deaktivieren Sie ihn unter Windows-Einstellungen → System → Zwischenablage.',
+        'Renders inline image and video/media previews inside cards in the popup list.':
+            'Zeigt Bild- und Medienvorschauen direkt innerhalb der Karten in der Liste an.',
+        'Show items as': 'Einträge anzeigen als',
+        'Showing the first {n} lines of {total}. The full text is pasted.':
+            'Zeigt die ersten {n} von {total} Zeilen. Eingefügt wird der gesamte Text.',
+        'Side toolbar (CopyQ style)': 'Seitenleiste (CopyQ-Stil)',
+        'Single-click': 'Einzelklick',
+        'Small (52px)': 'Klein (52px)',
+        'Animate card removal': 'Kartenentfernung animieren',
+        'Smoothly collapses deleted cards so the items below glide up to fill their space (requires Smooth animations).':
+            'Blendet gelöschte Karten sanft aus (erfordert „Sanfte Animationen“).',
+        'Sort lines A→Z': 'Zeilen sortieren A→Z',
+        'Sort lines Z→A': 'Zeilen sortieren Z→A',
+        'Start with Windows': 'Mit Windows starten',
+        'Store, blur in the list': 'Speichern, in der Liste unkenntlich machen',
+        'Store, blur, then auto-delete': 'Speichern, unkenntlich machen, dann automatisch löschen',
+        'Stored clipboard formats': 'Gespeicherte Formate der Zwischenablage',
+        Tag: 'Tag',
+        'Tags (space separated)': 'Tags (durch Leerzeichen getrennt)',
+        'Text cursor (falls back to mouse)': 'Textcursor (sonst Mauszeiger)',
+        'Text lines per card': 'Textzeilen pro Karte',
+        Theme: 'Design',
+        Then: 'Dann',
+        'Then press Ctrl+V repeatedly to paste in order.':
+            'Drücken Sie anschließend wiederholt Strg+V, um der Reihe nach einzufügen.',
+        'This pinboard is empty — drag cards onto its tab':
+            'Diese Kategorie ist leer — ziehen Sie Karten auf diesen Tab',
+        'This category is empty — drag cards onto its tab':
+            'Diese Kategorie ist leer — ziehen Sie Karten auf diesen Tab',
+        'Thumbnail size': 'Vorschaubild-Größe',
+        'Title Case': 'Wortanfänge Groß',
+        'Toggle multi-selection': 'Mehrfachauswahl umschalten',
+        'Toggle plain-text mode': 'Nur-Text-Modus umschalten',
+        'Transferred {n} item(s) to folder': '{n} Element(e) in Ordner übertragen',
+        'Transform ▸': 'Umwandeln ▸',
+        Trim: 'Kürzen (Trim)',
+        'Trim whitespace': 'Leerzeichen am Anfang/Ende entfernen',
+        UPPERCASE: 'GROSSBUCHSTABEN',
+        'URL decode': 'URL dekodieren',
+        'URL encode': 'URL kodieren',
+        Unknown: 'Unbekannt',
+        'Unpin from top': 'Nicht mehr anheften',
+        'Use Win+V': 'Win+V verwenden',
+        'VS Code Blue': 'VS-Code-Blau',
+        'What happens when you hold Ctrl and click a card.':
+            'Was passiert, wenn Sie Strg gedrückt halten und auf eine Karte klicken.',
+        'What happens when you hold Ctrl + Shift and click a card.':
+            'Was passiert, wenn Sie Strg + Umschalt gedrückt halten und auf eine Karte klicken.',
+        'When copied from app(s)': 'Wenn kopiert aus App(s)',
+        'When detected': 'Bei Erkennung',
+        'While the queue has items, Ctrl+V pastes the next one.':
+            'Solange Einträge in der Warteschlange sind, fügt Strg+V den nächsten ein.',
+        Whitespace: 'Leerzeichen',
+        'Yellow Marker': 'Gelber Textmarker',
+        '\\n = new line, \\t = tab, or any text': '\\n = neue Zeile, \\t = Tabulator oder beliebiger Text',
+        'and text matches (regex)': 'und Text entspricht (Regex)',
+        'and {n} more': 'und {n} weitere',
+        camelCase: 'camelCase',
+        code: 'Code',
+        color: 'Farbe',
+        file: 'Datei',
+        image: 'Bild',
+        'kebab-case': 'kebab-case',
+        link: 'Link',
+        lowercase: 'kleinbuchstaben',
+        snake_case: 'snake_case',
+        text: 'Text',
+        '{label}: new item created': '{label}: neuer Eintrag erstellt',
+        '{n} chars': '{n} Zeichen',
+        '“Keep formatting” restores every stored format. “Plain text” pastes only the text.':
+            '„Formatierung beibehalten“ stellt alle gespeicherten Formate wieder her. „Nur Text“ fügt lediglich den reinen Text ein.',
+        '“Original style” draws each card exactly as it was copied (VS Code colours, backgrounds, fonts). “Plain text” shows only the text.':
+            '„Originalstil“ stellt jede Karte genau so dar, wie sie kopiert wurde (VS-Code-Farben, Hintergründe, Schriften). „Nur Text“ zeigt nur den Text.',
+        JSON: 'JSON',
+        '— none —': '— keine —',
+        CUT: 'AUSSCHNEIDEN',
+        COPY: 'KOPIEREN',
+        'Open folder location': 'Ordnerpfad öffnen',
+        'Open file location': 'Dateipfad öffnen',
+        'The source no longer exists': 'Die Quelle existiert nicht mehr',
+        'in {name}': 'in {name}',
+        '{n} item(s)': '{n} Element(e)',
+        'Finishing…': 'Wird abgeschlossen…',
+        'Pasting…': 'Wird eingefügt…',
+        '{n} failed': '{n} fehlgeschlagen',
+        'Some items failed': 'Einige Elemente sind fehlgeschlagen',
+        '{failed} of {total} item(s) could not be pasted':
+            '{failed} von {total} Element(en) konnte(n) nicht eingefügt werden',
+        'Because of the errors, no original file was deleted.':
+            'Aufgrund der Fehler wurde keine Originaldatei gelöscht.',
+        '{n} item(s) were copied successfully and stay in the destination folder.':
+            '{n} Element(e) wurde(n) erfolgreich kopiert und verbleibt/verbleiben im Zielordner.',
+        Close: 'Schließen',
+        'Drop Basket: group files by folder': 'Dateikorb: Dateien nach Ordner gruppieren',
+        'When enabled, files that live in the same folder are shown as one expandable group. When disabled, every file is listed separately.':
+            'Wenn aktiviert, werden Dateien aus demselben Ordner als eine aufklappbare Gruppe angezeigt. Wenn deaktiviert, wird jede Datei einzeln aufgelistet.',
+        'Invalid path': 'Ungültiger Pfad',
+        'The destination is inside the folder being copied':
+            'Das Ziel befindet sich innerhalb des zu kopierenden Ordners',
+        'Cannot create the destination folder': 'Zielordner kann nicht erstellt werden',
+        'Image data not found': 'Bilddaten nicht gefunden',
+        'Copy failed': 'Kopieren fehlgeschlagen',
+        'The copy could not be re-verified, so the original was left untouched':
+            'Die Kopie konnte nicht erneut verifiziert werden, daher blieb das Original unangetastet',
+        'Copied successfully, but the original could not be removed':
+            'Erfolgreich kopiert, aber das Original konnte nicht entfernt werden',
     },
 };

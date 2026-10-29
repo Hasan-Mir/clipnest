@@ -11,7 +11,7 @@ import {
     errText,
 } from '../lib/api';
 import { CustomSelect } from '../lib/CustomSelect';
-import { LOCALES, t, useLang } from '../lib/i18n';
+import { isRtl, LOCALES, t, useLang } from '../lib/i18n';
 import { Icon } from '../lib/icons';
 import { eventToShortcut, formatHeldModifiers } from '../lib/shortcut';
 import { DEFAULT_SETTINGS, useSettings } from '../lib/useSettings';
@@ -52,6 +52,7 @@ const TABS: { id: TabId; label: string; keys: (keyof Settings)[] }[] = [
             'queue_fifo',
             'queue_intercept',
             'basket_allow_cut',
+            'basket_group_by_folder',
             'app_rules',
         ],
     },
@@ -408,7 +409,7 @@ function TagList({
                             aria-label={`${t('Remove')} ${a}`}
                             onClick={() => onChange(items.filter((y) => y !== a))}
                         >
-                            ×
+                            <Icon name="close" size={13} />
                         </button>
                     </span>
                 ))}
@@ -711,6 +712,9 @@ export default function SettingsView() {
         'queue_intercept',
         'Paste queue: take over Ctrl+V',
         'While the queue has items, Ctrl+V pastes the next one.',
+        'basket_group_by_folder',
+        'Drop Basket: group files by folder',
+        'When enabled, files that live in the same folder are shown as one expandable group. When disabled, every file is listed separately.',
         'basket_allow_cut',
         'Drop Basket: allow Cut (move files after verified copy)',
         'When enabled, files cut with Ctrl+X are moved only after destination copy and exact byte size are verified on disk.',
@@ -919,6 +923,7 @@ export default function SettingsView() {
                         aria-label={t('Search settings…')}
                         className="search-bare"
                         value={searchQuery}
+                        dir={searchQuery ? 'auto' : isRtl() ? 'rtl' : 'ltr'}
                         placeholder={t('Search settings…')}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onKeyDown={(e) => {
@@ -1244,6 +1249,20 @@ export default function SettingsView() {
                                 v={s.queue_intercept}
                                 on={(b) => set('queue_intercept', b)}
                                 label="Paste queue: take over Ctrl+V"
+                            />
+                        </Row>
+                        <Row
+                            k="basket_group_by_folder"
+                            s={s}
+                            searchQuery={q}
+                            onGearMenu={openGearMenu}
+                            label="Drop Basket: group files by folder"
+                            hint="When enabled, files that live in the same folder are shown as one expandable group. When disabled, every file is listed separately."
+                        >
+                            <Toggle
+                                v={s.basket_group_by_folder ?? true}
+                                on={(b) => set('basket_group_by_folder', b)}
+                                label="Drop Basket: group files by folder"
                             />
                         </Row>
                         <Row

@@ -38,6 +38,13 @@ pub struct AppState {
     pub last_pos: Mutex<Option<(i32, i32)>>,
     /// Folder path when opened from Windows File Explorer context menu.
     pub explorer_target_dir: Mutex<Option<String>>,
+    /// Timestamp (epoch ms) of our own most recent clipboard write (prevents self-capture race on paste).
+    pub self_write_at: AtomicI64,
+    /// True while a Drop Basket transfer is running in the background.
+    pub transfer_busy: AtomicBool,
+    /// True once the queue window's webview has rendered (the window is shown only after that).
+    pub queue_ready: AtomicBool,
+    pub queue_show_pending: AtomicBool,
 }
 
 impl AppState {
@@ -60,6 +67,10 @@ impl AppState {
             popup_pinned: AtomicBool::new(false),
             last_pos: Mutex::new(None),
             explorer_target_dir: Mutex::new(None),
+            self_write_at: AtomicI64::new(0),
+            transfer_busy: AtomicBool::new(false),
+            queue_ready: AtomicBool::new(false),
+            queue_show_pending: AtomicBool::new(false),
         }
     }
 

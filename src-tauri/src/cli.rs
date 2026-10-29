@@ -858,11 +858,24 @@ fn dispatch_online(app: &AppHandle, op: &str, p: &Value) -> IpcResponse {
                                     None,
                                 );
                             }
+                            let paths: Vec<Option<String>> = if row.kind == "file" {
+                                let plain = { db::get_plain(&state.db.lock(), id).map(|(_, p)| p).unwrap_or_default() };
+                                plain
+                                    .lines()
+                                    .map(|l| l.trim())
+                                    .filter(|l| !l.is_empty())
+                                    .map(|l| Some(l.to_string()))
+                                    .collect()
+                            } else {
+                                vec![None]
+                            };
                             let mut q = state.queue.lock();
                             q.active = true;
                             q.mode = "basket".into();
-                            if !q.basket.iter().any(|e| e.id == id) {
-                                q.basket.push(BasketEntry { id, cut: false });
+                            for path in paths {
+                                if !q.basket.iter().any(|e| e.id == id && e.path == path) {
+                                    q.basket.push(BasketEntry { id, cut: false, path });
+                                }
                             }
                         } else {
                             let mut q = state.queue.lock();

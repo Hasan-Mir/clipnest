@@ -175,5 +175,475 @@ export const ru: LocaleDefinition = {
         'Data folder': 'Папка данных',
         'Open in Explorer': 'Открыть в Проводнике',
         'Show in Explorer': 'Показать в Проводнике',
+        '(any)': '(любой)',
+        '+ Add action': '+ Добавить действие',
+        '+ Add rule': '+ Добавить правило',
+        '+ New Pinboard': '+ Новая категория',
+        '0 = forever.': '0 = навсегда.',
+        '0 = unlimited. Pinned and pinboard items are never removed.':
+            '0 = без ограничений. Закреплённые элементы и элементы категорий никогда не удаляются.',
+        '0 = unlimited. Pinned and category items are never removed.':
+            '0 = без ограничений. Закреплённые элементы и элементы категорий никогда не удаляются.',
+        'Accent colour': 'Акцентный цвет',
+        'Choose the primary highlight colour for borders, badges, active controls, and default search highlights.':
+            'Выберите основной цвет подсветки для рамок, значков, активных элементов и совпадений поиска.',
+        'Action finished': 'Действие выполнено',
+        'Action finished: new item': 'Действие выполнено: создан новый элемент',
+        'Actions ▸': 'Действия ▸',
+        Active: 'Активна',
+        'Active and available': 'Активно и доступно',
+        Add: 'Добавить',
+        'Add tag': 'Добавить тег',
+        'Adds ClipNest to the right-click context menu of folders and files in Windows Explorer to view and paste copied files or collect files into the Drop Basket.':
+            'Добавляет ClipNest в контекстное меню папок и файлов Проводника Windows для просмотра и вставки скопированных файлов или сбора их в Корзину файлов.',
+        'Already registered by another running application or Windows':
+            'Уже зарегистрировано другим приложением или Windows',
+        'On: wraps category tabs into multiple rows (like VS Code wrapTabs). Off: scrolls category tabs horizontally with mouse wheel or click-and-drag.':
+            'Вкл: переносит вкладки категорий на несколько строк (как wrapTabs в VS Code). Выкл: прокручивает вкладки по горизонтали.',
+        'When enabled (default), pinning an item inside a category only pins it in that category, without pinning it in the main Clipboard tab.':
+            'Когда включено (по умолчанию), закрепление элемента внутри категории закрепляет его только в ней, не закрепляя во вкладке «Буфер обмена».',
+        'Applied instantly to the popup, queue and settings windows. Needs Windows 10 2004+ for “Invisible”. Does not work inside Remote Desktop sessions.':
+            'Мгновенно применяется к окнам списка, очереди и настроек. Для режима «Невидимый» требуется Windows 10 2004+. Не работает в сеансах удалённого рабочего стола.',
+        'Arabic Yeh/Kaf → Persian (ی ک)': 'Арабские Yeh/Kaf → персидские (ی ک)',
+        'Auto-delete after (minutes)': 'Автоудаление через (минут)',
+        'Auto-delete after N minutes': 'Автоудаление через N минут',
+        'Automatically saves text changes in the inline preview editor after a short pause without requiring Ctrl+S.':
+            'Автоматически сохраняет изменения текста в редакторе предпросмотра после короткой паузы без нажатия Ctrl+S.',
+        'Available (captured via low-level keyboard hook)':
+            'Доступно (перехватывается низкоуровневым хуком клавиатуры)',
+        'Available (no conflict in Windows)': 'Доступно (нет конфликтов в Windows)',
+        'Back up now': 'Создать копию сейчас',
+        'Backups to keep': 'Хранить резервных копий',
+        'Base64 decode': 'Декодировать Base64',
+        'Base64 encode': 'Кодировать в Base64',
+        'Basket is empty — copy files in Explorer or images in your browser.':
+            'Корзина пуста — скопируйте файлы в Проводнике или изображения в браузере.',
+        'Black rectangle (CopyQ style)': 'Чёрный прямоугольник (стиль CopyQ)',
+        'Cannot apply: {e}': 'Не удалось применить: {e}',
+        'Card density': 'Плотность карточек',
+        'Card numbers (Luhn), API keys (sk-…, ghp_…, AKIA…), private keys, JWTs.':
+            'Номера банковских карт (Luhn), API-ключи (sk-…, ghp_…, AKIA…), приватные ключи, JWT.',
+        Case: 'Регистр',
+        'Category settings…': 'Настройки категории…',
+        'Choose any installed system font on your computer for rendering clipboard cards and previews.':
+            'Выберите любой установленный в системе шрифт для отображения карточек и предпросмотра.',
+        'Choose how much vertical padding each card uses in the popup list.':
+            'Выберите вертикальный внутренний отступ карточек в списке.',
+        'Choose the colour scheme for the popup, queue, and settings windows.':
+            'Выберите цветовую схему для окон списка, очереди и настроек.',
+        'Choose the colour scheme for the popup, queue, and settings windows (System follows Windows Dark/Light mode automatically).':
+            'Выберите цветовую схему для окон списка, очереди и настроек («Системная» автоматически следует тёмному/светлому режиму Windows).',
+        'Choose the primary highlight colour for borders, badges, and active controls.':
+            'Выберите основной цвет подсветки для рамок, значков и активных элементов.',
+        'Choose the UI language and text direction (LTR / RTL).':
+            'Выберите язык интерфейса и направление текста (LTR / RTL).',
+        'Choose where the popup appears on screen when opened with the global shortcut.':
+            'Выберите место появления окна на экране при открытии глобальным сочетанием клавиш.',
+        'Clear the search to reorder items': 'Очистите поиск для изменения порядка элементов',
+        'Click to toggle between Copy and Cut': 'Нажмите для переключения между Копировать (Copy) и Вырезать (Cut)',
+        'Close queue': 'Закрыть очередь',
+        'Collapse whitespace': 'Сжать пробелы',
+        Color: 'Цвет',
+        Comfortable: 'Просторная',
+        Compact: 'Компактная',
+        CONSTANT_CASE: 'CONSTANT_CASE',
+        'Conflicts with Windows system shortcut (Alt+Tab / Alt+F4)':
+            'Конфликтует с системным сочетанием Windows (Alt+Tab / Alt+F4)',
+        'Copied {v}': 'Скопировано: {v}',
+        'Copy item': 'Копировать элемент',
+        'Copy {n} items': 'Копировать элементы ({n})',
+        'Copy something — it is added here.': 'Скопируйте что-нибудь — оно появится здесь.',
+        'Count chars / words / lines': 'Подсчёт символов / слов / строк',
+        'Create a compressed snapshot of the SQLite database right now.':
+            'Создать сжатую резервную копию базы данных SQLite прямо сейчас.',
+        'Create backup': 'Создать резервную копию',
+        'Create colour-coded Categories with + or Ctrl+N and drag cards onto any tab (hold Ctrl while dragging from a category to copy instead of move). Right-click a Category tab and enable Active category so all new copies go straight into that tab automatically.':
+            'Создавайте цветные категории кнопкой + или Ctrl+N и перетаскивайте карточки на любую вкладку (удерживайте Ctrl при перетаскивании из категории для копирования вместо перемещения). Нажмите правой кнопкой мыши по вкладке и включите «Активная категория», чтобы новые копии попадали сразу туда.',
+        'Ctrl + Click on card': 'Ctrl + клик по карточке',
+        'Ctrl + Shift + Click on card': 'Ctrl + Shift + клик по карточке',
+        'Ctrl+S save · Esc cancel': 'Ctrl+S сохранить · Esc отмена',
+        'Custom action': 'Пользовательское действие',
+        'Custom title (empty to clear)': 'Свой заголовок (оставьте пустым для сброса)',
+        'Daily automatic backup': 'Ежедневное авторезервирование',
+        'Automatically creates a compressed daily snapshot in the backups folder.':
+            'Автоматически создаёт ежедневную сжатую копию в папке резервных копий.',
+        Dark: 'Тёмная',
+        'Database encryption and per-tab locking are not part of this version.':
+            'Шифрование базы данных и блокировка отдельных вкладок паролем не входят в эту версию.',
+        'Database, settings.json and backups.': 'База данных, settings.json и резервные копии.',
+        'Decode JWT': 'Декодировать JWT',
+        Default: 'По умолчанию',
+        'Default (Vazirmatn / System)': 'По умолчанию (Vazirmatn / Системный)',
+        'Default height of the popup window in logical pixels.':
+            'Высота всплывающего окна по умолчанию в логических пикселях.',
+        'Default height of the popup window in logical pixels (minimum 380 px).':
+            'Высота всплывающего окна по умолчанию в логических пикселях (минимум 380 пикс.).',
+        'Default paste (Enter)': 'Вставка по умолчанию (Enter)',
+        'Default paste mode': 'Режим вставки по умолчанию',
+        'Default width of the popup window in logical pixels.':
+            'Ширина всплывающего окна по умолчанию в логических пикселях.',
+        'Default width of the popup window in logical pixels (minimum 340 px).':
+            'Ширина всплывающего окна по умолчанию в логических пикселях (минимум 340 пикс.).',
+        'Delete "{name}" and its {n} item(s)?': 'Удалить «{name}» и её элементы ({n})?',
+        'Delete (or remove inside a category)': 'Удалить (или убрать из категории)',
+        'Delete permanently': 'Удалить навсегда',
+        'Delete pinboard…': 'Удалить категорию…',
+        'Delete category…': 'Удалить категорию…',
+        'Delete {n} items': 'Удалить элементы ({n})',
+        'Detect sensitive data': 'Обнаруживать конфиденциальные данные',
+        'Do not store': 'Не сохранять',
+        'Double-click (single-click selects)': 'Двойной клик (одиночный клик выделяет)',
+        'Drop Basket: allow Cut (move files after verified copy)':
+            'Корзина файлов: разрешить Вырезать (перемещение после проверки копии)',
+        'When enabled, files cut with Ctrl+X are moved only after destination copy and exact byte size are verified on disk.':
+            'Когда включено, вырезанные через Ctrl+X файлы перемещаются только после проверки копии и точного размера в байтах на диске.',
+        'Edit (Ctrl+E)': 'Изменить (Ctrl+E)',
+        'Enable subtle Notion-style transitions for menus, dialogs, and hover states.':
+            'Включить плавные переходы в стиле Notion для меню, диалогов и наведения.',
+        Encode: 'Кодирование',
+        'Engine & Architecture': 'Движок и архитектура',
+        English: 'Английский',
+        'Erase all unpinned history?': 'Очистить всю незакреплённую историю?',
+        'Every copy is written to disk immediately (SQLite WAL, full fsync), so a power cut cannot lose a completed copy.':
+            'Каждая копия сразу записывается на диск (SQLite WAL, полный fsync), поэтому сбой питания не приведёт к потере данных.',
+        Executable: 'Исполняемый файл',
+        'Exit ClipNest completely and stop background clipboard monitoring.':
+            'Полностью выйти из ClipNest и остановить фоновый мониторинг буфера обмена.',
+        'Export / import settings': 'Экспорт / импорт настроек',
+        'Export history': 'Экспорт истории',
+        'Export…': 'Экспорт…',
+        'Farsi digits (۰۱۲۳۴۵۶۷۸۹)': 'Персидские цифры (۰۱۲۳۴۵۶۷۸۹)',
+        'First copied → first pasted': 'Первый скопирован → первый вставлен (FIFO)',
+        'Font size (px)': 'Размер шрифта (пикс.)',
+        'Base font size in pixels across the popup, queue, and settings windows.':
+            'Базовый размер шрифта в пикселях для окон списка, очереди и настроек.',
+        'Formats (Ctrl+I)': 'Форматы (Ctrl+I)',
+        'Formats (MIME inspector)': 'Форматы (MIME-инспектор)',
+        'Global hotkey to pause or resume clipboard capturing.':
+            'Глобальное сочетание клавиш для паузы или возобновления захвата буфера обмена.',
+        'Globalhotkey to pause or resume clipboard capturing.':
+            'Глобальное сочетание клавиш для паузы или возобновления захвата буфера обмена.',
+        'Global hotkey to open or close the Paste Queue / Drop Basket window.':
+            'Глобальное сочетание клавиш для открытия или закрытия окна Очереди вставки / Корзины файлов.',
+        'Global hotkey to show or hide the main ClipNest popup.':
+            'Глобальное сочетание клавиш для показа или скрытия главного окна ClipNest.',
+        'Global hotkey to toggle between rich formatting and plain-text paste mode.':
+            'Глобальное сочетание клавиш для переключения между вставкой с форматированием и обычным текстом.',
+        'High Contrast': 'Высокий контраст',
+        'Highlight background color (e.g. #ffe043 for yellow marker)':
+            'Цвет фона подсветки (например, #ffe043 для жёлтого маркера)',
+        'Background colour behind matched characters (use transparent for text-only highlight).':
+            'Цвет фона за совпавшими символами (используйте transparent для подсветки только текста).',
+        'Highlight presets': 'Пресеты подсветки',
+        'Quickly switch between Accent color match, VS Code blue, yellow marker background, or high contrast.':
+            'Быстрое переключение между акцентным цветом, синим VS Code, жёлтым маркером или высоким контрастом.',
+        'Quickly switch between VS Code text highlight, yellow marker background, or high contrast.':
+            'Быстрое переключение между синим VS Code, жёлтым маркером или высоким контрастом.',
+        'Highlights matched characters and words inside cards and previews while searching.':
+            'Подсвечивает найденные символы и слова в карточках и предпросмотре во время поиска.',
+        'Highlight text color (transparent = keep text color)':
+            'Цвет текста подсветки (transparent = оставить цвет текста)',
+        'Use “accent” to automatically follow your Accent colour, or pick any custom colour.':
+            'Используйте «accent» для автоматического следования акцентному цвету или выберите свой цвет.',
+        'Text colour applied to matched characters when searching (e.g. #2ea8ff for VS Code blue).':
+            'Цвет текста для найденных символов при поиске (например, #2ea8ff для синего VS Code).',
+        'History erased': 'История очищена',
+        'Hold Ctrl to copy instead of move': 'Удерживайте Ctrl для копирования вместо перемещения',
+        'HTML escape': 'Экранировать HTML',
+        'HTML unescape': 'Разэкранировать HTML',
+        'How Sensitive clips are handled when detected.': 'Как обрабатываются обнаруженные конфиденциальные записи.',
+        'How many lines of text are previewed on each card before truncating.':
+            'Сколько строк текста отображается на карточке до обрезки.',
+        'How many minutes before a masked sensitive clip is permanently deleted.':
+            'Через сколько минут скрытая конфиденциальная запись удаляется навсегда.',
+        'How many recent daily backup files to retain before deleting older ones.':
+            'Сколько последних ежедневных резервных копий хранить перед удалением старых.',
+        'Ignore output': 'Игнорировать вывод',
+        'Ignored applications': 'Игнорируемые приложения',
+        'Images above this size in megabytes are skipped to keep the database fast.':
+            'Изображения больше указанного размера в мегабайтах пропускаются для быстрой работы базы данных.',
+        'Import / restore': 'Импорт / восстановление',
+        'Imported {n} new item(s)': 'Импортировано новых элементов: {n}',
+        'Import…': 'Импорт…',
+        'Include the Windows key': 'Включить клавишу Windows',
+        Info: 'Инфо',
+        'Invalid shortcut combination': 'Недопустимое сочетание клавиш',
+        'Invisible in captures': 'Невидимый на снимках экрана',
+        'Item type': 'Тип элемента',
+        'Join lines': 'Объединить строки',
+        'Join lines (dense)': 'Объединить строки (без пробелов)',
+        'Keep formatting': 'Сохранять форматирование',
+        'Keep history for (days)': 'Хранить историю (дней)',
+        'Keep plain text only': 'Оставлять только обычный текст',
+        'Keep text styling (HTML / RTF)': 'Сохранять форматирование текста (HTML / RTF)',
+        'Keeps original formatting': 'Сохраняет исходное форматирование',
+        Keystroke: 'Сочетание клавиш',
+        'Large (170px)': 'Крупный (170px)',
+        'Largest image to store (MB)': 'Макс. размер сохраняемого изображения (МБ)',
+        'Last copied → first pasted': 'Последний скопирован → первый вставлен (LIFO)',
+        'Last position': 'Последняя позиция',
+        'Launch ClipNest automatically in the system tray when you sign in to Windows.':
+            'Автоматически запускать ClipNest в системном трее при входе в Windows.',
+        Light: 'Светлая',
+        Lines: 'Строки',
+        'List display': 'Отображение списка',
+        'Loading…': 'Загрузка…',
+        'Match Accent': 'В цвет акцента',
+        'Maximum vertical height of each card body in the list (60 to 600 px).':
+            'Максимальная высота содержимого карточки в списке (от 60 до 600 пикс.).',
+        'Maximum height of image and media thumbnails inside cards.':
+            'Максимальная высота миниатюр изображений и медиа внутри карточек.',
+        'Maximum history items': 'Максимум элементов в истории',
+        'Maximum items (0 = unlimited, oldest are deleted)':
+            'Максимум элементов (0 = без ограничений, удаляются самые старые)',
+        'Medium (110px)': 'Средний (110px)',
+        'Merge selected': 'Объединить выбранные',
+        'Merge {n} items — separator': 'Объединить элементы ({n}) — разделитель',
+        'Merge {n} items…': 'Объединить элементы ({n})…',
+        'Merged into a new item': 'Объединено в новый элемент',
+        'Merges an export or a daily backup into the current history. Nothing is overwritten or deleted.':
+            'Объединяет файл экспорта или резервную копию с текущей историей без удаления и перезаписи.',
+        'Minify JSON': 'Минифицировать JSON',
+        Minutes: 'Минуты',
+        More: 'Ещё',
+        'Mouse pointer': 'Указатель мыши',
+        'Move item': 'Переместить элемент',
+        'Move up': 'Переместить выше',
+        'Move down': 'Переместить ниже',
+        'Move up (Alt+↑)': 'Переместить выше (Alt+↑)',
+        'Move down (Alt+↓)': 'Переместить ниже (Alt+↓)',
+        'Move to pinboard': 'Переместить в категорию',
+        'Move to category': 'Переместить в категорию',
+        'Move used item to the top': 'Перемещать использованный элемент наверх',
+        'Moves a card to the top of the history list whenever you paste or copy it.':
+            'Перемещает карточку в начало списка истории при каждой вставке или копировании.',
+        'Move {n} items': 'Переместить элементы ({n})',
+        'My action': 'Моё действие',
+        Name: 'Название',
+        'New copies are automatically placed in this pinboard and the popup opens on this tab':
+            'Новые копии автоматически помещаются в эту категорию, а окно открывается на этой вкладке',
+        'New copies are automatically placed in this category and the popup opens on this tab':
+            'Новые копии автоматически помещаются в эту категорию, а окно открывается на этой вкладке',
+        'New pinboard': 'Новая категория',
+        'New pinboard (Ctrl+N)': 'Новая категория (Ctrl+N)',
+        'New category (Ctrl+N)': 'Новая категория (Ctrl+N)',
+        'No change': 'Без изменений',
+        'No raw formats stored.': 'Исходные форматы не сохранены.',
+        'Normalize chars & English digits (ی ک 123)': 'Нормализовать символы и английские цифры (ی ک 123)',
+        'Normalize Persian (ی ک ۱۲۳)': 'Нормализовать персидский текст (ی ک ۱۲۳)',
+        'Nothing copied from these executables is stored.':
+            'Данные, скопированные из этих программ, никогда не сохраняются.',
+        'Number lines': 'Пронумеровать строки',
+        'OLED black': 'Чёрная OLED',
+        Off: 'Выкл',
+        'Off = the item is only copied; you press Ctrl+V yourself.':
+            'Выкл = элемент только копируется в буфер; вы сами нажимаете Ctrl+V.',
+        'Off renders the entire list into the DOM normally; On renders only visible items for peak performance':
+            'Выкл рендерит весь список в DOM; Вкл рендерит только видимые карточки для максимальной скорости',
+        'On: colours, fonts and backgrounds are stored and can be pasted back. Off: only plain text is stored (smaller database).':
+            'Вкл: сохраняются цвета, шрифты и фон. Выкл: сохраняется только обычный текст (меньший размер базы).',
+        'Only files and images are collected here (plain text copies are ignored).':
+            'Сюда собираются только файлы и изображения (копии обычного текста игнорируются).',
+        Open: 'Открыть',
+        'Open ClipNest': 'Открыть ClipNest',
+        'Open in browser': 'Открыть в браузере',
+        'Open link': 'Открыть ссылку',
+        'Order (click to reverse)': 'Порядок (нажмите для разворота)',
+        'Output → clipboard': 'Вывод → буфер обмена',
+        'Output → new item': 'Вывод → новый элемент',
+        'Overrides Windows Clipboard History (Win+V) via low-level keyboard hook':
+            'Перехватывает системное сочетание истории буфера Windows (Win+V) через хук клавиатуры',
+        'Overrides the default for a specific target app (executable name). Example: Word keeps formatting, terminals get plain text.':
+            'Переопределяет режим по умолчанию для конкретного приложения (.exe). Например: Word сохраняет форматирование, а терминалы получают обычный текст.',
+        PascalCase: 'PascalCase',
+        'Password managers mark their clipboard data; ClipNest then never stores it.':
+            'Менеджеры паролей помечают свои данные в буфере обмена; ClipNest никогда их не сохраняет.',
+        'Paste card with mouse': 'Вставка карточки мышью',
+        'Choose whether a single click or a double-click pastes a card (single-click always selects).':
+            'Выберите, вставляет ли карточку одиночный или двойной клик (одиночный всегда выделяет).',
+        'Paste into folder': 'Вставить в папку',
+        'Paste queue / Drop Basket': 'Очередь вставки / Корзина файлов',
+        'Paste as': 'Вставлять как',
+        'Paste directly into the app': 'Вставлять сразу в активное окно',
+        'Paste plain': 'Вставить без форматирования',
+        'Paste queue': 'Очередь вставки',
+        'Paste queue on/off': 'Очередь вставки вкл/выкл',
+        'Paste queue: order': 'Очередь вставки: порядок',
+        'Whether the Paste Queue outputs items in FIFO (first copied first) or LIFO (last copied first) order.':
+            'Задаёт порядок выдачи элементов очереди: FIFO (первым скопирован) или LIFO (последним скопирован).',
+        'Paste queue: take over Ctrl+V': 'Очередь вставки: перехватывать Ctrl+V',
+        'Paste with formatting': 'Вставить с форматированием',
+        'Paste {n} items merged': 'Вставить объединённые элементы ({n})',
+        'Pasted {n} item(s)': 'Вставлено элементов: {n}',
+        'Pause / resume capture': 'Пауза / возобновление захвата',
+        'Pause capture': 'Приостановить захват',
+        'Paused · resume': 'Пауза · возобновить',
+        'Per-application rules': 'Правила для приложений',
+        Persian: 'Персидский',
+        'Pin on top': 'Закрепить наверху',
+        'Pin to': 'Закрепить в',
+        Pinboard: 'Категория',
+        'Pinboard settings': 'Настройки категории',
+        'Pinboard settings…': 'Настройки категории…',
+        'Pinned to {name}': 'Закреплено в {name}',
+        'Plain text only': 'Только обычный текст',
+        'Plain-text mode': 'Режим обычного текста',
+        'Plain-text mode (click to turn off)': 'Режим обычного текста (нажмите для отключения)',
+        'Popup height (px)': 'Высота окна (пикс.)',
+        'Popup opens at': 'Позиция открытия окна',
+        'Popup width (px)': 'Ширина окна (пикс.)',
+        'Preserve popup size when resized with mouse': 'Сохранять размер окна при изменении мышью',
+        'Automatically saves the new width and height when you drag the edges of the popup window.':
+            'Автоматически сохраняет новую ширину и высоту при перетаскивании границ всплывающего окна.',
+        'Press keys…': 'Нажмите клавиши…',
+        'Prettify JSON': 'Форматировать JSON',
+        'Quick buttons next to the list: preview, pin, tags, copy, formats, edit, merge, actions, delete.':
+            'Быстрые кнопки рядом со списком: просмотр, закрепление, теги, копирование, форматы, правка, слияние, действия, удаление.',
+        'Quick buttons next to the list: preview, pin, tags, copy, formats, edit, merge, actions, delete (can also be toggled from the popup header).':
+            'Быстрые кнопки рядом со списком: просмотр, закрепление, теги, копирование, форматы, правка, слияние, действия, удаление (также переключается в шапке окна).',
+        'Recently seen:': 'Недавние:',
+        Remove: 'Убрать',
+        'Remove blank lines': 'Удалить пустые строки',
+        'Remove duplicate lines': 'Удалить дубликаты строк',
+        'Remove from pinboard': 'Убрать из категории',
+        'Removes everything except pinned items and pinboards.':
+            'Удаляет всё, кроме закреплённых элементов и категорий.',
+        'Removes unpinned history, with an option in the confirmation dialog to also delete pinned items and pinboards.':
+            'Удаляет незакреплённую историю (с возможностью в окне подтверждения удалить также закреплённые элементы и категории).',
+        'Removes unpinned history, with an option in the confirmation dialog to also delete pinned items and categories.':
+            'Удаляет незакреплённую историю (с возможностью в окне подтверждения удалить также закреплённые элементы и категории).',
+        'Rename item': 'Переименовать элемент',
+        Reset: 'Сбросить',
+        'Reset all settings to their default values?': 'Сбросить все настройки к значениям по умолчанию?',
+        'Respect “do not record” flags': 'Учитывать флаги «не записывать»',
+        'Restores all preferences, shortcuts, and appearance options to factory defaults without deleting your clips.':
+            'Восстанавливает все настройки, сочетания клавиш и параметры внешнего вида по умолчанию без удаления истории.',
+        'Resume capture': 'Возобновить захват',
+        'Reverse lines': 'Обратный порядок строк',
+        'Rule name': 'Название правила',
+        'Run custom action': 'Выполнить действие',
+        'Run on every new copy, in order. A rule applies when ALL of its filled-in conditions match. Example: app “keepass”, action “Do not store”; or pattern “^https?://”, action “Move to pinboard”.':
+            'Выполняются при каждом копировании по порядку. Правило срабатывает при совпадении ВСЕХ заполненных условий. Пример: приложение «keepass», действие «Не сохранять»; или шаблон «^https?://», действие «Переместить в категорию».',
+        'Run on every new copy, in order. A rule applies when ALL of its filled-in conditions match. Example: app “keepass”, action “Do not store”; or pattern “^https?://”, action “Move to category”.':
+            'Выполняются при каждом копировании по порядку. Правило срабатывает при совпадении ВСЕХ заполненных условий. Пример: приложение «keepass», действие «Не сохранять»; или шаблон «^https?://», действие «Переместить в категорию».',
+        'Same as global setting': 'Как в глобальных настройках',
+        'Saved (rich formatting dropped)': 'Сохранено (форматирование сброшено)',
+        'Saved: {p}': 'Сохранено: {p}',
+        'Saves everything (items, formats, pinboards) to a file you choose.':
+            'Сохраняет всё (элементы, форматы, категории) в выбранный файл.',
+        'Saves everything (items, formats, categories) to a file you choose.':
+            'Сохраняет всё (элементы, форматы, категории) в выбранный файл.',
+        'Screen centre': 'По центру экрана',
+        'Screen-capture protection': 'Защита от захвата экрана',
+        'Select several items first (Shift+↑/↓)': 'Сначала выделите несколько элементов (Shift+↑/↓)',
+        'Sentence case': 'Как в предложениях',
+        'Settings imported': 'Настройки импортированы',
+        'Settings reset to defaults': 'Настройки сброшены по умолчанию',
+        'Settings, rules, actions and shortcuts as a JSON file.':
+            'Настройки, правила, действия и сочетания клавиш в виде JSON-файла.',
+        'Shell commands (run with cmd /C) that receive the item’s text on stdin. They appear under “Actions” in the item menu and can be used by automatic rules.':
+            'Команды оболочки (запускаются через cmd /C), получающие текст элемента через stdin. Доступны в подменю «Действия» и в автоматических правилах.',
+        'Shortcuts that include the Windows key (for example Win+V) are handled by a keyboard hook. Windows keeps Win+V for its own clipboard history: if it still opens, turn that off in Windows Settings → System → Clipboard.':
+            'Сочетания с клавишей Windows (например, Win+V) обрабатываются через хук клавиатуры. Если системный буфер Windows всё равно открывается, отключите его в Параметры Windows → Система → Буфер обмена.',
+        'Renders inline image and video/media previews inside cards in the popup list.':
+            'Отображает миниатюры изображений и видео прямо внутри карточек в списке.',
+        'Show items as': 'Отображать элементы как',
+        'Showing the first {n} lines of {total}. The full text is pasted.':
+            'Показаны первые {n} строк из {total}. Вставляется весь текст целиком.',
+        'Side toolbar (CopyQ style)': 'Боковая панель (стиль CopyQ)',
+        'Single-click': 'Одиночный клик',
+        'Small (52px)': 'Маленький (52px)',
+        'Animate card removal': 'Анимация удаления карточек',
+        'Smoothly collapses deleted cards so the items below glide up to fill their space (requires Smooth animations).':
+            'Плавно скрывает удаляемые карточки (требуется «Плавные анимации»).',
+        'Sort lines A→Z': 'Сортировать строки А→Я',
+        'Sort lines Z→A': 'Сортировать строки Я→А',
+        'Start with Windows': 'Запускать вместе с Windows',
+        'Store, blur in the list': 'Сохранять и размывать в списке',
+        'Store, blur, then auto-delete': 'Сохранять, размывать и автоудалять',
+        'Stored clipboard formats': 'Сохранённые форматы буфера обмена',
+        Tag: 'Тег',
+        'Tags (space separated)': 'Теги (через пробел)',
+        'Text cursor (falls back to mouse)': 'Текстовый курсор (или курсор мыши)',
+        'Text lines per card': 'Строк текста на карточке',
+        Theme: 'Тема',
+        Then: 'Тогда',
+        'Then press Ctrl+V repeatedly to paste in order.': 'Затем нажимайте Ctrl+V для последовательной вставки.',
+        'This pinboard is empty — drag cards onto its tab': 'Эта категория пуста — перетащите карточки на её вкладку',
+        'This category is empty — drag cards onto its tab': 'Эта категория пуста — перетащите карточки на её вкладку',
+        'Thumbnail size': 'Размер миниатюр',
+        'Title Case': 'Каждое Слово С Прописной',
+        'Toggle multi-selection': 'Переключить множественный выбор',
+        'Toggle plain-text mode': 'Переключить режим обычного текста',
+        'Transferred {n} item(s) to folder': 'Перенесено элементов в папку: {n}',
+        'Transform ▸': 'Преобразовать ▸',
+        Trim: 'Обрезка пробелов',
+        'Trim whitespace': 'Удалить пробелы по краям',
+        UPPERCASE: 'ВЕРХНИЙ РЕГИСТР',
+        'URL decode': 'Декодировать URL',
+        'URL encode': 'Кодировать URL',
+        Unknown: 'Неизвестно',
+        'Unpin from top': 'Открепить',
+        'Use Win+V': 'Использовать Win+V',
+        'VS Code Blue': 'Синий VS Code',
+        'What happens when you hold Ctrl and click a card.': 'Что происходит при клике по карточке с зажатым Ctrl.',
+        'What happens when you hold Ctrl + Shift and click a card.':
+            'Что происходит при клике по карточке с зажатыми Ctrl + Shift.',
+        'When copied from app(s)': 'При копировании из программ(ы)',
+        'When detected': 'При обнаружении',
+        'While the queue has items, Ctrl+V pastes the next one.':
+            'Пока в очереди есть элементы, Ctrl+V вставляет следующий по порядку.',
+        Whitespace: 'Пробелы',
+        'Yellow Marker': 'Жёлтый маркер',
+        '\\n = new line, \\t = tab, or any text': '\\n = новая строка, \\t = табуляция или любой текст',
+        'and text matches (regex)': 'и текст совпадает (regex)',
+        'and {n} more': 'и ещё {n}',
+        camelCase: 'camelCase',
+        code: 'код',
+        color: 'цвет',
+        file: 'файл',
+        image: 'изображение',
+        'kebab-case': 'kebab-case',
+        link: 'ссылка',
+        lowercase: 'нижний регистр',
+        snake_case: 'snake_case',
+        text: 'текст',
+        '{label}: new item created': '{label}: создан новый элемент',
+        '{n} chars': '{n} симв.',
+        '“Keep formatting” restores every stored format. “Plain text” pastes only the text.':
+            '«Сохранять форматирование» восстанавливает все сохранённые форматы. «Обычный текст» вставляет только чистый текст.',
+        '“Original style” draws each card exactly as it was copied (VS Code colours, backgrounds, fonts). “Plain text” shows only the text.':
+            '«Исходный стиль» отображает каждую карточку точно так, как она была скопирована (цвета, фон и шрифты VS Code). «Обычный текст» показывает только текст.',
+        JSON: 'JSON',
+        '— none —': '— нет —',
+        CUT: 'ВЫРЕЗАТЬ',
+        COPY: 'КОПИРОВАТЬ',
+        'Open folder location': 'Открыть расположение папки',
+        'Open file location': 'Открыть расположение файла',
+        'The source no longer exists': 'Источник больше не существует',
+        'in {name}': 'в {name}',
+        '{n} item(s)': '{n} элем.',
+        'Finishing…': 'Завершение…',
+        'Pasting…': 'Вставка…',
+        '{n} failed': 'ошибок: {n}',
+        'Some items failed': 'Некоторые элементы не удалось перенести',
+        '{failed} of {total} item(s) could not be pasted': 'Не удалось вставить {failed} из {total} элем.',
+        'Because of the errors, no original file was deleted.':
+            'Из-за возникших ошибок ни один исходный файл не был удалён.',
+        '{n} item(s) were copied successfully and stay in the destination folder.':
+            'Успешно скопировано и оставлено в папке назначения: {n} элем.',
+        Close: 'Закрыть',
+        'Drop Basket: group files by folder': 'Корзина файлов: группировать файлы по папкам',
+        'When enabled, files that live in the same folder are shown as one expandable group. When disabled, every file is listed separately.':
+            'Когда включено, файлы из одной папки отображаются как одна раскрывающаяся группа. Когда отключено, каждый файл выводится отдельно.',
+        'Invalid path': 'Недопустимый путь',
+        'The destination is inside the folder being copied': 'Папка назначения находится внутри копируемой папки',
+        'Cannot create the destination folder': 'Не удалось создать папку назначения',
+        'Image data not found': 'Данные изображения не найдены',
+        'Copy failed': 'Ошибка копирования',
+        'The copy could not be re-verified, so the original was left untouched':
+            'Копию не удалось повторно проверить, поэтому исходный файл оставлен без изменений',
+        'Copied successfully, but the original could not be removed':
+            'Успешно скопировано, но удалить исходный файл не удалось',
     },
 };
