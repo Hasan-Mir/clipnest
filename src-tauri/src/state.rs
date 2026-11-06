@@ -42,6 +42,10 @@ pub struct AppState {
     pub self_write_at: AtomicI64,
     /// True while a Drop Basket transfer is running in the background.
     pub transfer_busy: AtomicBool,
+    /// Latest live progress of a running Drop Basket transfer (None when idle).
+    pub transfer_progress: Mutex<Option<crate::queue::TransferProgress>>,
+    /// Most recent finished Drop Basket transfer report waiting to be consumed by the UI.
+    pub transfer_report: Mutex<Option<crate::queue::TransferReport>>,
     /// True once the queue window's webview has rendered (the window is shown only after that).
     pub queue_ready: AtomicBool,
     pub queue_show_pending: AtomicBool,
@@ -69,6 +73,8 @@ impl AppState {
             explorer_target_dir: Mutex::new(None),
             self_write_at: AtomicI64::new(0),
             transfer_busy: AtomicBool::new(false),
+            transfer_progress: Mutex::new(None),
+            transfer_report: Mutex::new(None),
             queue_ready: AtomicBool::new(false),
             queue_show_pending: AtomicBool::new(false),
         }

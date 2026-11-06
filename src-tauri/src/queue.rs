@@ -563,10 +563,11 @@ impl Reporter {
     }
 
     fn emit(&mut self, p: TransferProgress, force: bool) {
-        if !force && self.last.elapsed() < Duration::from_millis(80) {
+        if !force && self.last.elapsed() < Duration::from_millis(60) {
             return;
         }
         self.last = Instant::now();
+        *self.app.state::<AppState>().transfer_progress.lock() = Some(p.clone());
         let _ = self.app.emit("basket-progress", p);
     }
 }
@@ -805,8 +806,28 @@ fn run_transfer_inner(app: &AppHandle, entries: &[BasketEntry], dest_dir: &Path)
 /// Runs a transfer and announces the result (`basket-finished`) to the UI.
 pub fn run_transfer(app: &AppHandle, entries: &[BasketEntry], dest_dir: &Path) -> TransferReport {
     let report = run_transfer_inner(app, entries, dest_dir);
+    {
+        let st = app.state::<AppState>();
+        *st.transfer_progress.lock() = None;
+        *st.transfer_report.lock() = Some(report.clone());
+    }
     let _ = app.emit("basket-finished", report.clone());
     report
+}
+
+/// Returns the current live progress (if a transfer is running) and takes any finished report.
+#[derive(Serialize, Clone, Debug)]
+pub struct TransferStatus {
+    pub busy: bool,
+    pub progress: Option<TransferProgress>,
+    pub report: Option<TransferReport>,
+}
+
+pub fn get_transfer_status(state: &AppState) -> TransferStatus {
+    let busy = state.transfer_busy.load(Ordering::SeqCst);
+    let progress = state.transfer_progress.lock().clone();
+    let report = if busy { None } else { state.transfer_report.lock().take() };
+    TransferStatus { busy, progress, report }
 }
 
 /// Synchronous variant for callers that want a plain result (Explorer context menu, popup paste to folder).
@@ -928,7 +949,9 @@ struct BusyGuard(AppHandle);
 
 impl Drop for BusyGuard {
     fn drop(&mut self) {
-        self.0.state::<AppState>().transfer_busy.store(false, Ordering::SeqCst);
+        let st = self.0.state::<AppState>();
+        *st.transfer_progress.lock() = None;
+        st.transfer_busy.store(false, Ordering::SeqCst);
     }
 }
 
@@ -961,9 +984,23 @@ pub fn basket_paste_to_folder(app: &AppHandle) -> Result<Option<usize>, String> 
         return Err("A transfer is already running".into());
     }
     let total = basket.len();
+    let first_label = basket
+        .first()
+        .and_then(|e| e.path.as_deref())
+        .and_then(|p| Path::new(p).file_name())
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "image".to_string());
+    let init_prog =
+        TransferProgress { done: 0, failed: 0, total, current: first_label, fraction: 0.0, phase: "copy".into() };
+    *st.transfer_report.lock() = None;
+    *st.transfer_progress.lock() = Some(init_prog.clone());
+    let _ = app.emit("basket-progress", init_prog);
+
     let app2 = app.clone();
     std::thread::spawn(move || {
         let _guard = BusyGuard(app2.clone());
+        // Brief yield so the command response reaches the webview before fast transfers finish.
+        std::thread::sleep(Duration::from_millis(35));
         let _ = run_transfer(&app2, &basket, &dest_dir);
     });
     Ok(Some(total))

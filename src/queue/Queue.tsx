@@ -102,6 +102,19 @@ export default function QueueView() {
             .catch(() => {});
     }, []);
 
+    const handleReport = useCallback(
+        (r: TransferReport) => {
+            setTransfer(null);
+            if (r.failed.length > 0) {
+                setReport(r);
+            } else if (r.done > 0) {
+                flash(t('Transferred {n} item(s) to folder', { n: num(r.done) }));
+            }
+            load();
+        },
+        [flash, load]
+    );
+
     useEffect(() => {
         load();
         const subs = [
@@ -109,13 +122,9 @@ export default function QueueView() {
             on('status-changed', load),
             onPayload<TransferProgress>('basket-progress', setTransfer),
             onPayload<TransferReport>('basket-finished', (r) => {
-                setTransfer(null);
-                if (r.failed.length > 0) {
-                    setReport(r);
-                } else if (r.done > 0) {
-                    flash(t('Transferred {n} item(s) to folder', { n: num(r.done) }));
-                }
-                load();
+                // Consume any stored report on the backend so the polling fallback does not show it twice.
+                api.basketTransferStatus().catch(() => {});
+                handleReport(r);
             }),
         ];
         // The window is created hidden; tell the backend once the first frame exists so it can show it
@@ -129,7 +138,7 @@ export default function QueueView() {
         return () => {
             subs.forEach((p) => p.then((u) => u()));
         };
-    }, [load, flash]);
+    }, [load, flash, handleReport]);
 
     const mode = status?.queue_mode ?? 'queue';
     const fifo = s?.queue_fifo ?? true;
@@ -160,16 +169,44 @@ export default function QueueView() {
         }
     };
 
+    // Fallback polling while a transfer is active so the progress bar never gets stuck even if an
+    // event arrives before the invoke resolves or is coalesced by WebView2.
+    useEffect(() => {
+        if (!transfer) {
+            return;
+        }
+        const timer = window.setInterval(() => {
+            api.basketTransferStatus()
+                .then((st) => {
+                    if (st.report) {
+                        handleReport(st.report);
+                    } else if (st.busy && st.progress) {
+                        setTransfer(st.progress);
+                    } else if (!st.busy) {
+                        setTransfer(null);
+                        load();
+                    }
+                })
+                .catch(() => {});
+        }, 120);
+        return () => window.clearInterval(timer);
+    }, [transfer, handleReport, load]);
+
     const onPasteToFolder = async () => {
         try {
-            // Resolves as soon as the folder was picked; progress / result arrive as events.
             const n = await api.basketPasteToFolder();
             if (n !== null && n > 0) {
-                setTransfer(
-                    (prev) => prev ?? { done: 0, failed: 0, total: n, current: '', fraction: 0, phase: 'copy' }
-                );
+                const st = await api.basketTransferStatus();
+                if (st.report) {
+                    handleReport(st.report);
+                } else if (st.busy) {
+                    setTransfer(
+                        st.progress ?? { done: 0, failed: 0, total: n, current: '', fraction: 0, phase: 'copy' }
+                    );
+                }
             }
         } catch (e) {
+            setTransfer(null);
             flash(errText(e));
         }
     };

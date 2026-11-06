@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { VList, VListHandle } from 'virtua';
 import { api, ClipRow, errText, ListResult, on, PasteMode, Pinboard, Status } from '../lib/api';
@@ -468,43 +468,115 @@ export default function Popup() {
     };
 
     // ───────────── smooth card removal animation (compatible with virtua VList) ─────────────
-    // IMPORTANT: only the card itself is faded/scaled — its layout box is never collapsed. virtua caches the
-    // measured size of every row by index, so collapsing a row to 0px made it cache "0" for that index; after
-    // the real removal the neighbouring rows were rendered with stale sizes (two rows vanished, and the list
-    // kept showing already-deleted rows). Fading without touching layout leaves the cache untouched.
+    // IMPORTANT: we never collapse .vlist-item height to 0px (which would poison virtua's index-based
+    // ResizeObserver size cache). Instead, deleted cards fade/scale out while all rendered cards below them
+    // smoothly glide upward via GPU `transform: translateY(-shiftY)` to fill their exact space, followed by a
+    // synchronous optimistic state handoff before paint so there is zero jump.
+    const pendingResetElsRef = useRef<HTMLElement[]>([]);
+
+    useLayoutEffect(() => {
+        if (pendingResetElsRef.current.length > 0) {
+            for (const el of pendingResetElsRef.current) {
+                el.style.transition = 'none';
+                el.style.transform = '';
+                el.style.opacity = '';
+                el.style.pointerEvents = '';
+                el.style.willChange = '';
+                void el.offsetHeight;
+                el.style.transition = '';
+            }
+            pendingResetElsRef.current = [];
+        }
+    }, [res.items]);
+
     const animateAndRemoveCards = useCallback(async (ids: number[], performRemove: () => Promise<void>) => {
         const canAnimate = (settingsRef.current?.animations ?? true) && (settingsRef.current?.delete_animation ?? true);
-        const cards: HTMLElement[] = [];
+        const idSet = new Set(ids);
+        const touched: HTMLElement[] = [];
+
         if (canAnimate && ids.length > 0 && ids.length <= 12) {
-            for (const id of ids) {
-                const cardEl = document.getElementById(`card-${id}`);
-                if (cardEl) {
-                    cards.push(cardEl);
+            const listEl = listRef.current;
+            const rendered = listEl
+                ? Array.from(listEl.querySelectorAll<HTMLElement>('.card'))
+                : ids.map((id) => document.getElementById(`card-${id}`)).filter((el): el is HTMLElement => el !== null);
+
+            const entries = rendered.map((el) => ({
+                el,
+                id: Number(el.dataset.cardId),
+                rect: el.getBoundingClientRect(),
+            }));
+
+            if (entries.some((e) => idSet.has(e.id))) {
+                const strides = entries.map((e, idx) => {
+                    if (idx + 1 < entries.length) {
+                        const d = entries[idx + 1].rect.top - e.rect.top;
+                        if (d > 0) {
+                            return d;
+                        }
+                    }
+                    const p = e.el.parentElement;
+                    return p && p.classList.contains('vlist-item') ? p.offsetHeight : e.rect.height + 6;
+                });
+
+                const moves: { el: HTMLElement; removed: boolean; shiftY: number }[] = [];
+                let accShift = 0;
+                for (let i = 0; i < entries.length; i++) {
+                    const e = entries[i];
+                    if (idSet.has(e.id)) {
+                        accShift += strides[i];
+                        moves.push({ el: e.el, removed: true, shiftY: 0 });
+                    } else if (accShift > 0) {
+                        moves.push({ el: e.el, removed: false, shiftY: accShift });
+                    }
                 }
-            }
-            if (cards.length > 0) {
-                for (const card of cards) {
-                    card.style.transition = 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1), opacity 160ms ease';
-                    card.style.pointerEvents = 'none';
+
+                for (const m of moves) {
+                    touched.push(m.el);
+                    m.el.style.pointerEvents = 'none';
+                    m.el.style.willChange = 'transform, opacity';
+                    m.el.style.transition = m.removed
+                        ? 'transform 210ms cubic-bezier(0.22, 1, 0.36, 1), opacity 175ms ease'
+                        : 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)';
                 }
-                void cards[0].offsetHeight;
-                for (const card of cards) {
-                    card.style.opacity = '0';
-                    card.style.transform = 'scale(0.95)';
+                void entries[0].el.offsetHeight;
+                for (const m of moves) {
+                    if (m.removed) {
+                        m.el.style.opacity = '0';
+                        m.el.style.transform = 'scale(0.95)';
+                    } else {
+                        m.el.style.transform = `translateY(${-m.shiftY}px)`;
+                    }
                 }
-                await new Promise<void>((r) => window.setTimeout(r, 185));
+                await new Promise<void>((r) => window.setTimeout(r, 220));
             }
         }
+
+        pendingResetElsRef.current = touched;
+        setRes((prev) => {
+            const nextItems = prev.items.filter((x) => !idSet.has(x.id));
+            if (nextItems.length === prev.items.length) {
+                return prev;
+            }
+            const removedCount = prev.items.length - nextItems.length;
+            return {
+                ...prev,
+                items: nextItems,
+                total: Math.max(0, prev.total - removedCount),
+            };
+        });
+        setSel((s) => Math.max(0, s));
+
         try {
             await performRemove();
         } catch (e) {
-            // Removal failed: restore the cards (they stay in the list).
-            for (const card of cards) {
-                card.style.transition = '';
-                card.style.opacity = '';
-                card.style.transform = '';
-                card.style.pointerEvents = '';
+            for (const el of touched) {
+                el.style.transition = '';
+                el.style.transform = '';
+                el.style.opacity = '';
+                el.style.pointerEvents = '';
+                el.style.willChange = '';
             }
+            reloadRef.current();
             throw e;
         }
     }, []);

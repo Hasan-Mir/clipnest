@@ -492,6 +492,11 @@ pub async fn basket_get(state: State<'_, AppState>) -> Res<Vec<crate::queue::Bas
 }
 
 #[tauri::command]
+pub async fn basket_transfer_status(state: State<'_, AppState>) -> Res<crate::queue::TransferStatus> {
+    Ok(crate::queue::get_transfer_status(&state))
+}
+
+#[tauri::command]
 pub async fn basket_remove_keys(app: AppHandle, keys: Vec<String>) -> Res<()> {
     crate::queue::remove_keys(&app, &keys);
     Ok(())

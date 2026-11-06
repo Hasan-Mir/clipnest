@@ -1930,11 +1930,14 @@ textarea.editor {
 /* ───────── queue & drop basket window ───────── */
 .queue {
     position: relative;
+    width: 100%;
     height: 100vh;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     background: var(--bg);
     border: 1px solid var(--border);
+    overflow: hidden;
 }
 
 .seg-switch {
@@ -1973,8 +1976,10 @@ textarea.editor {
 }
 
 .qlist {
-    flex: 1;
+    flex: 1 1 0%;
+    min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 4px 8px 8px;
     display: flex;
     flex-direction: column;
@@ -1982,6 +1987,7 @@ textarea.editor {
 }
 
 .qrow {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -2037,6 +2043,7 @@ textarea.editor {
 }
 
 .qfoot {
+    flex-shrink: 0;
     display: flex;
     gap: 6px;
     padding: 6px 8px;
@@ -2052,6 +2059,7 @@ textarea.editor {
 
 /* ───────── Drop Basket rows, groups, progress and error dialog ───────── */
 .brow {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -2140,17 +2148,17 @@ textarea.editor {
 }
 
 .bgroup {
+    flex-shrink: 0;
     display: flex;
     flex-direction: column;
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 8px;
-    overflow: hidden;
 }
 
 .bgroup > .bghead {
     border: 0;
-    border-radius: 0;
+    border-radius: 7px;
     background: transparent;
     cursor: pointer;
 }
@@ -2160,6 +2168,7 @@ textarea.editor {
 }
 
 .bgroup.open > .bghead {
+    border-radius: 7px 7px 0 0;
     border-bottom: 1px solid var(--border);
 }
 
@@ -2206,6 +2215,7 @@ textarea.editor {
 }
 
 .bprog {
+    flex-shrink: 0;
     padding: 8px 10px 6px;
     border-top: 1px solid var(--border);
     background: var(--bg);

@@ -142,6 +142,12 @@ export interface TransferReport {
     dest: string;
 }
 
+export interface TransferStatus {
+    busy: boolean;
+    progress: TransferProgress | null;
+    report: TransferReport | null;
+}
+
 export interface ShortcutConflict {
     status: 'ok' | 'conflict_app' | 'conflict_os' | 'hook_override' | 'invalid';
     message: string;
@@ -267,6 +273,7 @@ export const api = {
     queueSetFifo: (fifo: boolean) => invoke<void>('queue_set_fifo', { fifo }),
     basketToggleCut: (id: number) => invoke<void>('basket_toggle_cut', { id }),
     basketGet: () => invoke<BasketRow[]>('basket_get'),
+    basketTransferStatus: () => invoke<TransferStatus>('basket_transfer_status'),
     basketRemoveKeys: (keys: string[]) => invoke<void>('basket_remove_keys', { keys }),
     basketSetCut: (keys: string[], cut: boolean) => invoke<void>('basket_set_cut', { keys, cut }),
     basketFileIcon: (path: string) => invoke<string | null>('basket_file_icon', { path }),

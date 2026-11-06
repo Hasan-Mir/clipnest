@@ -524,6 +524,7 @@ pub fn run() {
             commands::queue_set_fifo,
             commands::basket_toggle_cut,
             commands::basket_get,
+            commands::basket_transfer_status,
             commands::basket_remove_keys,
             commands::basket_set_cut,
             commands::basket_file_icon,
