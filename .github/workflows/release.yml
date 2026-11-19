@@ -50,7 +50,7 @@ jobs:
       - name: Typecheck TypeScript workspaces
         run: npm run typecheck
 
-      - name: Run Frontend & CLI unit tests
+      - name: Run Frontend unit tests (Vitest)
         run: npm test
 
       - name: Run Rust core unit tests
@@ -66,6 +66,9 @@ jobs:
           Copy-Item "src-tauri/target/release/clipnest-cli.exe" "packages/cli/bin/clipnest-cli.exe" -Force
           npm run build:cli
         shell: pwsh
+
+      - name: Run CLI unit tests
+        run: npm test --workspace @seymi/clipnest-cli
 
       - name: Extract release notes from CHANGELOG.md
         id: changelog
@@ -128,9 +131,9 @@ jobs:
           bun run scripts/build-portable.ts
           $zip = Get-ChildItem "src-tauri/target/release/bundle/*-portable.zip" | Select-Object -First 1
           if ($null -ne $zip) {
-            gh release upload -- $env:RELEASE_TAG $zip.FullName --clobber
+            gh release upload --clobber -- $env:RELEASE_TAG $zip.FullName
           }
           if (Test-Path "src-tauri/target/release/clipnest-cli.exe") {
             Copy-Item "src-tauri/target/release/clipnest-cli.exe" "src-tauri/target/release/clipnest-cli-win32-x64.exe" -Force
-            gh release upload -- $env:RELEASE_TAG "src-tauri/target/release/clipnest-cli-win32-x64.exe" --clobber
+            gh release upload --clobber -- $env:RELEASE_TAG "src-tauri/target/release/clipnest-cli-win32-x64.exe"
           }

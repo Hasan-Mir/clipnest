@@ -10,11 +10,11 @@
   IfErrors _clipnest_skip_shim
     FileWrite $0 "@echo off$\r$\n"
     FileWrite $0 "setlocal$\r$\n"
-    FileWrite $0 "if exist $\"%~dp0clipnest-cli.exe$\" ($\r$\n"
-    FileWrite $0 "  $\"%~dp0clipnest-cli.exe$\" %*$\r$\n"
-    FileWrite $0 "  exit /b %ERRORLEVEL%$\r$\n"
-    FileWrite $0 ")$\r$\n"
+    FileWrite $0 "if exist $\"%~dp0clipnest-cli.exe$\" goto :run_cli$\r$\n"
     FileWrite $0 "$\"%~dp0ClipNest.exe$\" %*$\r$\n"
+    FileWrite $0 "exit /b %ERRORLEVEL%$\r$\n"
+    FileWrite $0 ":run_cli$\r$\n"
+    FileWrite $0 "$\"%~dp0clipnest-cli.exe$\" %*$\r$\n"
     FileWrite $0 "exit /b %ERRORLEVEL%$\r$\n"
     FileClose $0
   _clipnest_skip_shim:

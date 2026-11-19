@@ -79,8 +79,15 @@ export function loadNativeCore(): NativeCoreBinding | null {
         const req = createRequire(import.meta.url);
         for (const p of candidates) {
             if (fs.existsSync(p)) {
-                cachedBinding = req(p) as NativeCoreBinding;
-                return cachedBinding;
+                const mod = req(p) as Partial<NativeCoreBinding> | null;
+                if (
+                    mod &&
+                    typeof mod.dispatchOfflineJson === 'function' &&
+                    typeof mod.applyTransformNative === 'function'
+                ) {
+                    cachedBinding = mod as NativeCoreBinding;
+                    return cachedBinding;
+                }
             }
         }
     } catch {
@@ -469,6 +476,18 @@ export async function callIpc(
     try {
         ep = JSON.parse(fs.readFileSync(epFile, 'utf8')) as IpcEndpoint;
     } catch {
+        return null;
+    }
+    if (
+        !ep ||
+        typeof ep !== 'object' ||
+        typeof ep.protocol !== 'number' ||
+        typeof ep.version !== 'string' ||
+        typeof ep.token !== 'string' ||
+        !Number.isInteger(ep.port) ||
+        ep.port < 1 ||
+        ep.port > 65535
+    ) {
         return null;
     }
 

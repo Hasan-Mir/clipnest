@@ -5,4 +5,5 @@ param(
 )
 
 $scriptPath = Join-Path $PSScriptRoot "bundle-context.ts"
-& bun.cmd run $scriptPath @ScriptArgs
+& bun run $scriptPath @ScriptArgs
+exit $LASTEXITCODE

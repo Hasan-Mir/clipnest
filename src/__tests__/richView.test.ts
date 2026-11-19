@@ -64,4 +64,32 @@ describe('sanitizeHtml security & mXSS defense', () => {
         expect(out).toContain('Hello');
         expect(out).toContain('data:image/png;base64,iVBORw0KGgo=');
     });
+
+    it('strips backslash-synthesized escapes and line-continued SVG data URLs in CSS', () => {
+        const payload1 = '<div style="background:\\5c 75 rl(https://evil.example/p.png)">hi</div>';
+        const out1 = sanitizeHtml(payload1);
+        expect(out1).not.toContain('\\5c 75 rl');
+        expect(out1).not.toContain('\\75 rl');
+        expect(out1).toContain('\uFFFD75 rl');
+
+        const payload2 = '<div style="background:\\\\u\\\\r\\\\l(https://evil.example/p.png)">hi</div>';
+        const out2 = sanitizeHtml(payload2);
+        expect(out2).not.toContain('\\u\\r\\l');
+        expect(out2).toContain('\uFFFDu\uFFFDr\uFFFDl');
+
+        const payload3 = '<style>@\\5c 69 mport "https://evil.example/a.css";</style>';
+        const out3 = sanitizeHtml(payload3);
+        expect(out3).not.toContain('@\\5c 69 mport');
+        expect(out3).not.toContain('@\\69 mport');
+
+        const payload4 = '<div style="background:\\5c 69 mage-set(\'https://evil.example/a.png\' 1x)">hi</div>';
+        const out4 = sanitizeHtml(payload4);
+        expect(out4).not.toContain('\\5c 69 mage-set');
+        expect(out4).not.toContain('\\69 mage-set');
+
+        const payload5 = '<div style="background:url(\'data:image/svg+\\\nxml;base64,PHN2Zy8+\')">hi</div>';
+        const out5 = sanitizeHtml(payload5);
+        expect(out5).not.toContain('PHN2Zy8+');
+        expect(out5).toContain('none');
+    });
 });

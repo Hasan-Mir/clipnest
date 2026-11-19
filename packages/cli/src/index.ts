@@ -1824,11 +1824,17 @@ function renderHuman(io: CliIo, op: string, data: Record<string, unknown>, outFi
     return EXIT_OK;
 }
 
-const isDirectExecution =
-    process.argv[1] &&
-    (path.basename(process.argv[1]).startsWith('clipnest') ||
-        path.basename(process.argv[1]).startsWith('clipn') ||
-        path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url)));
+function resolveRealPath(target: string): string {
+    try {
+        return fs.realpathSync(target);
+    } catch {
+        return path.resolve(target);
+    }
+}
+
+const isDirectExecution = Boolean(
+    process.argv[1] && resolveRealPath(process.argv[1]) === resolveRealPath(fileURLToPath(import.meta.url))
+);
 
 if (isDirectExecution && !process.env.VITEST) {
     runCli(process.argv.slice(2))

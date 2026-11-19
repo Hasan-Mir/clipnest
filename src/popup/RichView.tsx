@@ -59,24 +59,30 @@ const REMOVE =
     'script,iframe,frame,frameset,object,embed,applet,link,meta,base,form,input,button,textarea,select,noscript,audio,video,source,track,portal,template,svg,math,foreignobject,title,desc,annotation-xml,xmp,noembed,noframes,plaintext';
 
 function cleanCss(css: string): string {
-    // Decode CSS backslash escapes safely (CSS Syntax Level 3 §4.3.7):
+    // Strip CSS string line continuations (`\<newline>`, CSS Syntax Level 3 §4.3.4) and decode
+    // CSS backslash escapes in a single pass (§4.3.7):
     // - Out-of-range (> 0x10FFFF), zero, or surrogate code points map to U+FFFD without throwing.
+    // - Escaped backslashes (`\5c` or `\\`) map to U+FFFD so re-serializing into CSS cannot
+    //   synthesize a new escape sequence (e.g. `\5c 75 rl(` -> `\75 rl(` or `\\u\\r\\l(` -> `\u\r\l(`).
     // - Non-hex escapes (e.g. \u\r\l) unescape to their literal characters.
     const unescaped = css
-        .replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, hex: string) => {
-            const cp = parseInt(hex, 16);
-            if (!Number.isFinite(cp) || cp <= 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) {
-                return '\uFFFD';
+        .replace(/\\(?:\r\n|[\r\n\f])/g, '')
+        .replace(/\\(?:([0-9a-fA-F]{1,6})[ \t\r\n\f]?|([^\r\n\f]))/g, (_, hex?: string, ch?: string) => {
+            if (hex !== undefined) {
+                const cp = parseInt(hex, 16);
+                if (!Number.isFinite(cp) || cp <= 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) || cp === 0x5c) {
+                    return '\uFFFD';
+                }
+                return String.fromCodePoint(cp);
             }
-            return String.fromCodePoint(cp);
-        })
-        .replace(/\\([^\r\n\f0-9a-fA-F])/g, '$1');
+            return ch === '\\' ? '\uFFFD' : (ch ?? '');
+        });
 
     return unescaped
         .replace(/@import[^;]*;?/gi, '')
         .replace(/expression\s*\([^)]*\)/gi, 'none')
         .replace(/image-set\s*\([^)]*\)/gi, 'none')
-        .replace(/url\(\s*(?!['"]?\s*data:image\/(?!svg\+xml))[^)]*\)/gi, 'none') // no remote loads (privacy/tracking)
+        .replace(/url\(\s*(?!['"]?\s*data:image\/(?:png|jpe?g|gif|webp|bmp|ico);)[^)]*\)/gi, 'none') // allowlist raster data URLs only
         .replace(/</g, '\\3c ');
 }
 

@@ -303,7 +303,10 @@ pub fn list_scoped(conn: &Connection, a: &ListArgs, independent_pinning: bool) -
 
         let total: usize =
             conn.query_row("SELECT COUNT(*) FROM clips", [], |r| r.get::<_, i64>(0)).unwrap_or(0) as usize;
-        let sql = format!("SELECT {ROW_COLS} FROM clips ORDER BY pinned DESC, sort_ts DESC LIMIT {}", a.limit.max(1));
+        let sql = format!(
+            "SELECT {ROW_COLS} FROM clips ORDER BY pinned DESC, sort_ts DESC, id DESC LIMIT {}",
+            a.limit.max(1)
+        );
         let mut items = vec![];
         if let Ok(mut st) = conn.prepare(&sql) {
             if let Ok(rows) = st.query_map([], row_from) {

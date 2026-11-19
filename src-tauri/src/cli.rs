@@ -108,6 +108,9 @@ fn read_ipc_line(stream: &TcpStream, max_bytes: usize, deadline: Instant) -> Res
             Ok(0) => break,
             Ok(n) => {
                 if let Some(nl) = chunk[..n].iter().position(|&b| b == b'\n') {
+                    if buf.len().saturating_add(nl) > max_bytes {
+                        return Err(format!("IPC request exceeds maximum frame size ({max_bytes} bytes)"));
+                    }
                     buf.extend_from_slice(&chunk[..nl]);
                     break;
                 }
@@ -293,14 +296,10 @@ fn dispatch_online(app: &AppHandle, op: &str, p: &Value) -> IpcResponse {
                 Ok(b) => b,
                 Err(e) => return IpcResponse::fail(EXIT_NOT_FOUND, e, None),
             };
+            let post_filtered = kind_filter.is_some() || pinned_only;
             let res = search::list_scoped(
                 &conn,
-                &ListArgs {
-                    pinboard,
-                    query,
-                    mode,
-                    limit: if kind_filter.is_some() || pinned_only { limit.saturating_mul(4).max(200) } else { limit },
-                },
+                &ListArgs { pinboard, query, mode, limit: if post_filtered { i32::MAX as usize } else { limit } },
                 indep,
             );
             if let Some(err) = res.error {
@@ -313,10 +312,11 @@ fn dispatch_online(app: &AppHandle, op: &str, p: &Value) -> IpcResponse {
             if pinned_only {
                 items.retain(|it| it.pinned);
             }
+            let total = if post_filtered { items.len() } else { res.total };
             items.truncate(limit);
             IpcResponse::success(json!({
                 "items": items,
-                "total": res.total,
+                "total": total,
                 "shown": items.len(),
                 "pinboard": pinboard
             }))
@@ -593,8 +593,10 @@ fn dispatch_online(app: &AppHandle, op: &str, p: &Value) -> IpcResponse {
                     Err(e) => return IpcResponse::fail(EXIT_NOT_FOUND, e, None),
                 }
             }
-            if let Some(target_spec) = p.get("before").or_else(|| p.get("after")).filter(|v| !v.is_null()) {
-                let after = p.get("after").filter(|v| !v.is_null()).is_some();
+            let before_spec = p.get("before").filter(|v| !v.is_null());
+            let after_spec = p.get("after").filter(|v| !v.is_null());
+            if let Some(target_spec) = before_spec.or(after_spec) {
+                let after = before_spec.is_none() && after_spec.is_some();
                 let target_id = match resolve_item_id(&conn, target_spec) {
                     Ok(i) => i,
                     Err(e) => return IpcResponse::fail(EXIT_NOT_FOUND, e, None),
@@ -1425,5 +1427,30 @@ fn dispatch_online(app: &AppHandle, op: &str, p: &Value) -> IpcResponse {
         }
 
         other => IpcResponse::fail(EXIT_USAGE, format!("Unknown operation '{other}'"), None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::net::TcpListener;
+
+    #[test]
+    fn read_ipc_line_enforces_max_bytes_on_newline_chunk() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        std::thread::spawn(move || {
+            if let Ok((mut client, _)) = listener.accept() {
+                let _ = client.write_all(b"0123456789abcdef\n");
+            }
+        });
+
+        let stream = TcpStream::connect(addr).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let res = read_ipc_line(&stream, 10, deadline);
+        assert!(res.is_err(), "Must reject input exceeding max_bytes on newline chunk");
+        assert!(res.unwrap_err().contains("exceeds maximum frame size"));
     }
 }

@@ -514,6 +514,7 @@ export default function SettingsView() {
     const [menu, setMenu] = useState<{ x: number; y: number; entries: MenuEntry[] } | null>(null);
     const [prompt, setPrompt] = useState<PromptState | null>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
+    const toastTimer = useRef<number | undefined>(undefined);
 
     useEffect(() => {
         api.recentApps()
@@ -537,6 +538,7 @@ export default function SettingsView() {
         };
         window.addEventListener('clipnest-focus-search', onFocusSearch);
         return () => {
+            window.clearTimeout(toastTimer.current);
             window.removeEventListener('clipnest-focus-search', onFocusSearch);
         };
     }, []);
@@ -554,7 +556,8 @@ export default function SettingsView() {
     const set = <K extends keyof Settings>(k: K, v: Settings[K]) => save({ ...s, [k]: v });
     const flash = (x: string) => {
         setMsg(x);
-        window.setTimeout(() => setMsg(''), 4000);
+        window.clearTimeout(toastTimer.current);
+        toastTimer.current = window.setTimeout(() => setMsg(''), 4000);
     };
     const run = async (f: () => Promise<string | null | undefined>) => {
         try {

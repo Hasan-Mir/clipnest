@@ -39,11 +39,11 @@ if (cliExe) {
 const cmdShim = [
     '@echo off',
     'setlocal',
-    'if exist "%~dp0clipnest-cli.exe" (',
-    '  "%~dp0clipnest-cli.exe" %*',
-    '  exit /b %ERRORLEVEL%',
-    ')',
+    'if exist "%~dp0clipnest-cli.exe" goto :run_cli',
     '"%~dp0ClipNest.exe" %*',
+    'exit /b %ERRORLEVEL%',
+    ':run_cli',
+    '"%~dp0clipnest-cli.exe" %*',
     'exit /b %ERRORLEVEL%',
     '',
 ].join('\r\n');

@@ -196,7 +196,7 @@ pub fn resolve_item_id(conn: &Connection, spec: &Value) -> Result<i64, String> {
         let t = s.trim();
         if t.eq_ignore_ascii_case("latest") || t.eq_ignore_ascii_case("last") || t == "@0" || t == "0" {
             let latest: Option<i64> = conn
-                .query_row("SELECT id FROM clips ORDER BY pinned DESC, sort_ts DESC LIMIT 1", [], |r| r.get(0))
+                .query_row("SELECT id FROM clips ORDER BY pinned DESC, sort_ts DESC, id DESC LIMIT 1", [], |r| r.get(0))
                 .ok();
             return latest.ok_or_else(|| "history is empty".to_string());
         }
@@ -207,7 +207,7 @@ pub fn resolve_item_id(conn: &Connection, spec: &Value) -> Result<i64, String> {
                 }
                 let id: Option<i64> = conn
                     .query_row(
-                        "SELECT id FROM clips ORDER BY pinned DESC, sort_ts DESC LIMIT 1 OFFSET ?1",
+                        "SELECT id FROM clips ORDER BY pinned DESC, sort_ts DESC, id DESC LIMIT 1 OFFSET ?1",
                         params![offset],
                         |r| r.get(0),
                     )
@@ -254,12 +254,19 @@ pub fn add_item_shared(
 
     let explicit_board = if board_spec.is_null() { None } else { resolve_board_id(conn, board_spec)? };
     let (id, is_new) = db::insert_clip(conn, &clip, &fmts)?;
-    let target_board = explicit_board.or(outcome.board).or(if is_new { settings.active_pinboard } else { None });
-    if let Some(b) = target_board {
+    let assigned_board = if let Some(b) = explicit_board {
         db::assign_category(conn, &[id], Some(b), None, false)?;
-    }
+        Some(b)
+    } else if let Some(b) = outcome.board.or(if is_new { settings.active_pinboard } else { None }) {
+        match db::assign_category(conn, &[id], Some(b), None, false) {
+            Ok(()) => Some(b),
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
     if pinned {
-        db::set_pinned_scoped(conn, &[id], true, target_board, false)?;
+        db::set_pinned_scoped(conn, &[id], true, assigned_board, false)?;
     }
     if let Some(t) = title {
         if !t.is_empty() {
@@ -584,14 +591,10 @@ pub fn dispatch_offline(data_dir: &Path, op: &str, p: &Value) -> IpcResponse {
                 Ok(b) => b,
                 Err(e) => return IpcResponse::fail(EXIT_NOT_FOUND, e, None),
             };
+            let post_filtered = kind_filter.is_some() || pinned_only;
             let res = search::list_scoped(
                 &conn,
-                &ListArgs {
-                    pinboard,
-                    query,
-                    mode,
-                    limit: if kind_filter.is_some() || pinned_only { limit.saturating_mul(4).max(200) } else { limit },
-                },
+                &ListArgs { pinboard, query, mode, limit: if post_filtered { i32::MAX as usize } else { limit } },
                 settings.independent_pinning,
             );
             if let Some(err) = res.error {
@@ -604,10 +607,11 @@ pub fn dispatch_offline(data_dir: &Path, op: &str, p: &Value) -> IpcResponse {
             if pinned_only {
                 items.retain(|it| it.pinned);
             }
+            let total = if post_filtered { items.len() } else { res.total };
             items.truncate(limit);
             IpcResponse::success(json!({
                 "items": items,
-                "total": res.total,
+                "total": total,
                 "shown": items.len(),
                 "pinboard": pinboard
             }))
@@ -851,8 +855,10 @@ pub fn dispatch_offline(data_dir: &Path, op: &str, p: &Value) -> IpcResponse {
                     Err(e) => return IpcResponse::fail(EXIT_NOT_FOUND, e, None),
                 }
             }
-            if let Some(target_spec) = p.get("before").or_else(|| p.get("after")).filter(|v| !v.is_null()) {
-                let after = p.get("after").filter(|v| !v.is_null()).is_some();
+            let before_spec = p.get("before").filter(|v| !v.is_null());
+            let after_spec = p.get("after").filter(|v| !v.is_null());
+            if let Some(target_spec) = before_spec.or(after_spec) {
+                let after = before_spec.is_none() && after_spec.is_some();
                 let target_id = match resolve_item_id(&conn, target_spec) {
                     Ok(i) => i,
                     Err(e) => return IpcResponse::fail(EXIT_NOT_FOUND, e, None),
@@ -3256,6 +3262,135 @@ mod tests {
         assert_eq!(sensitive, 1);
         assert!(expires_at.is_some());
         assert!(expires_at.unwrap() > db::now_ms());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn offline_move_after_with_null_before_reorders_without_wiping_category() {
+        let dir = std::env::temp_dir().join(format!("clipnest_move_null_before_{}", db::now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let conn = db::open_with_recovery(&dir).unwrap();
+        let cat_id = db::create_pinboard(&conn, "Work", "#3b82f6").unwrap();
+        drop(conn);
+
+        let r1 = dispatch_offline(&dir, "add", &json!({ "text": "item 1", "board": cat_id }));
+        assert!(r1.ok);
+        let id1 = r1.data["item"]["id"].as_i64().unwrap();
+
+        let r2 = dispatch_offline(&dir, "add", &json!({ "text": "item 2", "board": cat_id }));
+        assert!(r2.ok);
+        let id2 = r2.data["item"]["id"].as_i64().unwrap();
+
+        // Move id2 after id1 with "before": null
+        let r_move = dispatch_offline(
+            &dir,
+            "move",
+            &json!({ "ids": [id2], "to": null, "from": null, "copy": false, "before": null, "after": id1, "board": null }),
+        );
+        assert!(r_move.ok, "move must succeed: {:?}", r_move.error);
+        assert_eq!(r_move.data["reordered"], id2);
+        assert_eq!(r_move.data["after"], true);
+
+        // Verify id2 still belongs to category Work
+        let conn = db::open_with_recovery(&dir).unwrap();
+        let in_cat: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM clip_categories WHERE clip_id=?1 AND board_id=?2",
+                rusqlite::params![id2, cat_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(in_cat, 1, "Category membership must be preserved on reorder");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn add_item_shared_ignores_deleted_auto_rule_board_instead_of_partial_fail() {
+        let dir = std::env::temp_dir().join(format!("clipnest_add_deleted_rule_{}", db::now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut settings = Settings::default();
+        settings.rules.push(crate::models::AutoRule {
+            enabled: true,
+            action: "to_board".into(),
+            board: 9999,
+            ..Default::default()
+        });
+
+        let mut conn = db::open_with_recovery(&dir).unwrap();
+        let res = add_item_shared(
+            &mut conn,
+            &settings,
+            "test content",
+            &Value::Null,
+            true,
+            Some("tag1,tag2"),
+            Some("My Title"),
+        );
+        assert!(res.is_ok(), "add_item_shared must succeed: {:?}", res.err());
+        let (item, _is_new) = res.unwrap();
+        assert_eq!(item.title.as_deref(), Some("My Title"));
+        assert!(item.pinned);
+        assert!(item.tags.contains("tag1") && item.tags.contains("tag2"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn offline_list_kind_filter_finds_items_beyond_200_and_reports_filtered_total() {
+        let dir = std::env::temp_dir().join(format!("clipnest_kind_limit_{}", db::now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut conn = db::open_with_recovery(&dir).unwrap();
+
+        // Insert 1 link clip first (oldest)
+        let link_clip = crate::codec::build_text_clip("https://example.com", None, "Browser", "browser.exe", false);
+        let link_id =
+            db::insert_clip(&mut conn, &link_clip, &[crate::codec::text_format("https://example.com")]).unwrap().0;
+
+        // Insert 205 text clips
+        for i in 0..205 {
+            let clip = crate::codec::build_text_clip(&format!("plain text {i}"), None, "App", "app.exe", false);
+            db::insert_clip(&mut conn, &clip, &[crate::codec::text_format(&format!("plain text {i}"))]).unwrap();
+        }
+        drop(conn);
+
+        let r_list = dispatch_offline(&dir, "list", &json!({ "kind": "link", "limit": 30 }));
+        assert!(r_list.ok);
+        assert_eq!(r_list.data["total"], 1, "Total must report matching filtered items count");
+        let items = r_list.data["items"].as_array().unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["id"], link_id);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn same_timestamp_clips_order_newest_id_first_in_list_and_resolve_latest() {
+        let dir = std::env::temp_dir().join(format!("clipnest_same_ts_{}", db::now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut conn = db::open_with_recovery(&dir).unwrap();
+
+        let c1 = crate::codec::build_text_clip("clip 1", None, "App", "app.exe", false);
+        let id1 = db::insert_clip(&mut conn, &c1, &[crate::codec::text_format("clip 1")]).unwrap().0;
+
+        let c2 = crate::codec::build_text_clip("clip 2", None, "App", "app.exe", false);
+        let id2 = db::insert_clip(&mut conn, &c2, &[crate::codec::text_format("clip 2")]).unwrap().0;
+
+        let ts = db::now_ms() as f64;
+        conn.execute("UPDATE clips SET sort_ts=?1 WHERE id IN (?2, ?3)", rusqlite::params![ts, id1, id2]).unwrap();
+
+        let res = search::list_scoped(
+            &conn,
+            &search::ListArgs { pinboard: None, query: String::new(), mode: "smart".into(), limit: 10 },
+            false,
+        );
+        let ids: Vec<i64> = res.items.iter().map(|it| it.id).collect();
+        assert_eq!(ids, vec![id2, id1], "Same-timestamp clips must return newest id first");
+
+        assert_eq!(resolve_item_id(&conn, &json!("@0")).unwrap(), id2);
+        assert_eq!(resolve_item_id(&conn, &json!("latest")).unwrap(), id2);
+        assert_eq!(resolve_item_id(&conn, &json!("@1")).unwrap(), id1);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

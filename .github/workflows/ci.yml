@@ -20,6 +20,9 @@ jobs:
           node-version: 20
           cache: "npm"
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -41,6 +44,11 @@ jobs:
 
       - name: Run Frontend unit tests (Vitest)
         run: npm test
+
+      - name: Build & test CLI workspace
+        run: |
+          npm run build:cli
+          npm test --workspace @seymi/clipnest-cli
 
       - name: Check Rust formatting (rustfmt)
         run: |

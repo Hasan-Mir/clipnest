@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, it, beforeEach, afterEach } from 'node:test';
+import { callIpc } from '@seymi/clipnest-core';
 import {
     CLI_VERSION,
     EXIT_NOT_FOUND,
@@ -292,5 +295,35 @@ describe('@seymi/clipnest-cli end-to-end verification', () => {
         });
         assert.equal(pauseCode, EXIT_OFFLINE);
         assert.match(err, /ClipNest desktop app is not running/);
+    });
+
+    it('does not auto-run runCli when imported by a consumer script', () => {
+        const consumerScript = path.join(tmpDir, 'clipnest-consumer.mjs');
+        const distIndexPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dist/index.js');
+        const distUrl = pathToFileURL(distIndexPath).href;
+        fs.writeFileSync(
+            consumerScript,
+            `import { CLI_VERSION } from ${JSON.stringify(distUrl)};\nconsole.log(CLI_VERSION);\n`,
+            'utf8'
+        );
+        const nodeBin = process.env.NODE || 'node';
+        const out = execFileSync(nodeBin, [consumerScript], { encoding: 'utf8' });
+        assert.equal(out.trim(), CLI_VERSION);
+    });
+
+    it('resolves to null when cli-rpc.json is malformed or invalid', async () => {
+        const malformedPayloads = [
+            'null',
+            '{}',
+            JSON.stringify({ protocol: 1, version: '0.2.0', token: 'secret' }),
+            JSON.stringify({ protocol: 1, version: '0.2.0', token: 'secret', port: 0 }),
+            JSON.stringify({ protocol: 1, version: '0.2.0', token: 'secret', port: 70000 }),
+        ];
+
+        for (const payload of malformedPayloads) {
+            fs.writeFileSync(path.join(tmpDir, 'cli-rpc.json'), payload, 'utf8');
+            const res = await callIpc(tmpDir, 'status', {}, 500);
+            assert.equal(res, null, `expected null for payload: ${payload}`);
+        }
     });
 });

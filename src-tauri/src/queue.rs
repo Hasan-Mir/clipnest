@@ -981,9 +981,7 @@ pub fn collect_file_from_explorer(app: &AppHandle, path_str: &str) -> Result<i64
         let mut q = st.queue.lock();
         q.active = true;
         q.mode = "basket".into();
-        if !q.basket.iter().any(|e| e.id == id && e.path.as_deref() == Some(clean_path.as_str())) {
-            q.basket.push(BasketEntry { id, cut: false, path: Some(clean_path) });
-        }
+        push_basket_paths(&mut q.basket, id, vec![Some(clean_path)], false, false);
     }
     crate::windowing::show_queue(app);
     let _ = app.emit("items-changed", ());

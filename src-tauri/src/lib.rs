@@ -251,13 +251,24 @@ pub fn apply_settings(app: &AppHandle, new: Settings) {
 
 // ───────────────────────────── Explorer CLI dispatch ─────────────────────────────
 
+fn normalize_explorer_path(raw: &str) -> String {
+    let clean = raw.trim_matches('"').trim();
+    // Explorer expands "%V" / "%1" on drive roots as `"C:\"`; CommandLineToArgvW parses `\"` as
+    // a literal quote, leaving `"C:"` after quote-trimming (a drive-relative path on Windows).
+    if clean.len() == 2 && clean.as_bytes()[0].is_ascii_alphabetic() && clean.as_bytes()[1] == b':' {
+        format!("{clean}\\")
+    } else {
+        clean.to_string()
+    }
+}
+
 fn handle_cli_args(app: &AppHandle, args: &[String], is_secondary: bool) {
     let mut i = 0;
     while i < args.len() {
         let arg = args[i].as_str();
         if arg == "--explorer-files" {
             if let Some(dir) = args.get(i + 1) {
-                let clean = dir.trim_matches('"').trim().to_string();
+                let clean = normalize_explorer_path(dir);
                 if !clean.is_empty() {
                     *app.state::<AppState>().explorer_target_dir.lock() = Some(clean.clone());
                     let handle = app.clone();
@@ -271,7 +282,7 @@ fn handle_cli_args(app: &AppHandle, args: &[String], is_secondary: bool) {
             }
         } else if arg == "--paste-basket" {
             if let Some(dir) = args.get(i + 1) {
-                let clean = dir.trim_matches('"').trim().to_string();
+                let clean = normalize_explorer_path(dir);
                 if !clean.is_empty() {
                     let handle = app.clone();
                     std::thread::spawn(move || {
@@ -282,7 +293,7 @@ fn handle_cli_args(app: &AppHandle, args: &[String], is_secondary: bool) {
             }
         } else if arg == "--collect-file" {
             if let Some(file_path) = args.get(i + 1) {
-                let clean = file_path.trim_matches('"').trim().to_string();
+                let clean = normalize_explorer_path(file_path);
                 if !clean.is_empty() {
                     let handle = app.clone();
                     std::thread::spawn(move || {
@@ -496,6 +507,10 @@ pub fn run() {
                         }
                     }
                 }
+                WindowEvent::CloseRequested { api, .. } if label == "popup" => {
+                    api.prevent_close();
+                    windowing::hide_popup(window.app_handle());
+                }
                 WindowEvent::CloseRequested { api, .. } if label == "queue" => {
                     api.prevent_close();
                     queue::close_queue(window.app_handle());
@@ -593,4 +608,17 @@ pub fn run() {
         }
         _ => {}
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_explorer_path_restores_drive_root_backslash() {
+        assert_eq!(normalize_explorer_path(r#"C:""#), r"C:\");
+        assert_eq!(normalize_explorer_path("D:"), r"D:\");
+        assert_eq!(normalize_explorer_path(r#""E:\Projects""#), r"E:\Projects");
+        assert_eq!(normalize_explorer_path("  "), "");
+    }
 }

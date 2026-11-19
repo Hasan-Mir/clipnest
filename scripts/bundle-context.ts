@@ -356,15 +356,16 @@ if (!archiveSuccess) {
     try {
         console.log('[Notice] tar.exe not available or failed, falling back to PowerShell...');
         const psScript = `
-            $manifest = Get-Content "${manifestPath.replace(/\\/g, '\\\\')}"
-            $zipPath = "${zipFileName.replace(/\\/g, '\\\\')}"
+            $manifest = Get-Content -LiteralPath $env:CLIPNEST_MANIFEST_PATH -Encoding UTF8
+            $zipPath = $env:CLIPNEST_ZIP_PATH
+            $rootDir = $env:CLIPNEST_ROOT_DIR
             Add-Type -AssemblyName System.IO.Compression.FileSystem
             $zip = [System.IO.Compression.ZipFile]::Open($zipPath, 'Create')
             try {
                 foreach ($rel in $manifest) {
                     if ([string]::IsNullOrWhiteSpace($rel)) { continue }
-                    $full = [System.IO.Path]::Combine("${ROOT_DIR.replace(/\\/g, '\\\\')}", $rel)
-                    if (Test-Path $full) {
+                    $full = [System.IO.Path]::Combine($rootDir, $rel)
+                    if (Test-Path -LiteralPath $full) {
                         [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $full, $rel, [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
                     }
                 }
@@ -375,6 +376,12 @@ if (!archiveSuccess) {
         execFileSync('powershell.exe', ['-NoProfile', '-Command', psScript], {
             cwd: ROOT_DIR,
             stdio: ['pipe', 'pipe', 'pipe'],
+            env: {
+                ...process.env,
+                CLIPNEST_MANIFEST_PATH: manifestPath,
+                CLIPNEST_ZIP_PATH: zipFileName,
+                CLIPNEST_ROOT_DIR: ROOT_DIR,
+            },
         });
         archiveSuccess = true;
     } catch (e) {
