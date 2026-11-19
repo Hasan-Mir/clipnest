@@ -552,14 +552,14 @@ pub struct TransferReport {
 
 struct Reporter {
     app: AppHandle,
-    total: usize,
+    _total: usize,
     last: Instant,
 }
 
 impl Reporter {
     fn new(app: AppHandle, total: usize) -> Self {
         let last = Instant::now().checked_sub(Duration::from_secs(1)).unwrap_or_else(Instant::now);
-        Reporter { app, total, last }
+        Reporter { app, _total: total, last }
     }
 
     fn emit(&mut self, p: TransferProgress, force: bool) {
@@ -1121,7 +1121,7 @@ mod tests {
     fn transfer_core_continues_on_error_and_never_deletes_cut_originals() {
         let root = temp_test_dir("err_safe");
         let src_dir = root.join("src");
-        let dst_dir = root.join("dst");
+        let _dst_dir = root.join("dst");
         std::fs::create_dir_all(&src_dir).unwrap();
 
         let cut_file = src_dir.join("important.txt");

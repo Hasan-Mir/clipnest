@@ -32,12 +32,13 @@ pub fn spawn_ipc_server(app: AppHandle) {
             Err(_) => return,
         };
         let pid = std::process::id();
-        let mut hasher = blake3::Hasher::new();
-        hasher.update(b"clipnest-ipc-token-v1:");
-        hasher.update(&db::now_ms().to_le_bytes());
-        hasher.update(&pid.to_le_bytes());
-        hasher.update(&port.to_le_bytes());
-        let token = hasher.finalize().to_hex().to_string();
+        let token = match win::random_bytes(32) {
+            Ok(bytes) => bytes.iter().map(|b| format!("{b:02x}")).collect::<String>(),
+            Err(e) => {
+                eprintln!("clipnest: could not generate secure IPC token: {e}");
+                return;
+            }
+        };
 
         let ep = IpcEndpoint {
             protocol: PROTOCOL_VERSION,
@@ -800,14 +801,27 @@ fn dispatch_online(app: &AppHandle, op: &str, p: &Value) -> IpcResponse {
             let sub = p.get("sub").and_then(|v| v.as_str()).unwrap_or("list");
             match sub {
                 "status" | "list" => {
-                    if is_basket && state.queue.lock().mode != "basket" {
-                        crate::queue::set_mode(app, "basket");
-                    }
-                    let (active, mode) = {
+                    let (active, mode, ids, basket) = {
                         let q = state.queue.lock();
-                        (q.active, q.mode.clone())
+                        (q.active, q.mode.clone(), q.items.clone(), q.basket.clone())
                     };
-                    let items = crate::queue::get_items(&state);
+                    let items = {
+                        let conn = state.db.lock();
+                        if is_basket {
+                            let mut out = Vec::new();
+                            for e in &basket {
+                                if !out.iter().any(|r: &db::ClipRow| r.id == e.id) {
+                                    if let Some(mut row) = db::get_row(&conn, e.id) {
+                                        row.cut = e.cut;
+                                        out.push(row);
+                                    }
+                                }
+                            }
+                            out
+                        } else {
+                            db::get_rows(&conn, &ids)
+                        }
+                    };
                     IpcResponse::success(json!({
                         "active": active,
                         "mode": mode,

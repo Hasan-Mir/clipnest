@@ -194,13 +194,19 @@ pub async fn update_item_text(app: AppHandle, state: State<'_, AppState>, id: i6
             return Err("only text items can be edited".into());
         }
         let nc = build_text_clip(&text, existing_row.lang.clone(), "", "", false);
-        let sens = state.settings.read().detect_sensitive
-            && matches!(nc.kind.as_str(), "text" | "code")
-            && crate::classify::is_sensitive(&text);
+        let s = state.settings.read().clone();
+        let sens =
+            s.detect_sensitive && matches!(nc.kind.as_str(), "text" | "code") && crate::classify::is_sensitive(&text);
+        let now = db::now_ms();
+        let next_expiry: Option<i64> = if sens && s.sensitive_action == "mask_delete" {
+            Some(now + (s.sensitive_ttl_min.max(1) as i64) * 60_000)
+        } else {
+            None
+        };
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         tx.execute(
-            "UPDATE clips SET hash=?1,kind=?2,plain=?3,preview=?4,search=?5,lang=?6,color=?7,chars=?8,has_rich=0,sensitive=?11,expires_at=CASE WHEN ?11=1 THEN expires_at ELSE NULL END,ts=?9,sort_ts=?9 WHERE id=?10",
-            rusqlite::params![nc.hash, nc.kind, nc.plain, nc.preview, nc.search, nc.lang, nc.color, nc.chars, db::now_ms(), id, sens as i64],
+            "UPDATE clips SET hash=?1,kind=?2,plain=?3,preview=?4,search=?5,lang=?6,color=?7,chars=?8,has_rich=0,sensitive=?11,expires_at=CASE WHEN ?11=1 THEN COALESCE(expires_at, ?12) ELSE NULL END,ts=?9,sort_ts=?9 WHERE id=?10",
+            rusqlite::params![nc.hash, nc.kind, nc.plain, nc.preview, nc.search, nc.lang, nc.color, nc.chars, now, id, sens as i64, next_expiry],
         )
         .map_err(|e| {
             if e.to_string().contains("UNIQUE") {
@@ -616,7 +622,7 @@ pub async fn erase_history(
 ) -> Res<usize> {
     let inc = include_pinned.unwrap_or(false);
     let all_boards = all_pinboards.unwrap_or(false);
-    let target_board = if all_boards { None } else { pinboard.or_else(|| state.settings.read().active_pinboard) };
+    let target_board = if all_boards { None } else { pinboard };
     let deleted = db::erase_history(&state.db.lock(), inc, target_board, all_boards)?;
     {
         let mut q = state.queue.lock();

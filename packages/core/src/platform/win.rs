@@ -1349,6 +1349,23 @@ pub fn start_hotkey_hook(tx: Sender<u32>) {
     });
 }
 
+#[link(name = "bcrypt")]
+extern "system" {
+    fn BCryptGenRandom(h_algorithm: *mut c_void, pb_buffer: *mut u8, cb_buffer: u32, dw_flags: u32) -> i32;
+}
+
+/// Generates `len` cryptographically secure random bytes using Windows CNG (`BCryptGenRandom`).
+pub fn random_bytes(len: usize) -> Result<Vec<u8>, String> {
+    const BCRYPT_USE_SYSTEM_PREFERRED_RNG: u32 = 0x0000_0002;
+    let mut buf = vec![0u8; len];
+    let status =
+        unsafe { BCryptGenRandom(std::ptr::null_mut(), buf.as_mut_ptr(), len as u32, BCRYPT_USE_SYSTEM_PREFERRED_RNG) };
+    if status != 0 {
+        return Err(format!("BCryptGenRandom failed: NTSTATUS 0x{:08X}", status as u32));
+    }
+    Ok(buf)
+}
+
 // ───────────────────────────── CLI User PATH & Console Helpers ─────────────────────────────
 
 const KEY_READ_WRITE_ACCESS: u32 = 0x2001F;
@@ -1495,4 +1512,17 @@ pub fn sync_user_path(dir: &str, enable: bool) -> Result<bool, String> {
         );
     }
     Ok(true)
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn random_bytes_returns_non_repeating_entropy() {
+        let a = random_bytes(32).expect("BCryptGenRandom");
+        let b = random_bytes(32).expect("BCryptGenRandom");
+        assert_eq!(a.len(), 32);
+        assert_ne!(a, b);
+    }
 }

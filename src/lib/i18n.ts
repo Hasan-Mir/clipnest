@@ -11,12 +11,14 @@ const listeners = new Set<() => void>();
 /** Switches the UI language (and the text direction of the whole window). */
 export function setLang(l: Lang) {
     const def = LOCALE_MAP[l] ?? LOCALE_MAP.en;
-    if (def.code === current && document.documentElement.dir === def.dir) {
+    if (def.code === current && (typeof document === 'undefined' || document.documentElement.dir === def.dir)) {
         return;
     }
     current = def.code;
-    document.documentElement.lang = def.code;
-    document.documentElement.dir = def.dir;
+    if (typeof document !== 'undefined') {
+        document.documentElement.lang = def.code;
+        document.documentElement.dir = def.dir;
+    }
     listeners.forEach((f) => f());
 }
 

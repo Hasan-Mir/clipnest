@@ -56,22 +56,46 @@ export function forgetHtml(id: number) {
 // stripped of anything active or networked. What remains is only structure + inline/embedded styling.
 
 const REMOVE =
-    'script,iframe,frame,frameset,object,embed,applet,link,meta,base,form,input,button,textarea,select,noscript,audio,video,source,track,portal,template';
+    'script,iframe,frame,frameset,object,embed,applet,link,meta,base,form,input,button,textarea,select,noscript,audio,video,source,track,portal,template,svg,math,foreignobject,title,desc,annotation-xml,xmp,noembed,noframes,plaintext';
 
 function cleanCss(css: string): string {
-    return css
+    // Decode CSS backslash escapes safely (CSS Syntax Level 3 §4.3.7):
+    // - Out-of-range (> 0x10FFFF), zero, or surrogate code points map to U+FFFD without throwing.
+    // - Non-hex escapes (e.g. \u\r\l) unescape to their literal characters.
+    const unescaped = css
+        .replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, hex: string) => {
+            const cp = parseInt(hex, 16);
+            if (!Number.isFinite(cp) || cp <= 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) {
+                return '\uFFFD';
+            }
+            return String.fromCodePoint(cp);
+        })
+        .replace(/\\([^\r\n\f0-9a-fA-F])/g, '$1');
+
+    return unescaped
         .replace(/@import[^;]*;?/gi, '')
         .replace(/expression\s*\([^)]*\)/gi, 'none')
-        .replace(/url\(\s*(?!['"]?\s*data:image\/)[^)]*\)/gi, 'none'); // no remote loads (privacy/tracking)
+        .replace(/image-set\s*\([^)]*\)/gi, 'none')
+        .replace(/url\(\s*(?!['"]?\s*data:image\/(?!svg\+xml))[^)]*\)/gi, 'none') // no remote loads (privacy/tracking)
+        .replace(/</g, '\\3c ');
 }
 
 export function sanitizeHtml(html: string): string {
     const doc = new DOMParser().parseFromString(html, 'text/html');
     doc.querySelectorAll(REMOVE).forEach((e) => e.remove());
     doc.querySelectorAll('style').forEach((st) => {
+        // Only keep HTML-namespace <style> elements; drop foreign-namespace styles entirely.
+        if (st.namespaceURI !== 'http://www.w3.org/1999/xhtml') {
+            st.remove();
+            return;
+        }
         st.textContent = cleanCss(st.textContent || '');
     });
     doc.querySelectorAll('*').forEach((el) => {
+        if (el.namespaceURI !== 'http://www.w3.org/1999/xhtml') {
+            el.remove();
+            return;
+        }
         for (const attr of Array.from(el.attributes)) {
             const n = attr.name.toLowerCase();
             if (
@@ -85,7 +109,7 @@ export function sanitizeHtml(html: string): string {
                 n === 'background'
             ) {
                 el.removeAttribute(attr.name);
-            } else if (n === 'src' && !/^\s*data:image\//i.test(attr.value)) {
+            } else if (n === 'src' && !/^\s*data:image\/(png|jpe?g|gif|webp|bmp|ico);/i.test(attr.value)) {
                 el.removeAttribute(attr.name);
             } else if (n === 'style') {
                 el.setAttribute('style', cleanCss(attr.value));
@@ -95,6 +119,12 @@ export function sanitizeHtml(html: string): string {
     const styles = Array.from(doc.head.querySelectorAll('style'))
         .map((s) => s.outerHTML)
         .join('');
+    // Also strip any comments so conditional/parser-edge comments cannot re-open tags.
+    const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_COMMENT);
+    const comments: Node[] = [];
+    let cur: Node | null;
+    while ((cur = walker.nextNode()) !== null) comments.push(cur);
+    comments.forEach((c) => c.parentNode?.removeChild(c));
     return styles + doc.body.innerHTML;
 }
 

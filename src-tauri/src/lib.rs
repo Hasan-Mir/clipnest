@@ -51,6 +51,7 @@ fn resolve_data_dir(app: &tauri::App) -> Result<PathBuf, Box<dyn std::error::Err
 // ───────────────────────────── hotkeys ─────────────────────────────
 
 static HOOK_INIT: std::sync::Once = std::sync::Once::new();
+static RESIZE_SAVE_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 fn is_valid_fkey(s: &str) -> bool {
     s.strip_prefix('F')
@@ -457,11 +458,27 @@ pub fn run() {
                             let st = app.state::<AppState>();
                             let remember = st.settings.read().remember_popup_size;
                             if remember {
-                                let mut s = st.settings.write();
-                                if s.popup_width != lw || s.popup_height != lh {
-                                    s.popup_width = lw;
-                                    s.popup_height = lh;
-                                    let _ = s.save(&st.settings_path);
+                                let changed = {
+                                    let mut s = st.settings.write();
+                                    if s.popup_width != lw || s.popup_height != lh {
+                                        s.popup_width = lw;
+                                        s.popup_height = lh;
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                };
+                                if changed {
+                                    let gen = RESIZE_SAVE_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+                                    let app2 = app.clone();
+                                    std::thread::spawn(move || {
+                                        std::thread::sleep(std::time::Duration::from_millis(300));
+                                        if RESIZE_SAVE_GEN.load(Ordering::SeqCst) == gen {
+                                            let st2 = app2.state::<AppState>();
+                                            let snap = st2.settings.read().clone();
+                                            let _ = snap.save(&st2.settings_path);
+                                        }
+                                    });
                                 }
                             }
                         }

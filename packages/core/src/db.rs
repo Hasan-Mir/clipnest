@@ -728,10 +728,17 @@ pub fn trim_board(conn: &Connection, board: i64) {
             .unwrap_or_default();
         for cid in overflow_ids {
             let _ = conn.execute("DELETE FROM clip_categories WHERE clip_id=?1 AND board_id=?2", params![cid, board]);
-            let other_count: i64 = conn
-                .query_row("SELECT COUNT(*) FROM clip_categories WHERE clip_id=?1", params![cid], |r| r.get(0))
-                .unwrap_or(0);
-            if other_count == 0 {
+            let remaining: Option<i64> = conn
+                .query_row("SELECT board_id FROM clip_categories WHERE clip_id=?1 LIMIT 1", params![cid], |r| r.get(0))
+                .optional()
+                .ok()
+                .flatten();
+            if let Some(other_board) = remaining {
+                let _ = conn.execute(
+                    "UPDATE clips SET pinboard_id=?1 WHERE id=?2 AND pinboard_id=?3",
+                    params![other_board, cid, board],
+                );
+            } else {
                 let _ = conn.execute("DELETE FROM clips WHERE id=?1 AND pinboard_id=?2", params![cid, board]);
             }
         }
@@ -739,7 +746,33 @@ pub fn trim_board(conn: &Connection, board: i64) {
 }
 
 pub fn delete_pinboard(conn: &Connection, id: i64) -> Result<(), String> {
-    conn.execute("DELETE FROM pinboards WHERE id=?1", params![id]).map(|_| ()).map_err(|e| e.to_string())
+    // Remove membership in this category first, and re-point `clips.pinboard_id` for any clip
+    // that still belongs to another category so `ON DELETE CASCADE` never deletes shared clips.
+    // Wrap in a savepoint so intermediate failures never leave orphaned or corrupted category links.
+    conn.execute("SAVEPOINT del_pb", []).map_err(|e| e.to_string())?;
+    let res = (|| -> Result<(), String> {
+        conn.execute("DELETE FROM clip_categories WHERE board_id=?1", params![id]).map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE clips
+             SET pinboard_id = (SELECT cc.board_id FROM clip_categories cc WHERE cc.clip_id = clips.id LIMIT 1)
+             WHERE pinboard_id = ?1
+               AND EXISTS (SELECT 1 FROM clip_categories cc WHERE cc.clip_id = clips.id)",
+            params![id],
+        )
+        .map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM pinboards WHERE id=?1", params![id]).map(|_| ()).map_err(|e| e.to_string())
+    })();
+    match res {
+        Ok(()) => {
+            let _ = conn.execute("RELEASE SAVEPOINT del_pb", []);
+            Ok(())
+        }
+        Err(e) => {
+            let _ = conn.execute("ROLLBACK TO SAVEPOINT del_pb", []);
+            let _ = conn.execute("RELEASE SAVEPOINT del_pb", []);
+            Err(e)
+        }
+    }
 }
 
 // ───────────────────────────── retention ─────────────────────────────
@@ -1275,6 +1308,49 @@ mod tests {
         let recovered = open_with_recovery(&dir).unwrap();
         let count: i64 = recovered.query_row("SELECT COUNT(*) FROM clips", [], |r| r.get(0)).unwrap();
         assert_eq!(count, 1);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn deleting_or_trimming_category_preserves_clips_in_other_categories() {
+        let dir = std::env::temp_dir().join(format!("clipnest_db_multicat_del_{}", now_ms()));
+        let mut conn = open_with_recovery(&dir).unwrap();
+
+        let c = build_text_clip("shared clip", None, "App", "app.exe", false);
+        let (id, _) = insert_clip(&mut conn, &c, &[text_format("shared clip")]).unwrap();
+        let cat_a = create_pinboard(&conn, "CatA", "#4f8cff").unwrap();
+        let cat_b = create_pinboard(&conn, "CatB", "#34c759").unwrap();
+
+        assign_category(&conn, &[id], Some(cat_a), None, true).unwrap();
+        assign_category(&conn, &[id], Some(cat_b), Some(cat_a), true).unwrap();
+        // clips.pinboard_id is now cat_b; deleting cat_b must NOT delete the clip from cat_a
+        delete_pinboard(&conn, cat_b).unwrap();
+
+        let row = get_row(&conn, id).expect("shared clip must survive deleting CatB");
+        assert_eq!(row.pinboard_id, Some(cat_a));
+        let boards = list_pinboards(&conn).unwrap();
+        assert_eq!(boards.iter().find(|b| b.id == cat_a).unwrap().count, 1);
+
+        // Test trimming:
+        // Create CatB2 and copy `id` into CatB2
+        let cat_b2 = create_pinboard(&conn, "CatB2", "#34c759").unwrap();
+        assign_category(&conn, &[id], Some(cat_b2), Some(cat_a), true).unwrap();
+        // Set CatB2 max_items = 1
+        update_pinboard(&conn, cat_b2, "CatB2", "#34c759", 1, "inherit", "inherit").unwrap();
+
+        // Add a second, newer clip to CatB2 so CatB2 overflows and trims `id`
+        let c2 = build_text_clip("newer clip in CatB2", None, "App", "app.exe", false);
+        let (id2, _) = insert_clip(&mut conn, &c2, &[text_format("newer clip in CatB2")]).unwrap();
+        assign_category(&conn, &[id2], Some(cat_b2), None, false).unwrap();
+        // `id` was trimmed from CatB2, but is still in CatA: pinboard_id must be updated to CatA
+        let row_trimmed = get_row(&conn, id).expect("shared clip must survive trimming CatB2");
+        assert_eq!(row_trimmed.pinboard_id, Some(cat_a));
+
+        // Now deleting CatB2 must NOT cascade to delete `id`
+        delete_pinboard(&conn, cat_b2).unwrap();
+        let row_after = get_row(&conn, id).expect("shared clip must survive deleting CatB2 after trim");
+        assert_eq!(row_after.pinboard_id, Some(cat_a));
 
         let _ = std::fs::remove_dir_all(&dir);
     }

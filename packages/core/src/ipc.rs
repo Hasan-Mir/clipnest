@@ -295,9 +295,15 @@ pub fn edit_item_shared(
         let nc = build_text_clip(text, existing.lang.clone(), &existing.app_name, &existing.app_exe, false);
         let sens =
             settings.detect_sensitive && matches!(nc.kind.as_str(), "text" | "code") && classify::is_sensitive(text);
+        let now = db::now_ms();
+        let next_expiry: Option<i64> = if sens && settings.sensitive_action == "mask_delete" {
+            Some(now + (settings.sensitive_ttl_min.max(1) as i64) * 60_000)
+        } else {
+            None
+        };
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         tx.execute(
-            "UPDATE clips SET hash=?1,kind=?2,plain=?3,preview=?4,search=?5,lang=?6,color=?7,chars=?8,has_rich=0,sensitive=?11,expires_at=CASE WHEN ?11=1 THEN expires_at ELSE NULL END,ts=?9,sort_ts=?9 WHERE id=?10",
+            "UPDATE clips SET hash=?1,kind=?2,plain=?3,preview=?4,search=?5,lang=?6,color=?7,chars=?8,has_rich=0,sensitive=?11,expires_at=CASE WHEN ?11=1 THEN COALESCE(expires_at, ?12) ELSE NULL END,ts=?9,sort_ts=?9 WHERE id=?10",
             params![
                 nc.hash,
                 nc.kind,
@@ -307,9 +313,10 @@ pub fn edit_item_shared(
                 nc.lang,
                 nc.color,
                 nc.chars,
-                db::now_ms(),
+                now,
                 id,
-                sens as i64
+                sens as i64,
+                next_expiry
             ],
         )
         .map_err(|e| {
@@ -1467,16 +1474,30 @@ pub const KNOWN_COMMANDS: &[&str] = &[
 ];
 
 pub fn is_cli_invocation(args: &[String]) -> bool {
-    let Some(first) = args.get(1).map(|s| s.as_str()) else {
-        return false;
-    };
-    if matches!(first, "--explorer-files" | "--paste-basket" | "--collect-file" | "--portable") {
-        return false;
+    let mut i = 1usize;
+    while i < args.len() {
+        let arg = args[i].as_str();
+        if matches!(arg, "--explorer-files" | "--paste-basket" | "--collect-file" | "--portable") {
+            return false;
+        }
+        if matches!(arg, "-h" | "--help" | "-V" | "--version") {
+            return true;
+        }
+        if matches!(arg, "--json" | "--plain" | "--quiet" | "-q" | "--no-color" | "--online-only") {
+            i += 1;
+            continue;
+        }
+        if matches!(arg, "--data-dir" | "--timeout" | "--output" | "-o") {
+            i += 2;
+            continue;
+        }
+        if arg.starts_with("--data-dir=") || arg.starts_with("--timeout=") || arg.starts_with("--output=") {
+            i += 1;
+            continue;
+        }
+        return KNOWN_COMMANDS.iter().any(|c| c.eq_ignore_ascii_case(arg));
     }
-    if matches!(first, "-h" | "--help" | "-V" | "--version") {
-        return true;
-    }
-    KNOWN_COMMANDS.iter().any(|c| c.eq_ignore_ascii_case(first))
+    false
 }
 
 fn edit_distance(a: &str, b: &str) -> usize {
@@ -3054,6 +3075,48 @@ mod tests {
         let r_imp = dispatch_offline(&dir, "import", &json!({ "path": export_file.to_string_lossy() }));
         assert!(r_imp.ok);
         assert_eq!(r_imp.data["imported_items"].as_u64().unwrap(), 1);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn is_cli_invocation_handles_leading_global_flags_and_gui_flags() {
+        let s = |xs: &[&str]| xs.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert!(is_cli_invocation(&s(&["ClipNest.exe", "list"])));
+        assert!(is_cli_invocation(&s(&["ClipNest.exe", "--json", "--data-dir", r"C:\data", "list"])));
+        assert!(is_cli_invocation(&s(&["ClipNest.exe", "--quiet", "--version"])));
+        assert!(!is_cli_invocation(&s(&["ClipNest.exe", "--portable"])));
+        assert!(!is_cli_invocation(&s(&["ClipNest.exe", "--explorer-files", r"C:\tmp"])));
+        assert!(!is_cli_invocation(&s(&["ClipNest.exe"])));
+    }
+
+    #[test]
+    fn edit_item_sets_expiry_when_edited_to_sensitive_under_mask_delete() {
+        let dir = std::env::temp_dir().join(format!("clipnest_cli_edit_sens_{}", db::now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut settings = Settings::default();
+        settings.detect_sensitive = true;
+        settings.sensitive_action = "mask_delete".into();
+        settings.sensitive_ttl_min = 10;
+        let _ = settings.save(&dir.join("settings.json"));
+
+        let r_add = dispatch_offline(&dir, "add", &json!({ "text": "normal plain text", "pinned": false }));
+        assert!(r_add.ok);
+        let id = r_add.data["item"]["id"].as_i64().unwrap();
+
+        let r_edit =
+            dispatch_offline(&dir, "edit", &json!({ "id": id, "text": "sk-1234567890abcdefghijklmnopqrstuvwxyz" }));
+        assert!(r_edit.ok);
+
+        let conn = db::open_with_recovery(&dir).unwrap();
+        let (sensitive, expires_at): (i64, Option<i64>) = conn
+            .query_row("SELECT sensitive, expires_at FROM clips WHERE id=?1", rusqlite::params![id], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(sensitive, 1);
+        assert!(expires_at.is_some());
+        assert!(expires_at.unwrap() > db::now_ms());
 
         let _ = std::fs::remove_dir_all(&dir);
     }

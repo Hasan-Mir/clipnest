@@ -338,8 +338,12 @@ mod tests {
     use crate::capture::{build_text_clip, text_format};
     use crate::db;
 
+    static TEST_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
     fn seed_db() -> Connection {
-        let dir = std::env::temp_dir().join(format!("clipnest_search_test_{}", db::now_ms()));
+        let cnt = TEST_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir =
+            std::env::temp_dir().join(format!("clipnest_search_test_{}_{}_{}", std::process::id(), db::now_ms(), cnt));
         let mut conn = db::open_with_recovery(&dir).expect("open db");
         let c1 = build_text_clip("کتاب‌های برنامه‌نویسی Rust", None, "Chrome", "chrome.exe", false);
         db::insert_clip(&mut conn, &c1, &[text_format(&c1.plain)]).unwrap();
@@ -350,7 +354,6 @@ mod tests {
         let c3 = build_text_clip("This text mentions an image file", None, "Word", "winword.exe", false);
         db::insert_clip(&mut conn, &c3, &[text_format(&c3.plain)]).unwrap();
 
-        let _ = std::fs::remove_dir_all(&dir);
         conn
     }
 

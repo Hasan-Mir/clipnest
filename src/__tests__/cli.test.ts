@@ -11,6 +11,7 @@ import {
     EXIT_PARTIAL,
     EXIT_USAGE,
     PROTOCOL_VERSION,
+    callIpc,
     checkVersionCompatibility,
     getHelpText,
     runCli,
@@ -293,5 +294,89 @@ describe('ClipNest CLI & Local IPC integration suite', () => {
         });
         expect(pauseCode).toBe(EXIT_OFFLINE);
         expect(err).toContain('ClipNest desktop app is not running');
+    });
+
+    it('9. preserves multi-byte UTF-8 text split across TCP chunks without U+FFFD corruption', async () => {
+        const persianText = 'سلام این یک متن طولانی برای تست یکپارچگی است '.repeat(100);
+        const respPayload =
+            JSON.stringify({
+                ok: true,
+                exit_code: EXIT_OK,
+                data: { text: persianText },
+            }) + '\n';
+
+        const respBuf = Buffer.from(respPayload, 'utf8');
+        // Find a byte inside a 2-byte UTF-8 sequence to split on
+        // 'س' in UTF-8 is 0xD8 0xB3. Split right between 0xD8 and 0xB3:
+        const d8Index = respBuf.indexOf(0xd8);
+        expect(d8Index).toBeGreaterThan(0);
+        const splitPoint = d8Index + 1;
+
+        const chunk1 = respBuf.subarray(0, splitPoint);
+        const chunk2 = respBuf.subarray(splitPoint);
+
+        const token = 'token-utf8-split';
+        server = net.createServer((socket: Socket) => {
+            socket.on('data', () => {
+                socket.write(chunk1);
+                setTimeout(() => {
+                    socket.write(chunk2);
+                }, 10);
+            });
+        });
+
+        await new Promise<void>((r) => server!.listen(0, '127.0.0.1', () => r()));
+        const port = (server.address() as AddressInfo).port;
+        fs.writeFileSync(
+            path.join(tmpDir, 'cli-rpc.json'),
+            JSON.stringify({
+                protocol: PROTOCOL_VERSION,
+                version: CLI_VERSION,
+                pid: process.pid,
+                port,
+                token,
+            })
+        );
+
+        const res = await callIpc(tmpDir, 'get', { id: 1 }, 2000);
+        expect(res).not.toBeNull();
+        expect(res!.ok).toBe(true);
+        const retrieved = (res!.data as { text: string }).text;
+        expect(retrieved).toBe(persianText);
+        expect(retrieved).not.toContain('\uFFFD');
+    });
+
+    it('10. queries basket status & list via IPC without mutating queue parameters', async () => {
+        let lastOp = '';
+        let lastParams: Record<string, unknown> = {};
+
+        await startMockIpcServer((op, params) => {
+            lastOp = op;
+            lastParams = params;
+            return {
+                ok: true,
+                exit_code: EXIT_OK,
+                data: {
+                    active: false,
+                    mode: 'queue',
+                    fifo: true,
+                    items: [],
+                },
+            };
+        });
+
+        const statusRes = await callIpc(tmpDir, 'basket', { sub: 'status' }, 2000);
+        expect(statusRes).not.toBeNull();
+        expect(statusRes!.ok).toBe(true);
+        expect(lastOp).toBe('basket');
+        expect(lastParams.sub).toBe('status');
+        const data = statusRes!.data as { mode: string; active: boolean };
+        expect(data.mode).toBe('queue'); // queue mode remains unaffected
+
+        const listRes = await callIpc(tmpDir, 'basket', { sub: 'list' }, 2000);
+        expect(listRes).not.toBeNull();
+        expect(listRes!.ok).toBe(true);
+        expect(lastOp).toBe('basket');
+        expect(lastParams.sub).toBe('list');
     });
 });

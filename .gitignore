@@ -8,3 +8,5 @@ packages/core/gen
 prompt.txt
 .context-manifest.tmp
 bun.lock*
+.agent-trash
+

@@ -470,7 +470,7 @@ export async function callIpc(
     return new Promise<IpcResponse | null>((resolve) => {
         const socket = new net.Socket();
         let settled = false;
-        let buffer = '';
+        const chunks: Buffer[] = [];
 
         const finish = (val: IpcResponse | null) => {
             if (!settled) {
@@ -499,10 +499,12 @@ export async function callIpc(
             finish(null);
         });
         socket.on('data', (chunk: Buffer) => {
-            buffer += chunk.toString('utf8');
-            const nl = buffer.indexOf('\n');
-            if (nl >= 0) {
-                const line = buffer.slice(0, nl).trim();
+            chunks.push(chunk);
+            const nlInChunk = chunk.indexOf(0x0a);
+            if (nlInChunk >= 0) {
+                const full = Buffer.concat(chunks);
+                const nl = full.indexOf(0x0a);
+                const line = full.subarray(0, nl).toString('utf8').trim();
                 try {
                     finish(JSON.parse(line) as IpcResponse);
                 } catch {
