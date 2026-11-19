@@ -129,8 +129,9 @@ npm run tauri:build     # ساخت نصاب NSIS، باینری CLI و نسخه�
 ### 🧪 اجرای تست‌ها و فرمت خودکار کد (Testing & Formatting)
 
 ```powershell
+bun run typecheck:bun   # بررسی فوق‌سریع تایپ‌ها با Bun (`bun check --skipLibCheck`) — توصیه برای AI Agents و توسعه
+npm run typecheck       # بررسی کامل تایپ‌های TypeScript با tsc (کندتر)
 npm test                # اجرای تست‌های واحد فرانت‌اند و CLI با Vitest
-npm run typecheck       # بررسی کامل تایپ‌های TypeScript فرانت‌اند و پکیج CLI
 npm run test:rust       # اجرای تست‌های واحد و یکپارچه بک‌اند و CLI با Cargo Test
 npm run test:all        # اجرای کامل تمامی تست‌های فرانت‌اند و Rust
 npm run format          # مرتب‌سازی خودکار کدهای فرانت‌اند (Prettier) و Rust (rustfmt)

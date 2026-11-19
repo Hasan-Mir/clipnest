@@ -7,3 +7,4 @@ packages/core/gen
 *-context.zip
 prompt.txt
 .context-manifest.tmp
+bun.lock*

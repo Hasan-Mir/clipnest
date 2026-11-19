@@ -43,7 +43,7 @@ The report MUST begin with this exact directive banner addressed to the implemen
 > 1. **VALIDATE & ASSESS FIRST**: Thoroughly inspect the live codebase to independently verify each finding. Do not assume all external review suggestions are infallible.
 > 2. **CHECK FOR REGRESSIONS**: Verify that proposed changes respect the monorepo architecture, type invariants, existing test suites, and cross-platform behavior (Windows / Tauri / Rust / React).
 > 3. **FALSE POSITIVE FILTER**: If a suggestion is based on incomplete context, conflicts with higher-level requirements, or represents an anti-pattern for this project, document your reasoning, reject or adjust the change, and notify the user.
-> 4. **TEST & BENCHMARK**: Run relevant test commands (`npm run test:all`, `cargo test`, `vitest`) before and after applying changes to ensure zero regressions.
+> 4. **TYPECHECK & TEST**: Always run `bun run typecheck:bun` (runs `bun check --skipLibCheck` across all workspaces in ~200ms) instead of standard `npm run typecheck`. Run test suites (`cargo test`, `vitest`) before and after applying changes to ensure zero regressions.
 
 --------------------------------------------------------------------------------
 4. STRUCTURE OF EACH FINDING
