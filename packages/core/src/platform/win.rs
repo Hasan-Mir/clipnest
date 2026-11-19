@@ -32,6 +32,20 @@ pub fn register_format(name: &str) -> u32 {
     unsafe { RegisterClipboardFormatW(wide(name).as_ptr()) }
 }
 
+#[link(name = "kernel32")]
+extern "system" {
+    fn AttachConsole(dw_process_id: u32) -> i32;
+}
+
+/// Attaches a GUI-subsystem executable to its parent terminal's console (if any)
+/// so CLI invocations via `ClipNest.exe` emit stdout/stderr interactively.
+pub fn attach_parent_console() {
+    const ATTACH_PARENT_PROCESS: u32 = 0xFFFF_FFFF;
+    unsafe {
+        let _ = AttachConsole(ATTACH_PARENT_PROCESS);
+    }
+}
+
 // ───────────────────────────── clipboard listener ─────────────────────────────
 
 static LISTENER_TX: OnceLock<Sender<()>> = OnceLock::new();

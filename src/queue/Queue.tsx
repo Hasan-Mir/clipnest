@@ -81,6 +81,7 @@ export default function QueueView() {
     const readySent = useRef(false);
     const loadSeq = useRef(0);
     const toastTimer = useRef<number | undefined>(undefined);
+    const reportHandled = useRef(false);
     const transferActive = transfer !== null;
 
     const flash = useCallback((m: string) => {
@@ -114,6 +115,8 @@ export default function QueueView() {
 
     const handleReport = useCallback(
         (r: TransferReport) => {
+            if (reportHandled.current) return;
+            reportHandled.current = true;
             setTransfer(null);
             if (r.failed.length > 0) {
                 setReport(r);
@@ -130,7 +133,10 @@ export default function QueueView() {
         const subs = [
             on('queue-changed', load),
             on('status-changed', load),
-            onPayload<TransferProgress>('basket-progress', setTransfer),
+            onPayload<TransferProgress>('basket-progress', (p) => {
+                reportHandled.current = false;
+                setTransfer(p);
+            }),
             onPayload<TransferReport>('basket-finished', (r) => {
                 // Consume any stored report on the backend so the polling fallback does not show it twice.
                 api.basketTransferStatus().catch(() => {});
@@ -210,6 +216,7 @@ export default function QueueView() {
     }, [transferActive, handleReport, load]);
 
     const onPasteToFolder = async () => {
+        reportHandled.current = false;
         try {
             const n = await api.basketPasteToFolder();
             if (n !== null && n > 0) {

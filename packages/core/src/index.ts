@@ -420,6 +420,8 @@ export function findNativeBinary(): string | null {
     const candidates = [
         path.join(pkgRoot, 'bin', exeName),
         path.join(pkgRoot, 'target', 'release', exeName),
+        path.resolve(pkgRoot, '..', 'clipnest-cli', 'bin', exeName),
+        path.resolve(pkgRoot, '..', '..', '..', 'bin', exeName),
         path.resolve(pkgRoot, '..', 'cli', 'bin', exeName),
         path.resolve(pkgRoot, '..', '..', 'src-tauri', 'target', 'release', exeName),
         path.resolve(pkgRoot, '..', '..', 'src-tauri', 'target', 'release', isWin ? 'clipnest.exe' : 'clipnest'),
@@ -492,19 +494,11 @@ export async function callIpc(
     }
 
     const compatErr = checkVersionCompatibility(CLI_VERSION, ep.version, ep.protocol);
-    if (compatErr) {
-        return {
-            ok: false,
-            exit_code: EXIT_OFFLINE,
-            data: null,
-            error: compatErr,
-            hint: 'Run "npm install -g @seymi/clipnest-cli" or update the ClipNest desktop app.',
-        };
-    }
 
     return new Promise<IpcResponse | null>((resolve) => {
         const socket = new net.Socket();
         let settled = false;
+        let connected = false;
         const chunks: Buffer[] = [];
 
         const finish = (val: IpcResponse | null) => {
@@ -532,6 +526,18 @@ export async function callIpc(
                 } catch {
                     // ignore
                 }
+                finish(null);
+                return;
+            }
+            if (connected) {
+                finish({
+                    ok: false,
+                    exit_code: EXIT_OFFLINE,
+                    data: null,
+                    error: `IPC connection failed: ${err.message}`,
+                    hint: 'Check if ClipNest is busy or unresponsive.',
+                });
+                return;
             }
             finish(null);
         });
@@ -544,8 +550,13 @@ export async function callIpc(
                 const line = full.subarray(0, nl).toString('utf8').trim();
                 try {
                     finish(JSON.parse(line) as IpcResponse);
-                } catch {
-                    finish(null);
+                } catch (e) {
+                    finish({
+                        ok: false,
+                        exit_code: EXIT_ERROR,
+                        data: null,
+                        error: `Invalid IPC response from ClipNest desktop app: ${e instanceof Error ? e.message : String(e)}`,
+                    });
                 }
             }
         });
@@ -556,14 +567,51 @@ export async function callIpc(
                 try {
                     finish(JSON.parse(raw) as IpcResponse);
                     return;
-                } catch {
-                    // fall through
+                } catch (e) {
+                    finish({
+                        ok: false,
+                        exit_code: EXIT_ERROR,
+                        data: null,
+                        error: `Invalid IPC response from ClipNest desktop app: ${e instanceof Error ? e.message : String(e)}`,
+                    });
+                    return;
                 }
             }
-            finish(null);
+            finish(
+                connected
+                    ? {
+                          ok: false,
+                          exit_code: EXIT_OFFLINE,
+                          data: null,
+                          error: 'ClipNest desktop app closed the IPC connection without responding',
+                      }
+                    : null
+            );
         });
-        socket.on('close', () => finish(null));
+        socket.on('close', () =>
+            finish(
+                connected
+                    ? {
+                          ok: false,
+                          exit_code: EXIT_OFFLINE,
+                          data: null,
+                          error: 'ClipNest desktop app closed the IPC connection without responding',
+                      }
+                    : null
+            )
+        );
         socket.connect(ep.port, '127.0.0.1', () => {
+            if (compatErr) {
+                finish({
+                    ok: false,
+                    exit_code: EXIT_OFFLINE,
+                    data: null,
+                    error: compatErr,
+                    hint: 'Run "npm install -g @seymi/clipnest-cli" or update the ClipNest desktop app.',
+                });
+                return;
+            }
+            connected = true;
             const req: IpcRequest = {
                 protocol: PROTOCOL_VERSION,
                 version: CLI_VERSION,
@@ -611,7 +659,17 @@ function invokeNativeBinaryOffline(
         input: JSON.stringify(params ?? {}),
         encoding: 'utf8',
         timeout: 10000,
+        maxBuffer: 66 * 1024 * 1024,
     });
+    if (r.error) {
+        const err = r.error as NodeJS.ErrnoException;
+        return {
+            ok: false,
+            exit_code: err.code === 'ETIMEDOUT' ? EXIT_OFFLINE : EXIT_ERROR,
+            data: null,
+            error: err.message || 'Native CLI execution failed',
+        };
+    }
     if (r.stdout) {
         try {
             return JSON.parse(r.stdout.trim()) as IpcResponse;

@@ -65,7 +65,7 @@ execFileSync(
     [
         '-NoProfile',
         '-Command',
-        'Compress-Archive -Path (Join-Path $env:CLIPNEST_STAGE_DIR "*") -DestinationPath $env:CLIPNEST_ZIP_OUT -Force',
+        'Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::CreateFromDirectory($env:CLIPNEST_STAGE_DIR, $env:CLIPNEST_ZIP_OUT, [System.IO.Compression.CompressionLevel]::Optimal, $false)',
     ],
     {
         stdio: 'inherit',

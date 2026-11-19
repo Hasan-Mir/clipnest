@@ -423,7 +423,8 @@ describe('ClipNest CLI & Local IPC integration suite', () => {
         expect(fs.existsSync(epFile)).toBe(true);
 
         const res2 = await callIpc(tmpDir, 'status', {}, 1000);
-        expect(res2).toBeNull();
+        expect(res2?.ok).toBe(false);
+        expect(res2?.exit_code).toBe(EXIT_OFFLINE);
         // Since it was a transient error (not ECONNREFUSED), epFile MUST still exist
         expect(fs.existsSync(epFile)).toBe(true);
 
@@ -494,7 +495,7 @@ describe('ClipNest CLI & Local IPC integration suite', () => {
         expect(parsed.text).toBe('content to write');
     });
 
-    it('15. callIpc resolves null immediately on clean socket EOF without timing out', async () => {
+    it('15. callIpc fails with EXIT_OFFLINE immediately on clean socket EOF without timing out', async () => {
         const eofServer = net.createServer((sock) => {
             sock.end(); // immediate FIN
             sock.destroy();
@@ -519,7 +520,8 @@ describe('ClipNest CLI & Local IPC integration suite', () => {
         const res = await callIpc(tmpDir, 'status', {}, 4000);
         const elapsed = Date.now() - start;
 
-        expect(res).toBeNull();
+        expect(res?.ok).toBe(false);
+        expect(res?.exit_code).toBe(EXIT_OFFLINE);
         expect(elapsed).toBeLessThan(1000); // Must resolve well before the 4000ms timeout
 
         await new Promise<void>((r) => eofServer.close(() => r()));

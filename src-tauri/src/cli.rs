@@ -413,6 +413,10 @@ fn dispatch_online(app: &AppHandle, op: &str, p: &Value) -> IpcResponse {
                     Err(e) => return IpcResponse::fail(EXIT_NOT_FOUND, e, None),
                 }
             };
+            let fg = win::foreground();
+            if fg != 0 && !win::is_own_window(fg) {
+                state.target_hwnd.store(fg, Ordering::SeqCst);
+            }
             match crate::paste::paste(app, id, mode) {
                 Ok(()) => IpcResponse::success(json!({ "pasted_id": id, "mode": mode })),
                 Err(e) => {

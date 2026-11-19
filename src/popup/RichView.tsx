@@ -78,12 +78,18 @@ function cleanCss(css: string): string {
             return ch === '\\' ? '\uFFFD' : (ch ?? '');
         });
 
-    return unescaped
-        .replace(/@import[^;]*;?/gi, '')
-        .replace(/expression\s*\([^)]*\)/gi, 'none')
-        .replace(/image-set\s*\([^)]*\)/gi, 'none')
-        .replace(/url\(\s*(?!['"]?\s*data:image\/(?:png|jpe?g|gif|webp|bmp|ico);)[^)]*\)/gi, 'none') // allowlist raster data URLs only
-        .replace(/</g, '\\3c ');
+    let cleaned = unescaped;
+    let prev: string;
+    do {
+        prev = cleaned;
+        cleaned = cleaned
+            .replace(/@import[^;]*(?:;|$)/gi, '')
+            .replace(/expression\s*\([^)]*(?:\)|$)/gi, 'none')
+            .replace(/(?:-webkit-)?image-set\s*\([^)]*(?:\)|$)/gi, 'none')
+            .replace(/url\(\s*(?!['"]?\s*data:image\/(?:png|jpe?g|gif|webp|bmp|ico);)[^)]*(?:\)|$)/gi, 'none'); // allowlist raster data URLs only
+    } while (cleaned !== prev);
+
+    return cleaned.replace(/</g, '\\3c ');
 }
 
 export function sanitizeHtml(html: string): string {

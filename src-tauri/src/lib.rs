@@ -360,6 +360,8 @@ fn spawn_maintenance(app: AppHandle) {
 pub fn run() {
     let raw_args: Vec<String> = std::env::args().collect();
     if cli::is_cli_invocation(&raw_args) {
+        #[cfg(windows)]
+        platform::win::attach_parent_console();
         std::process::exit(cli::run_from_env());
     }
 

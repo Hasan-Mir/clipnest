@@ -226,10 +226,11 @@ export function Preview({
             }
             return;
         }
-        if (e.key === 'Escape' || e.key === ' ') {
+        const onInteractive = Boolean((e.target as HTMLElement | null)?.closest('button, a, [role="button"]'));
+        if (e.key === 'Escape' || (e.key === ' ' && !onInteractive)) {
             e.preventDefault();
             handleClose();
-        } else if (e.key === 'Enter') {
+        } else if (e.key === 'Enter' && !onInteractive) {
             e.preventDefault();
             onPaste(item.id, e.shiftKey ? 'plain' : 'auto');
         } else if (ck && isKey(e, 'e') && editable) {
@@ -342,6 +343,7 @@ export function Preview({
                                 onKeyDown={(ev) => {
                                     if (ev.key === 'Enter' || ev.key === ' ') {
                                         ev.preventDefault();
+                                        ev.stopPropagation();
                                         api.copyText(f.value).catch(() => {});
                                         onToast(t('Copied {v}', { v: f.value }));
                                     }

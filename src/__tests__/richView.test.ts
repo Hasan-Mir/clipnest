@@ -92,4 +92,29 @@ describe('sanitizeHtml security & mXSS defense', () => {
         expect(out5).not.toContain('PHN2Zy8+');
         expect(out5).toContain('none');
     });
+
+    it('strips nested @import, EOF-unclosed url(, and EOF-unclosed -webkit-image-set while preserving valid raster data URLs', () => {
+        // Nested @import in <style> block and inline style
+        const nestedImportStyle = '<style>@im@import;port "https://evil.example/a.css"; body { color: red; }</style>';
+        const outStyle = sanitizeHtml(nestedImportStyle);
+        expect(outStyle).not.toContain('evil.example');
+        expect(outStyle).not.toContain('@import');
+
+        // EOF-unclosed url( and -webkit-image-set( in style attribute
+        const unclosedInline = '<div style="background: url(https://evil.example/p.png">hi</div>';
+        const outInline = sanitizeHtml(unclosedInline);
+        expect(outInline).not.toContain('evil.example');
+        expect(outInline).toContain('none');
+
+        const unclosedImageSet =
+            '<div style="background-image: -webkit-image-set(\'https://evil.example/p.png\' 1x">hi</div>';
+        const outImageSet = sanitizeHtml(unclosedImageSet);
+        expect(outImageSet).not.toContain('evil.example');
+        expect(outImageSet).toContain('none');
+
+        // Valid raster data URL is preserved
+        const validRaster = '<div style="background: url(data:image/png;base64,iVBORw0KGgo=)">hi</div>';
+        const outRaster = sanitizeHtml(validRaster);
+        expect(outRaster).toContain('data:image/png;base64,iVBORw0KGgo=');
+    });
 });

@@ -155,8 +155,11 @@ pub fn resolve_board_id(conn: &Connection, spec: &Value) -> Result<Option<i64>, 
         return Ok(None);
     }
     if let Some(n) = spec.as_i64() {
-        if n <= 0 {
+        if n == 0 {
             return Ok(None);
+        }
+        if n < 0 {
+            return Err(format!("invalid category (pinboard) ID #{n}"));
         }
         let boards = db::list_pinboards(conn)?;
         if boards.iter().any(|b| b.id == n) {
@@ -185,7 +188,7 @@ pub fn resolve_board_id(conn: &Connection, spec: &Value) -> Result<Option<i64>, 
         }
         return Err(format!("category (pinboard) '{trimmed}' not found"));
     }
-    Ok(None)
+    Err(format!("invalid category (pinboard) specifier: {spec}"))
 }
 
 pub fn resolve_item_id(conn: &Connection, spec: &Value) -> Result<i64, String> {
@@ -254,6 +257,9 @@ pub fn add_item_shared(
 
     let explicit_board = if board_spec.is_null() { None } else { resolve_board_id(conn, board_spec)? };
     let (id, is_new) = db::insert_clip(conn, &clip, &fmts)?;
+    if pinned {
+        db::set_pinned_scoped(conn, &[id], true, None, false)?;
+    }
     let assigned_board = if let Some(b) = explicit_board {
         db::assign_category(conn, &[id], Some(b), None, false)?;
         Some(b)
@@ -265,7 +271,7 @@ pub fn add_item_shared(
     } else {
         None
     };
-    if pinned {
+    if pinned && assigned_board.is_some() {
         db::set_pinned_scoped(conn, &[id], true, assigned_board, false)?;
     }
     if let Some(t) = title {
@@ -427,20 +433,20 @@ pub fn import_json_bundle(conn: &mut Connection, settings: &Settings, src: &Path
         if let Ok((id, is_new)) = db::insert_clip(conn, &nc, &[text_format(&item.plain)]) {
             if is_new {
                 added += 1;
-            }
-            if let Some(old_bid) = item.pinboard_id {
-                if let Some(&new_bid) = board_map.get(&old_bid) {
-                    let _ = db::assign_category(conn, &[id], Some(new_bid), None, false);
+                if let Some(old_bid) = item.pinboard_id {
+                    if let Some(&new_bid) = board_map.get(&old_bid) {
+                        let _ = db::assign_category(conn, &[id], Some(new_bid), None, false);
+                    }
                 }
-            }
-            if item.pinned {
-                let _ = db::set_pinned(conn, &[id], true);
-            }
-            if let Some(t) = &item.title {
-                let _ = db::rename(conn, id, t);
-            }
-            if !item.tags.is_empty() {
-                let _ = db::set_tags(conn, id, &item.tags);
+                if item.pinned {
+                    let _ = db::set_pinned(conn, &[id], true);
+                }
+                if let Some(t) = &item.title {
+                    let _ = db::rename(conn, id, t);
+                }
+                if !item.tags.is_empty() {
+                    let _ = db::set_tags(conn, id, &item.tags);
+                }
             }
         }
     }
@@ -1842,6 +1848,21 @@ pub fn run_from_env() -> i32 {
     run_cli(&args)
 }
 
+fn resolve_cli_path(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let p = Path::new(trimmed);
+    if p.is_absolute() {
+        trimmed.to_string()
+    } else if let Ok(cwd) = std::env::current_dir() {
+        cwd.join(p).to_string_lossy().to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 pub fn run_cli(raw_args: &[String]) -> i32 {
     let mut json_out = false;
     let mut assume_yes = false;
@@ -1894,8 +1915,32 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
 
     if let Some(rpc_op) = offline_rpc_op {
         let data_dir = resolve_cli_data_dir(custom_data_dir.as_deref());
-        let raw = read_stdin_all().unwrap_or_else(|_| "{}".to_string());
-        let params: Value = serde_json::from_str(&raw).unwrap_or(Value::Null);
+        let raw = match read_stdin_all() {
+            Ok(s) => s,
+            Err(e) => {
+                let resp = IpcResponse::fail(EXIT_USAGE, e, None);
+                println!(
+                    "{}",
+                    serde_json::to_string(&resp).unwrap_or_else(|_| "{\"ok\":false,\"exit_code\":2}".into())
+                );
+                return EXIT_USAGE;
+            }
+        };
+        let params: Value = if raw.trim().is_empty() {
+            Value::Object(serde_json::Map::new())
+        } else {
+            match serde_json::from_str(&raw) {
+                Ok(v) => v,
+                Err(e) => {
+                    let resp = IpcResponse::fail(EXIT_USAGE, format!("Invalid JSON params: {e}"), None);
+                    println!(
+                        "{}",
+                        serde_json::to_string(&resp).unwrap_or_else(|_| "{\"ok\":false,\"exit_code\":2}".into())
+                    );
+                    return EXIT_USAGE;
+                }
+            }
+        };
         let resp = dispatch_offline(&data_dir, &rpc_op, &params);
         println!("{}", serde_json::to_string(&resp).unwrap_or_else(|_| "{\"ok\":false,\"exit_code\":1}".into()));
         return resp.exit_code;
@@ -2642,7 +2687,15 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
                     (cmd.clone(), json!({ "sub": if sub == "ls" { "list" } else { sub } }), None)
                 }
                 "add" => {
-                    let items: Vec<Value> = rest.iter().skip(1).map(|s| Value::String(s.clone())).collect();
+                    let items: Vec<Value> = rest
+                        .iter()
+                        .skip(1)
+                        .map(|s| {
+                            let resolved =
+                                if cmd == "basket" && Path::new(s).exists() { resolve_cli_path(s) } else { s.clone() };
+                            Value::String(resolved)
+                        })
+                        .collect();
                     (cmd.clone(), json!({ "sub": "add", "items": items }), None)
                 }
                 "remove" | "rm" | "cut" => {
@@ -2659,7 +2712,7 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
                     (cmd.clone(), json!({ "sub": "fifo", "fifo": v }), None)
                 }
                 "paste-to" => {
-                    let folder = rest.get(1).cloned().unwrap_or_default();
+                    let folder = rest.get(1).map(|s| resolve_cli_path(s)).unwrap_or_default();
                     (cmd.clone(), json!({ "sub": "paste-to", "folder": folder }), None)
                 }
                 other => {
@@ -2842,7 +2895,22 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
 
         "status" => ("status".into(), json!({}), None),
         "pause" => {
-            let mins = rest.first().and_then(|s| s.parse::<u64>().ok());
+            let mins = if let Some(raw) = rest.first() {
+                match raw.parse::<u64>() {
+                    Ok(m) if m > 0 => Some(m),
+                    _ => {
+                        emit_err(
+                            json_out,
+                            EXIT_USAGE,
+                            &format!("Invalid pause duration '{raw}'"),
+                            Some("Provide a positive integer number of minutes, e.g. \"clipnest pause 10\"."),
+                        );
+                        return EXIT_USAGE;
+                    }
+                }
+            } else {
+                None
+            };
             ("pause".into(), json!({ "minutes": mins }), None)
         }
         "resume" => ("resume".into(), json!({}), None),
@@ -2855,7 +2923,7 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
         "settings" => ("settings".into(), json!({}), None),
         "quit" => ("quit".into(), json!({}), None),
         "backup" => {
-            let path = rest.first().cloned();
+            let path = rest.first().map(|s| resolve_cli_path(s));
             ("backup".into(), json!({ "path": path }), None)
         }
         "export" => {
@@ -2877,7 +2945,8 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
                 }
                 j += 1;
             }
-            ("export".into(), json!({ "path": path, "format": format, "settings": settings_only }), None)
+            let resolved = if path.is_empty() { path } else { resolve_cli_path(&path) };
+            ("export".into(), json!({ "path": resolved, "format": format, "settings": settings_only }), None)
         }
         "import" => {
             let mut path = String::new();
@@ -2889,7 +2958,8 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
                     path = a.clone();
                 }
             }
-            ("import".into(), json!({ "path": path, "settings": settings_only }), None)
+            let resolved = if path.is_empty() { path } else { resolve_cli_path(&path) };
+            ("import".into(), json!({ "path": resolved, "settings": settings_only }), None)
         }
         "erase" | "clear-history" => {
             if !assume_yes {
@@ -2955,7 +3025,15 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
     }
 
     if json_out {
-        println!("{}", serde_json::to_string_pretty(&resp.data).unwrap_or_default());
+        let payload = format!("{}\n", serde_json::to_string_pretty(&resp.data).unwrap_or_default());
+        if let Some(out_path) = raw_output_file.as_deref() {
+            if let Err(e) = db::write_atomic(Path::new(out_path), payload.as_bytes()) {
+                emit_err(true, EXIT_ERROR, &format!("Cannot write to '{out_path}': {e}"), None);
+                return EXIT_ERROR;
+            }
+        } else {
+            print!("{payload}");
+        }
         return resp.exit_code;
     }
 
@@ -3391,6 +3469,132 @@ mod tests {
         assert_eq!(resolve_item_id(&conn, &json!("@0")).unwrap(), id2);
         assert_eq!(resolve_item_id(&conn, &json!("latest")).unwrap(), id2);
         assert_eq!(resolve_item_id(&conn, &json!("@1")).unwrap(), id1);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn add_item_shared_pinned_on_full_category_succeeds() {
+        let dir = std::env::temp_dir().join(format!("clipnest_add_full_board_{}", db::now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut conn = db::open_with_recovery(&dir).unwrap();
+        let settings = Settings::default();
+
+        let board_id = db::create_pinboard(&conn, "FullBoard", "#ff0000").unwrap();
+        db::update_pinboard(&conn, board_id, "FullBoard", "#ff0000", 1, "inherit", "inherit").unwrap();
+
+        // Add first clip pinned to FullBoard
+        let res1 = add_item_shared(&mut conn, &settings, "first clip", &json!("FullBoard"), true, None, None);
+        assert!(res1.is_ok(), "First clip must succeed: {:?}", res1.err());
+
+        // Add second clip with pinned=true to the already-full category (max_items = 1)
+        let res2 = add_item_shared(&mut conn, &settings, "second clip", &json!("FullBoard"), true, None, None);
+        assert!(res2.is_ok(), "Second clip pinned on full board must succeed: {:?}", res2.err());
+        let (item2, is_new) = res2.unwrap();
+        assert!(is_new);
+        assert_eq!(item2.preview, "second clip");
+        assert!(item2.pinned);
+        let exists: bool = conn
+            .query_row("SELECT 1 FROM clips WHERE id=?1", rusqlite::params![item2.id], |_| Ok(true))
+            .unwrap_or(false);
+        assert!(exists, "Second clip must exist in clips table");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_board_id_validates_types_and_rejects_negative() {
+        let dir = std::env::temp_dir().join(format!("clipnest_resolve_board_{}", db::now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let conn = db::open_with_recovery(&dir).unwrap();
+
+        // 0 and null map to Ok(None)
+        assert_eq!(resolve_board_id(&conn, &json!(0)).unwrap(), None);
+        assert_eq!(resolve_board_id(&conn, &Value::Null).unwrap(), None);
+        assert_eq!(resolve_board_id(&conn, &json!("main")).unwrap(), None);
+        assert_eq!(resolve_board_id(&conn, &json!("0")).unwrap(), None);
+
+        // Negative numbers, objects, booleans, and floats must be rejected
+        assert!(resolve_board_id(&conn, &json!(-1)).is_err());
+        assert!(resolve_board_id(&conn, &json!({ "id": 1 })).is_err());
+        assert!(resolve_board_id(&conn, &json!(true)).is_err());
+        assert!(resolve_board_id(&conn, &json!(1.5)).is_err());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn import_json_bundle_preserves_existing_clip_metadata() {
+        let dir = std::env::temp_dir().join(format!("clipnest_import_preserve_{}", db::now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut conn = db::open_with_recovery(&dir).unwrap();
+        let settings = Settings::default();
+
+        let cat1 = db::create_pinboard(&conn, "Cat1", "#111111").unwrap();
+        let _cat2 = db::create_pinboard(&conn, "Cat2", "#222222").unwrap();
+
+        // Pre-existing clip
+        let clip = crate::codec::build_text_clip("pre-existing content", None, "OrigApp", "orig.exe", false);
+        let (id, _) = db::insert_clip(&mut conn, &clip, &[crate::codec::text_format("pre-existing content")]).unwrap();
+        db::assign_category(&conn, &[id], Some(cat1), None, false).unwrap();
+        db::set_pinned(&conn, &[id], true).unwrap();
+        db::rename(&conn, id, "Original Title").unwrap();
+        db::set_tags(&conn, id, "orig_tag").unwrap();
+
+        // Write import bundle with same plain text / hash, but conflicting metadata
+        let bundle = JsonExportBundle {
+            app: "ClipNest".into(),
+            version: "0.2.0".into(),
+            exported_at: db::now_ms(),
+            pinboards: vec![Pinboard {
+                id: 999,
+                name: "Cat2".into(),
+                color: "#222222".into(),
+                max_items: 0,
+                list_style: "inherit".into(),
+                paste_mode: "inherit".into(),
+                count: 0,
+                position: 0,
+            }],
+            items: vec![JsonExportItem {
+                id: 1,
+                kind: "text".into(),
+                plain: "pre-existing content".into(),
+                title: Some("Overwritten Title".into()),
+                tags: "overwritten_tag".into(),
+                app_name: "NewApp".into(),
+                app_exe: "new.exe".into(),
+                lang: None,
+                color: None,
+                pinboard_id: Some(999),
+                pinned: false,
+                sensitive: false,
+                ts: db::now_ms(),
+                created_at: db::now_ms(),
+            }],
+            settings: Settings::default(),
+        };
+
+        let bundle_path = dir.join("import.json");
+        std::fs::write(&bundle_path, serde_json::to_string(&bundle).unwrap()).unwrap();
+
+        let added = import_json_bundle(&mut conn, &settings, &bundle_path).unwrap();
+        assert_eq!(added, 0, "No new clip should be added");
+
+        // Verify original metadata was preserved
+        let (title, pinned, board_id): (Option<String>, bool, Option<i64>) = conn
+            .query_row("SELECT title, pinned, pinboard_id FROM clips WHERE id=?1", rusqlite::params![id], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
+            .unwrap();
+        assert_eq!(title.as_deref(), Some("Original Title"));
+        assert_eq!(pinned, true);
+        assert_eq!(board_id, Some(cat1));
+
+        let tags: String =
+            conn.query_row("SELECT tags FROM clips WHERE id=?1", rusqlite::params![id], |r| r.get(0)).unwrap();
+        assert!(tags.contains("orig_tag"));
+        assert!(!tags.contains("overwritten_tag"));
 
         let _ = std::fs::remove_dir_all(&dir);
     }

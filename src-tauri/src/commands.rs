@@ -381,7 +381,9 @@ pub async fn reveal_item(state: State<'_, AppState>, id: i64, ids: Option<Vec<i6
     if paths.is_empty() {
         return Err("item not found".into());
     }
-    crate::platform::win::reveal_files_in_explorer(&paths)
+    tauri::async_runtime::spawn_blocking(move || crate::platform::win::reveal_files_in_explorer(&paths))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 // ───────────── settings / status / app ─────────────
@@ -530,22 +532,26 @@ pub async fn basket_file_icon(path: String) -> Res<Option<String>> {
 /// back to opening their closest existing parent folder.
 #[tauri::command]
 pub async fn reveal_paths(paths: Vec<String>) -> Res<()> {
-    let existing: Vec<String> =
-        paths.iter().map(|p| p.trim().to_string()).filter(|p| !p.is_empty() && Path::new(p).exists()).collect();
-    if !existing.is_empty() {
-        return crate::platform::win::reveal_files_in_explorer(&existing);
-    }
-    for raw in &paths {
-        let mut cur = Path::new(raw.trim()).parent();
-        while let Some(dir) = cur {
-            if dir.exists() {
-                let _ = std::process::Command::new("explorer").arg(dir).spawn();
-                return Ok(());
-            }
-            cur = dir.parent();
+    tauri::async_runtime::spawn_blocking(move || {
+        let existing: Vec<String> =
+            paths.iter().map(|p| p.trim().to_string()).filter(|p| !p.is_empty() && Path::new(p).exists()).collect();
+        if !existing.is_empty() {
+            return crate::platform::win::reveal_files_in_explorer(&existing);
         }
-    }
-    Err("The location no longer exists".into())
+        for raw in &paths {
+            let mut cur = Path::new(raw.trim()).parent();
+            while let Some(dir) = cur {
+                if dir.exists() {
+                    let _ = std::process::Command::new("explorer").arg(dir).spawn();
+                    return Ok(());
+                }
+                cur = dir.parent();
+            }
+        }
+        Err("The location no longer exists".into())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// The queue webview calls this once it has rendered, so the window can be shown without a black flash.

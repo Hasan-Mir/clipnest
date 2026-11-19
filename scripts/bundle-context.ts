@@ -16,6 +16,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 interface CliOptions {
     output: string | null;
@@ -25,7 +26,7 @@ interface CliOptions {
     isHelp: boolean;
 }
 
-const ROOT_DIR: string = process.cwd();
+const ROOT_DIR: string = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // --- CLI Arguments Parsing ---
 const args: string[] = process.argv.slice(2);
@@ -164,11 +165,15 @@ let rawFiles: string[] = [];
 let usedGit = false;
 
 try {
-    const gitOutput = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard'], {
-        cwd: ROOT_DIR,
-        encoding: 'utf8',
-        stdio: ['pipe', 'pipe', 'ignore'],
-    });
+    const gitOutput = execFileSync(
+        'git',
+        ['-c', 'core.quotepath=false', 'ls-files', '--cached', '--others', '--exclude-standard'],
+        {
+            cwd: ROOT_DIR,
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'ignore'],
+        }
+    );
     rawFiles = gitOutput
         .split(/\r?\n/)
         .map((f) => f.trim())
@@ -202,7 +207,9 @@ try {
 }
 
 // Filter candidate files
-const filesToBundle: string[] = rawFiles.filter((f) => !shouldExcludeFile(f)).map((f) => f.replace(/\\/g, '/'));
+const filesToBundle: string[] = rawFiles
+    .filter((f) => !shouldExcludeFile(f) && fs.existsSync(path.join(ROOT_DIR, f)))
+    .map((f) => f.replace(/\\/g, '/'));
 
 // --- Prompt Generation ---
 const promptPath = path.join(ROOT_DIR, 'prompt.txt');
@@ -310,16 +317,24 @@ Proceed with your in-depth review now. Provide all findings with the requested l
 ================================================================================`;
     }
 
+    const alreadyHasPrompt = filesToBundle.includes('prompt.txt');
     const filledPrompt = template
         .replace(/\{\{PROJECT_NAME\}\}/g, projectName)
         .replace(/\{\{GENERATION_DATE\}\}/g, new Date().toISOString())
-        .replace(/\{\{FILE_COUNT\}\}/g, String(filesToBundle.length + 1))
+        .replace(/\{\{FILE_COUNT\}\}/g, String(filesToBundle.length + (alreadyHasPrompt ? 0 : 1)))
         .replace(/\{\{TECH_STACK\}\}/g, techStackStr);
 
-    fs.writeFileSync(promptPath, filledPrompt, 'utf8');
+    if (!options.isDryRun) {
+        fs.writeFileSync(promptPath, filledPrompt, 'utf8');
+    }
 
-    if (!filesToBundle.includes('prompt.txt')) {
+    if (!alreadyHasPrompt) {
         filesToBundle.unshift('prompt.txt');
+    }
+} else {
+    const promptIdx = filesToBundle.indexOf('prompt.txt');
+    if (promptIdx !== -1) {
+        filesToBundle.splice(promptIdx, 1);
     }
 }
 
@@ -414,7 +429,7 @@ console.log(`
 📊 Size:          ${displaySize}
 📄 Total Files:   ${filesToBundle.length} files included
 🎯 Source Mode:   ${usedGit ? 'Git (respecting .gitignore)' : 'Filesystem Walk'}
-📝 Prompt File:   prompt.txt included at archive root
+📝 Prompt File:   ${options.noPrompt ? 'omitted (--no-prompt)' : 'prompt.txt included at archive root'}
 
 --------------------------------------------------------------------------------
 💡 How to use this with another AI:

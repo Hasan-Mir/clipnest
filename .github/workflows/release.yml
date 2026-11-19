@@ -61,6 +61,7 @@ jobs:
 
       - name: Build standalone console CLI binary (clipnest-cli.exe)
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           cargo build --release --manifest-path src-tauri/Cargo.toml --bin clipnest-cli
           New-Item -ItemType Directory -Force -Path "packages/cli/bin" | Out-Null
           Copy-Item "src-tauri/target/release/clipnest-cli.exe" "packages/cli/bin/clipnest-cli.exe" -Force
@@ -128,12 +129,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ steps.changelog.outputs.tag }}
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           bun run scripts/build-portable.ts
           $zip = Get-ChildItem "src-tauri/target/release/bundle/*-portable.zip" | Select-Object -First 1
-          if ($null -ne $zip) {
-            gh release upload --clobber -- $env:RELEASE_TAG $zip.FullName
+          if ($null -eq $zip) {
+            throw "Expected portable ZIP archive was not generated."
           }
-          if (Test-Path "src-tauri/target/release/clipnest-cli.exe") {
-            Copy-Item "src-tauri/target/release/clipnest-cli.exe" "src-tauri/target/release/clipnest-cli-win32-x64.exe" -Force
-            gh release upload --clobber -- $env:RELEASE_TAG "src-tauri/target/release/clipnest-cli-win32-x64.exe"
+          gh release upload --clobber -- $env:RELEASE_TAG $zip.FullName
+          if (-not (Test-Path "src-tauri/target/release/clipnest-cli.exe")) {
+            throw "Expected clipnest-cli.exe was not found."
           }
+          Copy-Item "src-tauri/target/release/clipnest-cli.exe" "src-tauri/target/release/clipnest-cli-win32-x64.exe" -Force
+          gh release upload --clobber -- $env:RELEASE_TAG "src-tauri/target/release/clipnest-cli-win32-x64.exe"

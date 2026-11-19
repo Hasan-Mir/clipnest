@@ -119,6 +119,10 @@ window.addEventListener(
 
         if (ck && isKey(e, 'f')) {
             e.preventDefault();
+            const active = document.activeElement as HTMLElement | null;
+            if (e.altKey || e.shiftKey || active?.closest('.shortcut-btn.primary, .preview, .overlay')) {
+                return;
+            }
             e.stopPropagation();
             window.dispatchEvent(new CustomEvent('clipnest-focus-search'));
             return;

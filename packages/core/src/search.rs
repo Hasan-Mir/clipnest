@@ -286,15 +286,18 @@ pub fn list_scoped(conn: &Connection, a: &ListArgs, independent_pinning: bool) -
                     |r| r.get::<_, i64>(0),
                 )
                 .unwrap_or(0) as usize;
+            if a.limit == 0 {
+                return ListResult { items: vec![], total, error: None };
+            }
+            let sql_limit = a.limit.min(i64::MAX as usize) as i64;
             let sql = format!(
-                "SELECT {} FROM clips c JOIN clip_categories cc ON cc.clip_id=c.id WHERE cc.board_id=?1 {} LIMIT {}",
+                "SELECT {} FROM clips c JOIN clip_categories cc ON cc.clip_id=c.id WHERE cc.board_id=?1 {} LIMIT ?2",
                 category_cols(independent_pinning),
-                category_order(independent_pinning),
-                a.limit.max(1)
+                category_order(independent_pinning)
             );
             let mut items = vec![];
             if let Ok(mut st) = conn.prepare(&sql) {
-                if let Ok(rows) = st.query_map(params![bid], row_from) {
+                if let Ok(rows) = st.query_map(params![bid, sql_limit], row_from) {
                     items = rows.filter_map(|r| r.ok()).collect();
                 }
             }
@@ -303,13 +306,14 @@ pub fn list_scoped(conn: &Connection, a: &ListArgs, independent_pinning: bool) -
 
         let total: usize =
             conn.query_row("SELECT COUNT(*) FROM clips", [], |r| r.get::<_, i64>(0)).unwrap_or(0) as usize;
-        let sql = format!(
-            "SELECT {ROW_COLS} FROM clips ORDER BY pinned DESC, sort_ts DESC, id DESC LIMIT {}",
-            a.limit.max(1)
-        );
+        if a.limit == 0 {
+            return ListResult { items: vec![], total, error: None };
+        }
+        let sql_limit = a.limit.min(i64::MAX as usize) as i64;
+        let sql = format!("SELECT {ROW_COLS} FROM clips ORDER BY pinned DESC, sort_ts DESC, id DESC LIMIT ?1");
         let mut items = vec![];
         if let Ok(mut st) = conn.prepare(&sql) {
-            if let Ok(rows) = st.query_map([], row_from) {
+            if let Ok(rows) = st.query_map(params![sql_limit], row_from) {
                 items = rows.filter_map(|r| r.ok()).collect();
             }
         }
@@ -408,5 +412,47 @@ mod tests {
         let r_bad =
             list(&conn, &ListArgs { pinboard: None, query: "[unclosed".into(), mode: "regex".into(), limit: 50 });
         assert!(r_bad.error.is_some());
+    }
+
+    #[test]
+    fn list_scoped_handles_zero_limit_and_max_limit() {
+        let conn = seed_db();
+        let res_zero =
+            list_scoped(&conn, &ListArgs { pinboard: None, query: "".into(), mode: "smart".into(), limit: 0 }, true);
+        assert_eq!(res_zero.items.len(), 0);
+        assert_eq!(res_zero.total, 3);
+        assert!(res_zero.error.is_none());
+
+        let res_max = list_scoped(
+            &conn,
+            &ListArgs { pinboard: None, query: "".into(), mode: "smart".into(), limit: usize::MAX },
+            true,
+        );
+        assert_eq!(res_max.items.len(), 3);
+        assert_eq!(res_max.total, 3);
+        assert!(res_max.error.is_none());
+
+        // Also test with pinboard scoped
+        let pb_id = db::create_pinboard(&conn, "TestPB", "#fff").unwrap();
+        let c_id = res_max.items[0].id;
+        db::assign_category(&conn, &[c_id], Some(pb_id), None, false).unwrap();
+
+        let res_pb_zero = list_scoped(
+            &conn,
+            &ListArgs { pinboard: Some(pb_id), query: "".into(), mode: "smart".into(), limit: 0 },
+            true,
+        );
+        assert_eq!(res_pb_zero.items.len(), 0);
+        assert_eq!(res_pb_zero.total, 1);
+        assert!(res_pb_zero.error.is_none());
+
+        let res_pb_max = list_scoped(
+            &conn,
+            &ListArgs { pinboard: Some(pb_id), query: "".into(), mode: "smart".into(), limit: usize::MAX },
+            true,
+        );
+        assert_eq!(res_pb_max.items.len(), 1);
+        assert_eq!(res_pb_max.total, 1);
+        assert!(res_pb_max.error.is_none());
     }
 }

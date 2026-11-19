@@ -9,6 +9,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import { callIpc } from '@seymi/clipnest-core';
 import {
     CLI_VERSION,
+    EXIT_ERROR,
     EXIT_NOT_FOUND,
     EXIT_OFFLINE,
     EXIT_OK,
@@ -325,5 +326,65 @@ describe('@seymi/clipnest-cli end-to-end verification', () => {
             const res = await callIpc(tmpDir, 'status', {}, 500);
             assert.equal(res, null, `expected null for payload: ${payload}`);
         }
+    });
+
+    it('rejects dangling value-taking flags with EXIT_USAGE without invoking mutations', async () => {
+        let handlerCalled = false;
+        await startMockIpcServer(() => {
+            handlerCalled = true;
+            return { ok: true, exit_code: EXIT_OK, data: {} };
+        });
+
+        const danglingCases = [
+            ['edit', '12', '--title'],
+            ['add', '--file'],
+            ['copy', '--id'],
+        ];
+
+        for (const cArgs of danglingCases) {
+            handlerCalled = false;
+            let err = '';
+            const code = await runCli(cArgs, {
+                dataDir: tmpDir,
+                stdout: () => {},
+                stderr: (s) => (err += s),
+            });
+            assert.equal(code, EXIT_USAGE, `Expected EXIT_USAGE for args: ${cArgs.join(' ')}`);
+            assert.equal(handlerCalled, false, `Expected no IPC mutation call for args: ${cArgs.join(' ')}`);
+            assert.match(err, /Missing value for option/);
+        }
+    });
+
+    it('returns EXIT_ERROR and outputs valid JSON on stderr when -o path is unwritable, leaving no tmp file', async () => {
+        await startMockIpcServer((op) => {
+            assert.equal(op, 'get');
+            return {
+                ok: true,
+                exit_code: EXIT_OK,
+                data: {
+                    id: 12,
+                    text: 'sample text',
+                    formats: [],
+                },
+            };
+        });
+
+        const nonExistentDir = path.join(tmpDir, 'does-not-exist-dir', 'out.txt');
+        let err = '';
+        const code = await runCli(['get', '12', '--json', '-o', nonExistentDir], {
+            dataDir: tmpDir,
+            stdout: () => {},
+            stderr: (s) => (err += s),
+        });
+        assert.equal(code, EXIT_ERROR);
+        const parsed = JSON.parse(err.trim());
+        assert.equal(parsed.ok, false);
+        assert.equal(parsed.exit_code, EXIT_ERROR);
+        assert.match(parsed.error, /Cannot write to/);
+
+        // Verify no .tmp file left in tmpDir
+        const files = fs.readdirSync(tmpDir);
+        const tmpFiles = files.filter((f) => f.endsWith('.tmp'));
+        assert.equal(tmpFiles.length, 0, 'No temporary files should be left behind');
     });
 });

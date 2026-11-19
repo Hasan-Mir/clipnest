@@ -283,10 +283,12 @@ function ShortcutInput({
     on: (s: string) => void;
 }) {
     const [rec, setRec] = useState(false);
+    const [recWin, setRecWin] = useState(false);
     const [liveMods, setLiveMods] = useState('');
     const [conflict, setConflict] = useState<ShortcutConflict | null>(null);
 
     const hasWin = /(^|\+)(super|win|meta)(\+|$)/i.test(v);
+    const activeWin = rec ? recWin : hasWin;
     const withoutWin = v
         .split('+')
         .filter((p) => !/^(super|win|meta)$/i.test(p))
@@ -316,7 +318,7 @@ function ShortcutInput({
         };
     }, [v, role]);
 
-    const recordingText = liveMods || (hasWin ? 'Win + ' : t('Press keys…'));
+    const recordingText = liveMods || (recWin ? 'Win + ' : t('Press keys…'));
 
     return (
         <div className="shortcut-wrap">
@@ -327,10 +329,12 @@ function ShortcutInput({
                     dir="ltr"
                     onClick={() => {
                         setRec(true);
+                        setRecWin(hasWin);
                         setLiveMods(hasWin ? 'Win + ' : '');
                     }}
                     onBlur={() => {
                         setRec(false);
+                        setRecWin(false);
                         setLiveMods('');
                     }}
                     onKeyDown={(e) => {
@@ -341,6 +345,7 @@ function ShortcutInput({
                         e.stopPropagation();
                         if (e.key === 'Escape') {
                             setRec(false);
+                            setRecWin(false);
                             setLiveMods('');
                             return;
                         }
@@ -353,14 +358,16 @@ function ShortcutInput({
                         ) {
                             on('');
                             setRec(false);
+                            setRecWin(false);
                             setLiveMods('');
                             return;
                         }
-                        setLiveMods(formatHeldModifiers(e.nativeEvent, hasWin));
-                        const s = eventToShortcut(e, hasWin);
+                        setLiveMods(formatHeldModifiers(e.nativeEvent, recWin));
+                        const s = eventToShortcut(e, recWin);
                         if (s) {
-                            on(hasWin && !/super/i.test(s) ? `Super+${s}` : s);
+                            on(recWin && !/super/i.test(s) ? `Super+${s}` : s);
                             setRec(false);
+                            setRecWin(false);
                             setLiveMods('');
                         }
                     }}
@@ -370,7 +377,7 @@ function ShortcutInput({
                         }
                         e.preventDefault();
                         e.stopPropagation();
-                        setLiveMods(formatHeldModifiers(e.nativeEvent, hasWin));
+                        setLiveMods(formatHeldModifiers(e.nativeEvent, recWin));
                     }}
                 >
                     <span>{rec ? recordingText : v || t('— none —')}</span>
@@ -384,9 +391,14 @@ function ShortcutInput({
                 >
                     <input
                         type="checkbox"
-                        checked={hasWin}
+                        checked={activeWin}
                         disabled={!v && !rec}
                         onChange={(e) => {
+                            if (rec) {
+                                setRecWin(e.target.checked);
+                                setLiveMods(e.target.checked ? 'Win + ' : '');
+                                return;
+                            }
                             if (e.target.checked) {
                                 on(withoutWin ? `Super+${withoutWin}` : 'Super+V');
                             } else {

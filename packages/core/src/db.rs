@@ -789,7 +789,10 @@ pub fn trim_board(conn: &Connection, board: i64) {
                     params![other_board, cid, board],
                 );
             } else {
-                let _ = conn.execute("DELETE FROM clips WHERE id=?1 AND pinboard_id=?2", params![cid, board]);
+                let _ =
+                    conn.execute("DELETE FROM clips WHERE id=?1 AND pinboard_id=?2 AND pinned=0", params![cid, board]);
+                let _ = conn
+                    .execute("UPDATE clips SET pinboard_id=NULL WHERE id=?1 AND pinboard_id=?2", params![cid, board]);
             }
         }
     }
@@ -879,34 +882,59 @@ pub fn erase_history(
             .map_err(|e| e.to_string())
         }
     } else if let Some(board_id) = target_pinboard {
-        let target_ids: Vec<i64> = {
-            let sql = if include_pinned {
-                "SELECT clip_id FROM clip_categories WHERE board_id=?1"
-            } else {
-                "SELECT cc.clip_id FROM clip_categories cc JOIN clips c ON c.id=cc.clip_id
-                 WHERE cc.board_id=?1 AND cc.pinned=0 AND c.pinned=0"
+        conn.execute("SAVEPOINT erase_board", []).map_err(|e| e.to_string())?;
+        let res = (|| -> Result<usize, String> {
+            let target_ids: Vec<i64> = {
+                let sql = if include_pinned {
+                    "SELECT clip_id FROM clip_categories WHERE board_id=?1"
+                } else {
+                    "SELECT cc.clip_id FROM clip_categories cc JOIN clips c ON c.id=cc.clip_id
+                     WHERE cc.board_id=?1 AND cc.pinned=0 AND c.pinned=0"
+                };
+                let mut st = conn.prepare(sql).map_err(|e| e.to_string())?;
+                let rows = st.query_map(params![board_id], |r| r.get::<_, i64>(0)).map_err(|e| e.to_string())?;
+                let mut ids = vec![];
+                for r in rows {
+                    ids.push(r.map_err(|e| e.to_string())?);
+                }
+                ids
             };
-            let mut st = conn.prepare(sql).map_err(|e| e.to_string())?;
-            let rows = st.query_map(params![board_id], |r| r.get::<_, i64>(0)).map_err(|e| e.to_string())?;
-            rows.filter_map(|r| r.ok()).collect()
-        };
-        let mut count = 0usize;
-        for cid in target_ids {
-            let _ =
-                conn.execute("DELETE FROM clip_categories WHERE clip_id=?1 AND board_id=?2", params![cid, board_id]);
-            let remaining: Option<i64> = conn
-                .query_row("SELECT board_id FROM clip_categories WHERE clip_id=?1 LIMIT 1", params![cid], |r| r.get(0))
-                .optional()
-                .ok()
-                .flatten();
-            if let Some(other_board) = remaining {
-                let _ = conn.execute("UPDATE clips SET pinboard_id=?1 WHERE id=?2", params![other_board, cid]);
-            } else {
-                let _ = conn.execute("DELETE FROM clips WHERE id=?1", params![cid]);
+            let mut count = 0usize;
+            for cid in target_ids {
+                conn.execute("DELETE FROM clip_categories WHERE clip_id=?1 AND board_id=?2", params![cid, board_id])
+                    .map_err(|e| e.to_string())?;
+                let remaining: Option<i64> = conn
+                    .query_row("SELECT board_id FROM clip_categories WHERE clip_id=?1 LIMIT 1", params![cid], |r| {
+                        r.get(0)
+                    })
+                    .optional()
+                    .map_err(|e| e.to_string())?;
+                if let Some(other_board) = remaining {
+                    conn.execute("UPDATE clips SET pinboard_id=?1 WHERE id=?2", params![other_board, cid])
+                        .map_err(|e| e.to_string())?;
+                } else {
+                    conn.execute("DELETE FROM clips WHERE id=?1", params![cid]).map_err(|e| e.to_string())?;
+                }
+                count += 1;
             }
-            count += 1;
+            Ok(count)
+        })();
+        match res {
+            Ok(count) => {
+                if let Err(e) = conn.execute("RELEASE SAVEPOINT erase_board", []) {
+                    let _ = conn.execute("ROLLBACK TO SAVEPOINT erase_board", []);
+                    let _ = conn.execute("RELEASE SAVEPOINT erase_board", []);
+                    Err(e.to_string())
+                } else {
+                    Ok(count)
+                }
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO SAVEPOINT erase_board", []);
+                let _ = conn.execute("RELEASE SAVEPOINT erase_board", []);
+                Err(e)
+            }
         }
-        Ok(count)
     } else if include_pinned {
         conn.execute(
             "DELETE FROM clips WHERE pinboard_id IS NULL
@@ -1187,8 +1215,9 @@ pub fn merge_from(conn: &Connection, imp: &Path) -> Result<usize, String> {
                  FROM imp.clip_categories icc
                  JOIN imp.clips ic ON ic.id = icc.clip_id
                  JOIN main.clips mc ON mc.hash = ic.hash
-                 JOIN pbmap m ON m.old = icc.board_id",
-                [],
+                 JOIN pbmap m ON m.old = icc.board_id
+                 WHERE mc.id > ?1",
+                params![max_before],
             )
             .map_err(|e| e.to_string())?;
             conn.execute(
@@ -1557,5 +1586,97 @@ mod tests {
             Some("file is not a database".into()),
         );
         assert!(matches!(classify_sqlite_err(err_not_a_db), OpenErr::Corrupt(_)));
+    }
+
+    #[test]
+    fn trim_board_preserves_main_clipboard_pinned_clip_on_overflow() {
+        let dir = std::env::temp_dir().join(format!("clipnest_db_trim_preserve_{}", now_ms()));
+        let mut conn = open_with_recovery(&dir).unwrap();
+
+        let board_id = create_pinboard(&conn, "LimitedBoard", "#ff0000").unwrap();
+        update_pinboard(&conn, board_id, "LimitedBoard", "#ff0000", 1, "inherit", "inherit").unwrap();
+
+        let c1 = build_text_clip("pinned clip", None, "App", "app.exe", false);
+        let (id1, _) = insert_clip(&mut conn, &c1, &[text_format("pinned clip")]).unwrap();
+        set_pinned(&conn, &[id1], true).unwrap();
+        assign_category(&conn, &[id1], Some(board_id), None, false).unwrap();
+
+        // c1 is pinned in main clipboard (pinned=1) and assigned to LimitedBoard
+        let (p1, b1): (i64, Option<i64>) = conn
+            .query_row("SELECT pinned, pinboard_id FROM clips WHERE id=?1", params![id1], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(p1, 1);
+        assert_eq!(b1, Some(board_id));
+
+        // Insert second clip and assign to LimitedBoard to trigger overflow (max_items = 1)
+        let c2 = build_text_clip("second clip", None, "App", "app.exe", false);
+        let (id2, _) = insert_clip(&mut conn, &c2, &[text_format("second clip")]).unwrap();
+        assign_category(&conn, &[id2], Some(board_id), None, false).unwrap();
+
+        trim_board(&conn, board_id);
+
+        // c1 must still exist in clips with pinned=1 and pinboard_id=NULL
+        let row_opt: Option<(i64, Option<i64>)> = conn
+            .query_row("SELECT pinned, pinboard_id FROM clips WHERE id=?1", params![id1], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .optional()
+            .unwrap();
+        assert!(row_opt.is_some(), "Pinned clip c1 must not be deleted on category overflow");
+        let (p1_after, b1_after) = row_opt.unwrap();
+        assert_eq!(p1_after, 1);
+        assert_eq!(b1_after, None);
+
+        // Category membership for c1 was removed
+        let in_cat: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM clip_categories WHERE clip_id=?1 AND board_id=?2",
+                params![id1, board_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(in_cat, 0);
+
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn merge_from_does_not_insert_clip_categories_for_existing_clips_without_category() {
+        let dir_src = std::env::temp_dir().join(format!("clipnest_db_merge_cat_src_{}", now_ms()));
+        let dir_dst = std::env::temp_dir().join(format!("clipnest_db_merge_cat_dst_{}", now_ms()));
+
+        // In dst: clip exists without any category (pinboard_id is NULL)
+        let mut conn_dst = open_with_recovery(&dir_dst).unwrap();
+        let c_dst = build_text_clip("shared content", None, "App", "app.exe", false);
+        let (id_dst, _) = insert_clip(&mut conn_dst, &c_dst, &[text_format("shared content")]).unwrap();
+
+        // In src: same clip is assigned to CatX
+        let mut conn_src = open_with_recovery(&dir_src).unwrap();
+        let cat_x = create_pinboard(&conn_src, "CatX", "#00ff00").unwrap();
+        let c_src = build_text_clip("shared content", None, "App", "app.exe", false);
+        let (id_src, _) = insert_clip(&mut conn_src, &c_src, &[text_format("shared content")]).unwrap();
+        assign_category(&conn_src, &[id_src], Some(cat_x), None, false).unwrap();
+        drop(conn_src);
+
+        let src_db_path = dir_src.join("clipnest.db");
+        let added = merge_from(&conn_dst, &src_db_path).unwrap();
+        assert_eq!(added, 0, "No new clip was added since hash already existed");
+
+        let cat_count: i64 = conn_dst
+            .query_row("SELECT COUNT(*) FROM main.clip_categories WHERE clip_id=?1", params![id_dst], |r| r.get(0))
+            .unwrap();
+        assert_eq!(cat_count, 0, "Existing clip must not get clip_categories row from imported clip");
+
+        let p_id: Option<i64> = conn_dst
+            .query_row("SELECT pinboard_id FROM main.clips WHERE id=?1", params![id_dst], |r| r.get(0))
+            .unwrap();
+        assert_eq!(p_id, None, "Existing clip pinboard_id must remain NULL");
+
+        drop(conn_dst);
+        let _ = std::fs::remove_dir_all(&dir_src);
+        let _ = std::fs::remove_dir_all(&dir_dst);
     }
 }
