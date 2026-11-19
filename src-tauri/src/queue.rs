@@ -59,6 +59,31 @@ fn split_paths(plain: &str) -> Vec<String> {
     plain.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).map(|l| l.to_string()).collect()
 }
 
+pub fn push_basket_paths(
+    basket: &mut Vec<BasketEntry>,
+    id: i64,
+    paths: Vec<Option<String>>,
+    cut_flag: bool,
+    update_existing: bool,
+) {
+    for path in paths {
+        let dup = match &path {
+            Some(p) => {
+                basket.iter_mut().find(|e| e.path.as_deref().map(|x| x.eq_ignore_ascii_case(p)).unwrap_or(false))
+            }
+            None => basket.iter_mut().find(|e| e.id == id && e.path.is_none()),
+        };
+        if let Some(existing) = dup {
+            if update_existing {
+                existing.id = id;
+                existing.cut = cut_flag;
+            }
+        } else {
+            basket.push(BasketEntry { id, cut: cut_flag, path });
+        }
+    }
+}
+
 pub fn push_captured(app: &AppHandle, id: i64, kind: &str, is_cut: bool) {
     let st = app.state::<AppState>();
     let allow_cut = st.settings.read().basket_allow_cut;
@@ -83,13 +108,7 @@ pub fn push_captured(app: &AppHandle, id: i64, kind: &str, is_cut: bool) {
             vec![None]
         };
         let mut q = st.queue.lock();
-        for path in paths {
-            if let Some(existing) = q.basket.iter_mut().find(|e| e.id == id && e.path == path) {
-                existing.cut = cut_flag;
-            } else {
-                q.basket.push(BasketEntry { id, cut: cut_flag, path });
-            }
-        }
+        push_basket_paths(&mut q.basket, id, paths, cut_flag, true);
     } else {
         st.queue.lock().items.push(id);
     }
@@ -359,15 +378,27 @@ pub fn basket_paste_here(app: &AppHandle) -> Result<usize, String> {
     let fg = win::foreground();
     let target = if fg != 0 && !win::is_own_window(fg) { fg } else { st.target_hwnd.load(Ordering::SeqCst) };
     let count = all_paths.len();
-    std::thread::spawn(move || {
-        if target != 0 {
+    if target != 0 {
+        std::thread::spawn(move || {
             win::focus_window(target);
-            std::thread::sleep(Duration::from_millis(60));
-        }
-        win::send_paste_keys("ctrl+v");
-    });
+            let mut focused = win::foreground() == target;
+            for _ in 0..30 {
+                if focused {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+                focused = win::foreground() == target;
+            }
+            if focused {
+                std::thread::sleep(Duration::from_millis(40));
+                win::send_paste_keys("ctrl+v");
+            }
+        });
+    }
     if all_cut {
-        st.queue.lock().basket.retain(|e| e.path.is_none());
+        st.queue.lock().basket.retain(|e| {
+            e.path.as_deref().map(|p| !all_paths.iter().any(|x| x.eq_ignore_ascii_case(p))).unwrap_or(true)
+        });
         changed(app);
     }
     Ok(count)
@@ -832,6 +863,11 @@ pub fn get_transfer_status(state: &AppState) -> TransferStatus {
 
 /// Synchronous variant for callers that want a plain result (Explorer context menu, popup paste to folder).
 pub fn transfer_entries_to_dir(app: &AppHandle, entries: &[BasketEntry], dest_dir: &Path) -> Result<usize, String> {
+    let st = app.state::<AppState>();
+    if st.transfer_busy.swap(true, Ordering::SeqCst) {
+        return Err("A transfer is already running".into());
+    }
+    let _guard = BusyGuard(app.clone());
     let report = run_transfer(app, entries, dest_dir);
     if report.failed.is_empty() {
         Ok(report.done)
@@ -1146,6 +1182,34 @@ mod tests {
         assert!(completed_cuts.is_empty());
         assert!(cut_file.exists(), "Original Cut file must remain untouched on disk");
         assert_eq!(std::fs::read(sub_dest.join("important.txt")).unwrap(), b"must-never-be-lost");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn basket_deduplication_and_transfer_core_cut_with_unique_paths() {
+        let root = temp_test_dir("dup_path");
+        let src_dir = root.join("src");
+        let dst_dir = root.join("dst");
+        std::fs::create_dir_all(&src_dir).unwrap();
+        std::fs::create_dir_all(&dst_dir).unwrap();
+
+        let file = src_dir.join("report.pdf");
+        std::fs::write(&file, b"pdf-data").unwrap();
+
+        let mut basket: Vec<BasketEntry> = Vec::new();
+        push_basket_paths(&mut basket, 10, vec![Some(file.to_string_lossy().to_string())], true, true);
+        push_basket_paths(&mut basket, 11, vec![Some(file.to_string_lossy().to_uppercase())], true, true);
+        assert_eq!(basket.len(), 1, "Duplicate paths across clips must be deduplicated in basket");
+        assert_eq!(basket[0].id, 11);
+        assert!(basket[0].cut);
+
+        let (report, completed_cuts) = transfer_core(|_| None, true, &basket, &dst_dir, |_, _| {});
+        assert_eq!(report.done, 1);
+        assert!(report.failed.is_empty());
+        assert_eq!(completed_cuts.len(), 1);
+        assert!(!file.exists(), "Original file must be removed after successful cut");
+        assert_eq!(std::fs::read(dst_dir.join("report.pdf")).unwrap(), b"pdf-data");
 
         let _ = std::fs::remove_dir_all(&root);
     }

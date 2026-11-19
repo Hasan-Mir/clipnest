@@ -54,7 +54,7 @@ unsafe fn load_napi_api() -> Option<NapiApi> {
     use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
 
     let mut hmod = GetModuleHandleW(std::ptr::null());
-    if hmod == 0 {
+    if hmod == 0 || GetProcAddress(hmod, b"napi_create_function\0".as_ptr()).is_none() {
         let node_dll: Vec<u16> = "node.dll\0".encode_utf16().collect();
         hmod = GetModuleHandleW(node_dll.as_ptr());
     }

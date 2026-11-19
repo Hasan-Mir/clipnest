@@ -44,11 +44,17 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Run Frontend, CLI & Rust test suites before release
-        run: |
-          npm run typecheck
-          npm test
-          cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Typecheck TypeScript workspaces
+        run: npm run typecheck
+
+      - name: Run Frontend & CLI unit tests
+        run: npm test
+
+      - name: Run Rust core unit tests
+        run: cargo test --manifest-path packages/core/Cargo.toml
+
+      - name: Run Rust Tauri unit & integration tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
 
       - name: Build standalone console CLI binary (clipnest-cli.exe)
         run: |
@@ -110,7 +116,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           node scripts/build-portable.mjs
-          $zip = Get-ChildItem "src-tauri/target/release/bundle/portable/*.zip" | Select-Object -First 1
+          $zip = Get-ChildItem "src-tauri/target/release/bundle/*-portable.zip" | Select-Object -First 1
           if ($null -ne $zip) {
             gh release upload "${{ steps.changelog.outputs.tag }}" $zip.FullName --clobber
           }

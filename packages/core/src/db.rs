@@ -1100,6 +1100,15 @@ pub fn merge_from(conn: &Connection, imp: &Path) -> Result<usize, String> {
             .map_err(|e| e.to_string())?;
             let _ = conn.execute(
                 "INSERT OR IGNORE INTO main.clip_categories(clip_id, board_id, pinned, sort_ts)
+                 SELECT mc.id, m.new, icc.pinned, icc.sort_ts
+                 FROM imp.clip_categories icc
+                 JOIN imp.clips ic ON ic.id = icc.clip_id
+                 JOIN main.clips mc ON mc.hash = ic.hash
+                 JOIN pbmap m ON m.old = icc.board_id",
+                [],
+            );
+            let _ = conn.execute(
+                "INSERT OR IGNORE INTO main.clip_categories(clip_id, board_id, pinned, sort_ts)
                  SELECT id, pinboard_id, 0, sort_ts FROM main.clips WHERE id>?1 AND pinboard_id IS NOT NULL",
                 params![max_before],
             );
@@ -1353,5 +1362,54 @@ mod tests {
         assert_eq!(row_after.pinboard_id, Some(cat_a));
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn merge_from_preserves_multicategory_memberships_and_pinned_flags() {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static TEST_SEQ: AtomicU64 = AtomicU64::new(1);
+        let seq = TEST_SEQ.fetch_add(1, Ordering::Relaxed);
+        let pid = std::process::id();
+        let dir_src = std::env::temp_dir().join(format!("clipnest_db_merge_src_{pid}_{seq}"));
+        let dir_dst = std::env::temp_dir().join(format!("clipnest_db_merge_dst_{pid}_{seq}"));
+
+        let mut conn_src = open_with_recovery(&dir_src).unwrap();
+        let c = build_text_clip("clip with multiple categories", None, "App", "app.exe", false);
+        let (id, _) = insert_clip(&mut conn_src, &c, &[text_format("clip with multiple categories")]).unwrap();
+        let cat_a = create_pinboard(&conn_src, "CatA", "#4f8cff").unwrap();
+        let cat_b = create_pinboard(&conn_src, "CatB", "#34c759").unwrap();
+
+        assign_category(&conn_src, &[id], Some(cat_a), None, true).unwrap();
+        assign_category(&conn_src, &[id], Some(cat_b), Some(cat_a), true).unwrap();
+        set_pinned_scoped(&conn_src, &[id], true, Some(cat_a), true).unwrap();
+
+        // Close source DB connection so WAL is checkpointed or clean for reading
+        drop(conn_src);
+
+        let conn_dst = open_with_recovery(&dir_dst).unwrap();
+        let src_db_path = dir_src.join("clipnest.db");
+        let added = merge_from(&conn_dst, &src_db_path).unwrap();
+        assert_eq!(added, 1);
+
+        let rows: Vec<(i64, i64)> = {
+            let mut stmt =
+                conn_dst.prepare("SELECT board_id, pinned FROM main.clip_categories ORDER BY board_id").unwrap();
+            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap().map(|r| r.unwrap()).collect()
+        };
+
+        assert_eq!(rows.len(), 2, "Both category memberships must be preserved on merge_from");
+        // Pinboard IDs in dst may map to new IDs via pbmap, so verify CatA is pinned=1 and CatB is pinned=0
+        let boards = list_pinboards(&conn_dst).unwrap();
+        let dst_cat_a = boards.iter().find(|b| b.name == "CatA").unwrap().id;
+        let dst_cat_b = boards.iter().find(|b| b.name == "CatB").unwrap().id;
+
+        let a_pinned = rows.iter().find(|(b, _)| *b == dst_cat_a).map(|(_, p)| *p);
+        let b_pinned = rows.iter().find(|(b, _)| *b == dst_cat_b).map(|(_, p)| *p);
+        assert_eq!(a_pinned, Some(1), "CatA must preserve pinned=1");
+        assert_eq!(b_pinned, Some(0), "CatB must preserve pinned=0");
+
+        drop(conn_dst);
+        let _ = std::fs::remove_dir_all(&dir_src);
+        let _ = std::fs::remove_dir_all(&dir_dst);
     }
 }

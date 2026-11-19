@@ -1379,30 +1379,34 @@ pub fn call_ipc_or_offline(
         if let Ok(ep) = serde_json::from_str::<IpcEndpoint>(&raw) {
             let addr = SocketAddr::from(([127, 0, 0, 1], ep.port));
             let timeout = Duration::from_millis(timeout_ms.max(200));
-            if let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_millis(450)) {
-                let _ = stream.set_read_timeout(Some(timeout));
-                let _ = stream.set_write_timeout(Some(timeout));
-                let req = IpcRequest {
-                    protocol: PROTOCOL_VERSION,
-                    version: APP_VERSION.to_string(),
-                    token: ep.token,
-                    op: op.to_string(),
-                    params: params.clone(),
-                };
-                if let Ok(mut bytes) = serde_json::to_vec(&req) {
-                    bytes.push(b'\n');
-                    if stream.write_all(&bytes).is_ok() && stream.flush().is_ok() {
-                        let mut resp_line = String::new();
-                        let mut reader = BufReader::new(&stream);
-                        if reader.read_line(&mut resp_line).is_ok() && !resp_line.trim().is_empty() {
-                            if let Ok(resp) = serde_json::from_str::<IpcResponse>(&resp_line) {
-                                return resp;
+            match TcpStream::connect_timeout(&addr, Duration::from_millis(450)) {
+                Ok(mut stream) => {
+                    let _ = stream.set_read_timeout(Some(timeout));
+                    let _ = stream.set_write_timeout(Some(timeout));
+                    let req = IpcRequest {
+                        protocol: PROTOCOL_VERSION,
+                        version: APP_VERSION.to_string(),
+                        token: ep.token,
+                        op: op.to_string(),
+                        params: params.clone(),
+                    };
+                    if let Ok(mut bytes) = serde_json::to_vec(&req) {
+                        bytes.push(b'\n');
+                        if stream.write_all(&bytes).is_ok() && stream.flush().is_ok() {
+                            let mut resp_line = String::new();
+                            let mut reader = BufReader::new(&stream);
+                            if reader.read_line(&mut resp_line).is_ok() && !resp_line.trim().is_empty() {
+                                if let Ok(resp) = serde_json::from_str::<IpcResponse>(&resp_line) {
+                                    return resp;
+                                }
                             }
                         }
                     }
                 }
-            } else {
-                let _ = std::fs::remove_file(&ep_path);
+                Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {
+                    let _ = std::fs::remove_file(&ep_path);
+                }
+                Err(_) => {}
             }
         }
     }
@@ -1479,6 +1483,9 @@ pub fn is_cli_invocation(args: &[String]) -> bool {
         let arg = args[i].as_str();
         if matches!(arg, "--explorer-files" | "--paste-basket" | "--collect-file" | "--portable") {
             return false;
+        }
+        if arg == "--offline-rpc" || arg.starts_with("--offline-rpc=") {
+            return true;
         }
         if matches!(arg, "-h" | "--help" | "-V" | "--version") {
             return true;
@@ -1762,6 +1769,7 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
     let mut online_only = false;
     let mut timeout_ms: u64 = 5000;
     let mut custom_data_dir: Option<String> = None;
+    let mut offline_rpc_op: Option<String> = None;
     let mut args: Vec<String> = Vec::new();
 
     let mut i = 0;
@@ -1771,11 +1779,15 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
             "--json" => json_out = true,
             "-y" | "--yes" => assume_yes = true,
             "--online-only" | "--require-running" => online_only = true,
+            "-q" | "--quiet" | "--no-color" => {}
             "--timeout" => {
                 if let Some(v) = raw_args.get(i + 1) {
                     timeout_ms = v.parse().unwrap_or(5000);
                     i += 1;
                 }
+            }
+            s if s.starts_with("--timeout=") => {
+                timeout_ms = s.trim_start_matches("--timeout=").parse().unwrap_or(5000);
             }
             "--data-dir" => {
                 if let Some(v) = raw_args.get(i + 1) {
@@ -1783,10 +1795,31 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
                     i += 1;
                 }
             }
+            s if s.starts_with("--data-dir=") => {
+                custom_data_dir = Some(s.trim_start_matches("--data-dir=").to_string());
+            }
+            "--offline-rpc" => {
+                if let Some(v) = raw_args.get(i + 1) {
+                    offline_rpc_op = Some(v.clone());
+                    i += 1;
+                }
+            }
+            s if s.starts_with("--offline-rpc=") => {
+                offline_rpc_op = Some(s.trim_start_matches("--offline-rpc=").to_string());
+            }
             "--portable" => {}
             _ => args.push(a.clone()),
         }
         i += 1;
+    }
+
+    if let Some(rpc_op) = offline_rpc_op {
+        let data_dir = resolve_cli_data_dir(custom_data_dir.as_deref());
+        let raw = read_stdin_all().unwrap_or_else(|_| "{}".to_string());
+        let params: Value = serde_json::from_str(&raw).unwrap_or(Value::Null);
+        let resp = dispatch_offline(&data_dir, &rpc_op, &params);
+        println!("{}", serde_json::to_string(&resp).unwrap_or_else(|_| "{\"ok\":false,\"exit_code\":1}".into()));
+        return resp.exit_code;
     }
 
     if args.is_empty() || matches!(args[0].as_str(), "-h" | "--help" | "help") {
@@ -3085,9 +3118,26 @@ mod tests {
         assert!(is_cli_invocation(&s(&["ClipNest.exe", "list"])));
         assert!(is_cli_invocation(&s(&["ClipNest.exe", "--json", "--data-dir", r"C:\data", "list"])));
         assert!(is_cli_invocation(&s(&["ClipNest.exe", "--quiet", "--version"])));
+        assert!(is_cli_invocation(&s(&["ClipNest.exe", "--offline-rpc", "list"])));
         assert!(!is_cli_invocation(&s(&["ClipNest.exe", "--portable"])));
         assert!(!is_cli_invocation(&s(&["ClipNest.exe", "--explorer-files", r"C:\tmp"])));
         assert!(!is_cli_invocation(&s(&["ClipNest.exe"])));
+    }
+
+    #[test]
+    fn run_cli_handles_leading_global_flags_and_custom_data_dir() {
+        let s = |xs: &[&str]| xs.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        let code_ver = run_cli(&s(&["--quiet", "--version"]));
+        assert_eq!(code_ver, EXIT_OK);
+
+        let code_no_color = run_cli(&s(&["--no-color", "-q", "-V"]));
+        assert_eq!(code_no_color, EXIT_OK);
+
+        let dir = std::env::temp_dir().join(format!("clipnest_cli_flag_{}", db::now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let code_status = run_cli(&s(&[&format!("--data-dir={}", dir.display()), "status"]));
+        assert_eq!(code_status, EXIT_OK);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

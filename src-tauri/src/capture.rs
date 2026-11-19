@@ -146,7 +146,19 @@ fn process(app: &AppHandle) -> Result<(), String> {
             let _ = db::assign_category(&conn, &[id], Some(b), None, false);
         }
         if !outcome.tags.is_empty() {
-            let _ = db::set_tags(&conn, id, &outcome.tags.join(" "));
+            let mut merged: Vec<String> = if !is_new {
+                db::get_row(&conn, id)
+                    .map(|r| r.tags.split_whitespace().map(String::from).collect())
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+            for t in &outcome.tags {
+                if !merged.iter().any(|existing| existing.eq_ignore_ascii_case(t)) {
+                    merged.push(t.clone());
+                }
+            }
+            let _ = db::set_tags(&conn, id, &merged.join(" "));
         }
         let _ = db::apply_limits(&conn, &s);
         id

@@ -124,16 +124,21 @@ pub fn send_to_target(app: AppHandle, keys: String) {
         let st = app.state::<AppState>();
         let target = st.target_hwnd.load(Ordering::SeqCst);
         std::thread::sleep(Duration::from_millis(30));
-        if target != 0 {
-            win::focus_window(target);
-            for _ in 0..40 {
-                if win::foreground() == target {
-                    break;
-                }
-                std::thread::sleep(Duration::from_millis(10));
-            }
+        if target == 0 {
+            return;
         }
-        std::thread::sleep(Duration::from_millis(40));
-        win::send_paste_keys(&keys);
+        win::focus_window(target);
+        let mut focused = win::foreground() == target;
+        for _ in 0..40 {
+            if focused {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+            focused = win::foreground() == target;
+        }
+        if focused {
+            std::thread::sleep(Duration::from_millis(40));
+            win::send_paste_keys(&keys);
+        }
     });
 }

@@ -45,5 +45,8 @@ jobs:
       - name: Check Rust formatting (rustfmt)
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 
-      - name: Run Rust unit & integration tests
+      - name: Run Rust core unit tests
+        run: cargo test --manifest-path packages/core/Cargo.toml
+
+      - name: Run Rust Tauri unit & integration tests
         run: cargo test --manifest-path src-tauri/Cargo.toml

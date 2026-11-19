@@ -24,5 +24,10 @@
   ; Remove $INSTDIR from HKCU\Environment\Path before deleting files
   nsExec::ExecToLog '"$INSTDIR\ClipNest.exe" path uninstall'
   Delete "$INSTDIR\clipnest.cmd"
+  Delete "$INSTDIR\clipn.cmd"
   Delete "$INSTDIR\clipnest-cli.exe"
+  DeleteRegKey HKCU "Software\Classes\Directory\Background\shell\ClipNest"
+  DeleteRegKey HKCU "Software\Classes\Directory\Background\shell\ClipNestBasket"
+  DeleteRegKey HKCU "Software\Classes\Directory\shell\ClipNest"
+  DeleteRegKey HKCU "Software\Classes\*\shell\ClipNestCollect"
 !macroend

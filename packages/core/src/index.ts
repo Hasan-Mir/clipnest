@@ -490,11 +490,13 @@ export async function callIpc(
                 hint: 'Check if ClipNest is frozen or increase --timeout <ms>.',
             })
         );
-        socket.on('error', () => {
-            try {
-                fs.unlinkSync(epFile);
-            } catch {
-                // ignore
+        socket.on('error', (err: NodeJS.ErrnoException) => {
+            if (err?.code === 'ECONNREFUSED') {
+                try {
+                    fs.unlinkSync(epFile);
+                } catch {
+                    // ignore
+                }
             }
             finish(null);
         });
@@ -555,56 +557,19 @@ function invokeNativeBinaryOffline(
     op: string,
     params: Record<string, unknown>
 ): IpcResponse {
-    const cliArgs = ['--json', '--data-dir', dataDir];
-    let stdinInput: string | undefined;
-
-    switch (op) {
-        case 'add':
-            cliArgs.push('add', '-');
-            stdinInput = String(params.text ?? '');
-            if (params.copy) cliArgs.push('--copy');
-            if (params.pinned) cliArgs.push('--pin');
-            if (params.board) cliArgs.push('--board', String(params.board));
-            if (params.tags) cliArgs.push('--tags', String(params.tags));
-            if (params.title) cliArgs.push('--title', String(params.title));
-            break;
-        case 'list':
-            cliArgs.push('list', '-n', String(params.limit ?? 30));
-            if (params.board) cliArgs.push('--board', String(params.board));
-            if (params.kind) cliArgs.push('--kind', String(params.kind));
-            if (params.pinned) cliArgs.push('--pinned');
-            break;
-        case 'search':
-            cliArgs.push(
-                'search',
-                String(params.query ?? ''),
-                '--mode',
-                String(params.mode ?? 'smart'),
-                '-n',
-                String(params.limit ?? 50)
-            );
-            if (params.board) cliArgs.push('--board', String(params.board));
-            break;
-        case 'get':
-            cliArgs.push('get');
-            if (params.id !== null && params.id !== undefined) cliArgs.push(String(params.id));
-            if (params.format) cliArgs.push('--format', String(params.format));
-            break;
-        default:
-            cliArgs.push(op);
-            break;
-    }
-
+    const cliArgs = ['--data-dir', dataDir, '--offline-rpc', op];
     const r = spawnSync(nativeBin, cliArgs, {
-        input: stdinInput,
+        input: JSON.stringify(params ?? {}),
         encoding: 'utf8',
         timeout: 10000,
     });
-    if (r.status === 0 && r.stdout) {
+    if (r.stdout) {
         try {
-            return { ok: true, exit_code: EXIT_OK, data: JSON.parse(r.stdout) };
+            return JSON.parse(r.stdout.trim()) as IpcResponse;
         } catch {
-            return { ok: true, exit_code: EXIT_OK, data: { text: r.stdout } };
+            if (r.status === 0) {
+                return { ok: true, exit_code: EXIT_OK, data: { text: r.stdout } };
+            }
         }
     }
     if (r.stderr) {

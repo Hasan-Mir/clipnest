@@ -379,4 +379,54 @@ describe('ClipNest CLI & Local IPC integration suite', () => {
         expect(lastOp).toBe('basket');
         expect(lastParams.sub).toBe('list');
     });
+
+    it('11. callIpc deletes endpoint file on ECONNREFUSED and leaves it on non-refusal error', async () => {
+        // Write an endpoint pointing to a closed port
+        const epFile = path.join(tmpDir, 'cli-rpc.json');
+        fs.writeFileSync(
+            epFile,
+            JSON.stringify({
+                version: '0.2.0',
+                protocol: 1,
+                port: 59999, // unopened port
+                token: 'dummy-token',
+                pid: 99999,
+            }),
+            'utf8'
+        );
+        expect(fs.existsSync(epFile)).toBe(true);
+
+        const res = await callIpc(tmpDir, 'status', {}, 1000);
+        expect(res).toBeNull();
+        // Since connection to port 59999 is refused, epFile should be unlinked
+        expect(fs.existsSync(epFile)).toBe(false);
+
+        // 2. Transient socket error: epFile must NOT be deleted on non-ECONNREFUSED errors
+        const transientServer = net.createServer((sock) => {
+            sock.on('error', () => {});
+            sock.destroy(new Error('transient socket failure'));
+        });
+        await new Promise<void>((resolve) => transientServer.listen(0, '127.0.0.1', () => resolve()));
+        const transientPort = (transientServer.address() as net.AddressInfo).port;
+
+        fs.writeFileSync(
+            epFile,
+            JSON.stringify({
+                version: '0.2.0',
+                protocol: 1,
+                port: transientPort,
+                token: 'dummy-token',
+                pid: 99999,
+            }),
+            'utf8'
+        );
+        expect(fs.existsSync(epFile)).toBe(true);
+
+        const res2 = await callIpc(tmpDir, 'status', {}, 1000);
+        expect(res2).toBeNull();
+        // Since it was a transient error (not ECONNREFUSED), epFile MUST still exist
+        expect(fs.existsSync(epFile)).toBe(true);
+
+        await new Promise<void>((resolve) => transientServer.close(() => resolve()));
+    });
 });

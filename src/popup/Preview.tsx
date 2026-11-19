@@ -53,22 +53,28 @@ export function Preview({
     const canStyle = item.has_rich && (item.kind === 'text' || item.kind === 'code');
 
     useEffect(() => {
+        let alive = true;
         root.current?.focus();
         setAutoSaved(false);
         setEditing(false);
         setImg(null);
         setFormats(null);
         api.getFormats(item.id)
-            .then(setFormats)
+            .then((f) => {
+                if (alive) setFormats(f);
+            })
             .catch(() => {});
         if (item.kind === 'image') {
             setText(null);
             api.getImage(item.id)
-                .then(setImg)
+                .then((im) => {
+                    if (alive) setImg(im);
+                })
                 .catch(() => {});
         } else {
             api.getText(item.id)
                 .then((x) => {
+                    if (!alive) return;
                     setText(x);
                     if (startEdit && editable) {
                         setDraft(x);
@@ -77,6 +83,9 @@ export function Preview({
                 })
                 .catch(() => {});
         }
+        return () => {
+            alive = false;
+        };
     }, [item.id, startEdit, editable]);
 
     useEffect(() => {
@@ -293,7 +302,7 @@ export function Preview({
                         </div>
                     </div>
                 )}
-                {item.kind === 'color' && item.color && (
+                {!editing && item.kind === 'color' && item.color && (
                     <div className="pv-color">
                         <div className="pv-swatch" style={{ background: item.color }} />
                         {colorFormats(item.color).map((f) => (
@@ -320,7 +329,7 @@ export function Preview({
                         ))}
                     </div>
                 )}
-                {item.kind === 'link' && text && (
+                {!editing && item.kind === 'link' && text && (
                     <div className="pv-link">
                         <div className="link-host big">{highlightText(hostOf(text), query, searchMode, highlight)}</div>
                         <div className="link-url wrap" dir="ltr">

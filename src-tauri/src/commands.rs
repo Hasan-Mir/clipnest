@@ -337,7 +337,7 @@ pub fn exec_action(app: &AppHandle, id: i64, action: &str) -> Res<Option<i64>> {
 
 #[tauri::command]
 pub async fn run_action(app: AppHandle, id: i64, action: String) -> Res<Option<i64>> {
-    exec_action(&app, id, &action)
+    tauri::async_runtime::spawn_blocking(move || exec_action(&app, id, &action)).await.map_err(|e| e.to_string())?
 }
 
 // ───────────── open / reveal ─────────────
@@ -643,10 +643,15 @@ pub async fn erase_history(
 }
 
 #[tauri::command]
-pub async fn backup_now(state: State<'_, AppState>) -> Res<String> {
-    let keep = state.settings.read().backup_keep;
-    let p = db::backup(&state.db, &state.data_dir, keep)?;
-    Ok(p.to_string_lossy().to_string())
+pub async fn backup_now(app: AppHandle) -> Res<String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let keep = state.settings.read().backup_keep;
+        let p = db::backup(&state.db, &state.data_dir, keep)?;
+        Ok(p.to_string_lossy().to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -661,7 +666,8 @@ pub async fn recent_apps(state: State<'_, AppState>) -> Res<Vec<AppInfo>> {
 }
 
 #[tauri::command]
-pub async fn quit_app(app: AppHandle) -> Res<()> {
+pub async fn quit_app(app: AppHandle, state: State<'_, AppState>) -> Res<()> {
+    crate::cli::remove_endpoint_file(&state.data_dir);
     app.exit(0);
     Ok(())
 }
@@ -819,8 +825,12 @@ pub async fn clear_explorer_target(state: State<'_, AppState>) -> Res<()> {
 
 #[tauri::command]
 pub async fn paste_files_to_folder(app: AppHandle, ids: Vec<i64>, folder: String) -> Res<usize> {
-    let dest = Path::new(folder.trim());
-    crate::queue::paste_clips_to_dir(&app, &ids, dest)
+    tauri::async_runtime::spawn_blocking(move || {
+        let dest = Path::new(folder.trim());
+        crate::queue::paste_clips_to_dir(&app, &ids, dest)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 // ───────────── rich display, icons, ordering ─────────────
@@ -855,74 +865,97 @@ pub async fn move_item(
 
 /// Export = a fresh compressed snapshot copied crash-safely to a place of the user's choosing.
 #[tauri::command]
-pub async fn export_data(app: AppHandle, state: State<'_, AppState>) -> Res<Option<String>> {
-    use tauri_plugin_dialog::DialogExt;
-    let keep = state.settings.read().backup_keep;
-    let snapshot = db::backup(&state.db, &state.data_dir, keep)?;
-    let dest = app
-        .dialog()
-        .file()
-        .add_filter("ClipNest backup", &["gz"])
-        .set_file_name(format!("clipnest-{}.db.gz", db::today_string()))
-        .blocking_save_file();
-    let Some(dest) = dest else { return Ok(None) };
-    let dest = dest.into_path().map_err(|e| e.to_string())?;
-    let tmp_dest = PathBuf::from(format!("{}.tmp", dest.to_string_lossy()));
-    std::fs::copy(&snapshot, &tmp_dest).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp_dest, &dest).map_err(|e| e.to_string())?;
-    Ok(Some(dest.to_string_lossy().to_string()))
+pub async fn export_data(app: AppHandle) -> Res<Option<String>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri_plugin_dialog::DialogExt;
+        let state = app.state::<AppState>();
+        let keep = state.settings.read().backup_keep;
+        let snapshot = db::backup(&state.db, &state.data_dir, keep)?;
+        let dest = app
+            .dialog()
+            .file()
+            .add_filter("ClipNest backup", &["gz"])
+            .set_file_name(format!("clipnest-{}.db.gz", db::today_string()))
+            .blocking_save_file();
+        let Some(dest) = dest else { return Ok(None) };
+        let dest = dest.into_path().map_err(|e| e.to_string())?;
+        let tmp_dest = PathBuf::from(format!("{}.tmp", dest.to_string_lossy()));
+        std::fs::copy(&snapshot, &tmp_dest).map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp_dest, &dest).map_err(|e| e.to_string())?;
+        Ok(Some(dest.to_string_lossy().to_string()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Import = merge a backup/export into the current history (nothing is overwritten or deleted).
 #[tauri::command]
-pub async fn import_data(app: AppHandle, state: State<'_, AppState>) -> Res<Option<usize>> {
-    use std::io::Read;
-    use tauri_plugin_dialog::DialogExt;
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("ClipNest backup", &["gz", "db"])
-        .set_directory(state.data_dir.join("backups"))
-        .blocking_pick_file();
-    let Some(picked) = picked else { return Ok(None) };
-    let path = picked.into_path().map_err(|e| e.to_string())?;
-    let raw = std::fs::read(&path).map_err(|e| e.to_string())?;
-    let bytes = if raw.starts_with(&[0x1f, 0x8b]) {
-        let mut out = Vec::new();
-        flate2::read::GzDecoder::new(&raw[..]).read_to_end(&mut out).map_err(|e| e.to_string())?;
-        out
-    } else {
-        raw
-    };
-    let tmp = state.data_dir.join("import.tmp.db");
-    db::write_atomic(&tmp, &bytes).map_err(|e| e.to_string())?;
-    let result = db::merge_from(&state.db.lock(), &tmp);
-    let _ = std::fs::remove_file(&tmp);
-    let n = result?;
-    changed(&app);
-    Ok(Some(n))
+pub async fn import_data(app: AppHandle) -> Res<Option<usize>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use std::io::Read;
+        use tauri_plugin_dialog::DialogExt;
+        let state = app.state::<AppState>();
+        let picked = app
+            .dialog()
+            .file()
+            .add_filter("ClipNest backup", &["gz", "db"])
+            .set_directory(state.data_dir.join("backups"))
+            .blocking_pick_file();
+        let Some(picked) = picked else { return Ok(None) };
+        let path = picked.into_path().map_err(|e| e.to_string())?;
+        let raw = std::fs::read(&path).map_err(|e| e.to_string())?;
+        let bytes = if raw.starts_with(&[0x1f, 0x8b]) {
+            let mut out = Vec::new();
+            flate2::read::GzDecoder::new(&raw[..]).read_to_end(&mut out).map_err(|e| e.to_string())?;
+            out
+        } else {
+            raw
+        };
+        let tmp = state.data_dir.join("import.tmp.db");
+        db::write_atomic(&tmp, &bytes).map_err(|e| e.to_string())?;
+        let result = db::merge_from(&state.db.lock(), &tmp);
+        let _ = std::fs::remove_file(&tmp);
+        let n = result?;
+        changed(&app);
+        Ok(Some(n))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub async fn export_settings(app: AppHandle, state: State<'_, AppState>) -> Res<Option<String>> {
-    use tauri_plugin_dialog::DialogExt;
-    let json = serde_json::to_string_pretty(&*state.settings.read()).map_err(|e| e.to_string())?;
-    let dest =
-        app.dialog().file().add_filter("JSON", &["json"]).set_file_name("clipnest-settings.json").blocking_save_file();
-    let Some(dest) = dest else { return Ok(None) };
-    let dest = dest.into_path().map_err(|e| e.to_string())?;
-    db::write_atomic(&dest, json.as_bytes()).map_err(|e| e.to_string())?;
-    Ok(Some(dest.to_string_lossy().to_string()))
+pub async fn export_settings(app: AppHandle) -> Res<Option<String>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri_plugin_dialog::DialogExt;
+        let state = app.state::<AppState>();
+        let json = serde_json::to_string_pretty(&*state.settings.read()).map_err(|e| e.to_string())?;
+        let dest = app
+            .dialog()
+            .file()
+            .add_filter("JSON", &["json"])
+            .set_file_name("clipnest-settings.json")
+            .blocking_save_file();
+        let Some(dest) = dest else { return Ok(None) };
+        let dest = dest.into_path().map_err(|e| e.to_string())?;
+        db::write_atomic(&dest, json.as_bytes()).map_err(|e| e.to_string())?;
+        Ok(Some(dest.to_string_lossy().to_string()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
 pub async fn import_settings(app: AppHandle) -> Res<bool> {
-    use tauri_plugin_dialog::DialogExt;
-    let picked = app.dialog().file().add_filter("JSON", &["json"]).blocking_pick_file();
-    let Some(picked) = picked else { return Ok(false) };
-    let path = picked.into_path().map_err(|e| e.to_string())?;
-    let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let s: Settings = serde_json::from_str(&text).map_err(|e| format!("not a ClipNest settings file: {e}"))?;
-    crate::apply_settings(&app, s);
-    Ok(true)
+    tauri::async_runtime::spawn_blocking(move || {
+        use tauri_plugin_dialog::DialogExt;
+        let picked = app.dialog().file().add_filter("JSON", &["json"]).blocking_pick_file();
+        let Some(picked) = picked else { return Ok(false) };
+        let path = picked.into_path().map_err(|e| e.to_string())?;
+        let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        let s: Settings = serde_json::from_str(&text).map_err(|e| format!("not a ClipNest settings file: {e}"))?;
+        crate::apply_settings(&app, s);
+        Ok(true)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }

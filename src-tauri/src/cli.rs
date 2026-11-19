@@ -7,7 +7,7 @@ use crate::capture::{extract_cf_html, utf16_bytes};
 use crate::db;
 use crate::platform::win;
 use crate::search::{self, ListArgs};
-use crate::state::{AppState, AutoRule, BasketEntry, CustomAction, Settings};
+use crate::state::{AppState, AutoRule, CustomAction, Settings};
 use crate::transforms::{self, TRANSFORM_LIST};
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Read, Write};
@@ -886,11 +886,7 @@ fn dispatch_online(app: &AppHandle, op: &str, p: &Value) -> IpcResponse {
                             let mut q = state.queue.lock();
                             q.active = true;
                             q.mode = "basket".into();
-                            for path in paths {
-                                if !q.basket.iter().any(|e| e.id == id && e.path == path) {
-                                    q.basket.push(BasketEntry { id, cut: false, path });
-                                }
-                            }
+                            crate::queue::push_basket_paths(&mut q.basket, id, paths, false, false);
                         } else {
                             let mut q = state.queue.lock();
                             q.active = true;

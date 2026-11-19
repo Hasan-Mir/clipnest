@@ -32,8 +32,10 @@ unsafe fn first_rect(range: &IUIAutomationTextRange) -> Option<(i32, i32, i32, i
     if sa.is_null() {
         return None;
     }
-    let lb = SafeArrayGetLBound(sa, 1).ok()?;
-    let ub = SafeArrayGetUBound(sa, 1).ok()?;
+    let (Ok(lb), Ok(ub)) = (SafeArrayGetLBound(sa, 1), SafeArrayGetUBound(sa, 1)) else {
+        let _ = SafeArrayDestroy(sa);
+        return None;
+    };
     let n = (ub - lb + 1).max(0) as usize;
     if n < 4 {
         let _ = SafeArrayDestroy(sa);

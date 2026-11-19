@@ -473,113 +473,135 @@ export default function Popup() {
     // smoothly glide upward via GPU `transform: translateY(-shiftY)` to fill their exact space, followed by a
     // synchronous optimistic state handoff before paint so there is zero jump.
     const pendingResetElsRef = useRef<HTMLElement[]>([]);
+    const animatingIdsRef = useRef<Set<number>>(new Set());
+
+    const resetCardStyles = useCallback((els: HTMLElement[]) => {
+        for (const el of els) {
+            el.style.transition = 'none';
+            el.style.transform = '';
+            el.style.opacity = '';
+            el.style.pointerEvents = '';
+            el.style.willChange = '';
+            void el.offsetHeight;
+            el.style.transition = '';
+        }
+    }, []);
 
     useLayoutEffect(() => {
         if (pendingResetElsRef.current.length > 0) {
-            for (const el of pendingResetElsRef.current) {
-                el.style.transition = 'none';
-                el.style.transform = '';
-                el.style.opacity = '';
-                el.style.pointerEvents = '';
-                el.style.willChange = '';
-                void el.offsetHeight;
-                el.style.transition = '';
-            }
+            resetCardStyles(pendingResetElsRef.current);
             pendingResetElsRef.current = [];
         }
-    }, [res.items]);
+    }, [res.items, resetCardStyles]);
 
-    const animateAndRemoveCards = useCallback(async (ids: number[], performRemove: () => Promise<void>) => {
-        const canAnimate = (settingsRef.current?.animations ?? true) && (settingsRef.current?.delete_animation ?? true);
-        const idSet = new Set(ids);
-        const touched: HTMLElement[] = [];
+    const animateAndRemoveCards = useCallback(
+        async (ids: number[], performRemove: () => Promise<void>) => {
+            const freshIds = ids.filter((id) => !animatingIdsRef.current.has(id));
+            if (freshIds.length === 0) {
+                return;
+            }
+            freshIds.forEach((id) => animatingIdsRef.current.add(id));
+            const canAnimate =
+                (settingsRef.current?.animations ?? true) && (settingsRef.current?.delete_animation ?? true);
+            const idSet = new Set(freshIds);
+            const touched: HTMLElement[] = [];
 
-        if (canAnimate && ids.length > 0 && ids.length <= 12) {
-            const listEl = listRef.current;
-            const rendered = listEl
-                ? Array.from(listEl.querySelectorAll<HTMLElement>('.card'))
-                : ids.map((id) => document.getElementById(`card-${id}`)).filter((el): el is HTMLElement => el !== null);
+            try {
+                if (canAnimate && freshIds.length > 0 && freshIds.length <= 12) {
+                    const listEl = listRef.current;
+                    const rendered = listEl
+                        ? Array.from(listEl.querySelectorAll<HTMLElement>('.card'))
+                        : freshIds
+                              .map((id) => document.getElementById(`card-${id}`))
+                              .filter((el): el is HTMLElement => el !== null);
 
-            const entries = rendered.map((el) => ({
-                el,
-                id: Number(el.dataset.cardId),
-                rect: el.getBoundingClientRect(),
-            }));
+                    const entries = rendered.map((el) => ({
+                        el,
+                        id: Number(el.dataset.cardId),
+                        rect: el.getBoundingClientRect(),
+                    }));
 
-            if (entries.some((e) => idSet.has(e.id))) {
-                const strides = entries.map((e, idx) => {
-                    if (idx + 1 < entries.length) {
-                        const d = entries[idx + 1].rect.top - e.rect.top;
-                        if (d > 0) {
-                            return d;
+                    if (entries.some((e) => idSet.has(e.id))) {
+                        const strides = entries.map((e, idx) => {
+                            if (idx + 1 < entries.length) {
+                                const d = entries[idx + 1].rect.top - e.rect.top;
+                                if (d > 0) {
+                                    return d;
+                                }
+                            }
+                            const p = e.el.parentElement;
+                            return p && p.classList.contains('vlist-item') ? p.offsetHeight : e.rect.height + 6;
+                        });
+
+                        const moves: { el: HTMLElement; removed: boolean; shiftY: number }[] = [];
+                        let accShift = 0;
+                        for (let i = 0; i < entries.length; i++) {
+                            const e = entries[i];
+                            if (idSet.has(e.id)) {
+                                accShift += strides[i];
+                                moves.push({ el: e.el, removed: true, shiftY: 0 });
+                            } else if (accShift > 0) {
+                                moves.push({ el: e.el, removed: false, shiftY: accShift });
+                            }
                         }
+
+                        for (const m of moves) {
+                            touched.push(m.el);
+                            m.el.style.pointerEvents = 'none';
+                            m.el.style.willChange = 'transform, opacity';
+                            m.el.style.transition = m.removed
+                                ? 'transform 210ms cubic-bezier(0.22, 1, 0.36, 1), opacity 175ms ease'
+                                : 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)';
+                        }
+                        void entries[0].el.offsetHeight;
+                        for (const m of moves) {
+                            if (m.removed) {
+                                m.el.style.opacity = '0';
+                                m.el.style.transform = 'scale(0.95)';
+                            } else {
+                                m.el.style.transform = `translateY(${-m.shiftY}px)`;
+                            }
+                        }
+                        await new Promise<void>((r) => window.setTimeout(r, 220));
                     }
-                    const p = e.el.parentElement;
-                    return p && p.classList.contains('vlist-item') ? p.offsetHeight : e.rect.height + 6;
+                }
+
+                pendingResetElsRef.current = touched;
+                setRes((prev) => {
+                    const nextItems = prev.items.filter((x) => !idSet.has(x.id));
+                    if (nextItems.length === prev.items.length) {
+                        return prev;
+                    }
+                    const removedCount = prev.items.length - nextItems.length;
+                    return {
+                        ...prev,
+                        items: nextItems,
+                        total: Math.max(0, prev.total - removedCount),
+                    };
                 });
-
-                const moves: { el: HTMLElement; removed: boolean; shiftY: number }[] = [];
-                let accShift = 0;
-                for (let i = 0; i < entries.length; i++) {
-                    const e = entries[i];
-                    if (idSet.has(e.id)) {
-                        accShift += strides[i];
-                        moves.push({ el: e.el, removed: true, shiftY: 0 });
-                    } else if (accShift > 0) {
-                        moves.push({ el: e.el, removed: false, shiftY: accShift });
-                    }
+                if (touched.length > 0) {
+                    window.requestAnimationFrame(() => {
+                        if (pendingResetElsRef.current === touched) {
+                            pendingResetElsRef.current = [];
+                            resetCardStyles(touched);
+                        }
+                    });
                 }
+                setSel((s) => Math.max(0, s));
 
-                for (const m of moves) {
-                    touched.push(m.el);
-                    m.el.style.pointerEvents = 'none';
-                    m.el.style.willChange = 'transform, opacity';
-                    m.el.style.transition = m.removed
-                        ? 'transform 210ms cubic-bezier(0.22, 1, 0.36, 1), opacity 175ms ease'
-                        : 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)';
+                try {
+                    await performRemove();
+                } catch (e) {
+                    resetCardStyles(touched);
+                    reloadRef.current();
+                    throw e;
                 }
-                void entries[0].el.offsetHeight;
-                for (const m of moves) {
-                    if (m.removed) {
-                        m.el.style.opacity = '0';
-                        m.el.style.transform = 'scale(0.95)';
-                    } else {
-                        m.el.style.transform = `translateY(${-m.shiftY}px)`;
-                    }
-                }
-                await new Promise<void>((r) => window.setTimeout(r, 220));
+            } finally {
+                freshIds.forEach((id) => animatingIdsRef.current.delete(id));
             }
-        }
-
-        pendingResetElsRef.current = touched;
-        setRes((prev) => {
-            const nextItems = prev.items.filter((x) => !idSet.has(x.id));
-            if (nextItems.length === prev.items.length) {
-                return prev;
-            }
-            const removedCount = prev.items.length - nextItems.length;
-            return {
-                ...prev,
-                items: nextItems,
-                total: Math.max(0, prev.total - removedCount),
-            };
-        });
-        setSel((s) => Math.max(0, s));
-
-        try {
-            await performRemove();
-        } catch (e) {
-            for (const el of touched) {
-                el.style.transition = '';
-                el.style.transform = '';
-                el.style.opacity = '';
-                el.style.pointerEvents = '';
-                el.style.willChange = '';
-            }
-            reloadRef.current();
-            throw e;
-        }
-    }, []);
+        },
+        [resetCardStyles]
+    );
 
     // ───────────── actions ─────────────
     const doPaste = async (mode: PasteMode, id?: number) => {

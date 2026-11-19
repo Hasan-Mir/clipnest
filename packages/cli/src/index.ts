@@ -94,7 +94,15 @@ async function defaultReadClipboard(): Promise<string> {
 
 async function defaultWriteClipboard(text: string): Promise<void> {
     if (process.platform === 'win32') {
-        const r = spawnSync('clip', [], { input: text, encoding: 'utf8', timeout: 4000 });
+        const r = spawnSync(
+            'powershell',
+            [
+                '-NoProfile',
+                '-Command',
+                '[Console]::InputEncoding = [System.Text.Encoding]::UTF8; Set-Clipboard -Value ([Console]::In.ReadToEnd())',
+            ],
+            { input: text, encoding: 'utf8', timeout: 4000 }
+        );
         if (r.status === 0) {
             return;
         }
@@ -550,7 +558,7 @@ const COMMAND_HELP: Record<string, string[]> = {
         '',
         'Subcommands:',
         '  list                                          List all automatic rules',
-        '  add <name> --action <ignore|pin|tag|board|sensitive> [--apps a,b] [--pattern regex] [--board id] [--value tag]',
+        '  add <name> --action <ignore|to_board|tag|plain_only|trim|expire|run_action> [--apps a,b] [--pattern regex] [--board id] [--value val]',
         '  enable <id|name>                              Enable a rule',
         '  disable <id|name>                             Disable a rule',
         '  delete <id|name>                              Delete a rule',
@@ -558,12 +566,12 @@ const COMMAND_HELP: Record<string, string[]> = {
     action: [
         'Usage: clipnest action <subcommand>   (alias: actions)',
         '',
-        'Manage and run custom shell actions on clipboard items (%s = item text).',
+        'Manage and run custom shell actions on clipboard items (item text is passed via stdin).',
         '',
         'Subcommands:',
         '  list                                          List custom actions',
         '  run <id|name> [item_id]                       Run a custom action on an item (default: @0)',
-        '  add <name> --cmd <command> [--output new_item|copy|replace|ignore]',
+        '  add <name> --cmd <command> [--output new_item|clipboard|none]',
         '  delete <id|name>                              Delete a custom action',
     ],
     config: [
