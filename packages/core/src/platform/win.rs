@@ -65,11 +65,12 @@ pub fn spawn_clipboard_listener(tx: Sender<()>) {
             eprintln!("clipnest: could not create the clipboard listener window");
             return;
         }
-        OWNER_HWND.store(hwnd, Ordering::SeqCst);
         if AddClipboardFormatListener(hwnd) == 0 {
             eprintln!("clipnest: AddClipboardFormatListener failed");
+            DestroyWindow(hwnd);
             return;
         }
+        OWNER_HWND.store(hwnd, Ordering::SeqCst);
         let mut msg: MSG = std::mem::zeroed();
         while GetMessageW(&mut msg, 0, 0, 0) > 0 {
             TranslateMessage(&msg);
@@ -154,23 +155,26 @@ fn skip_format(id: u32, name: &str) -> bool {
     BLOCK.iter().any(|b| b.eq_ignore_ascii_case(name))
 }
 
-unsafe fn get_bytes(fmt: u32) -> Option<Vec<u8>> {
+unsafe fn get_bytes(fmt: u32, max_bytes: Option<usize>) -> Result<Option<Vec<u8>>, ()> {
     let h = GetClipboardData(fmt);
     if h == 0 {
-        return None;
+        return Ok(None);
     }
     let h = h as HGLOBAL;
     let size = GlobalSize(h);
     if size == 0 {
-        return None;
+        return Ok(None);
+    }
+    if max_bytes.is_some_and(|limit| size > limit) {
+        return Err(());
     }
     let p = GlobalLock(h);
     if p.is_null() {
-        return None;
+        return Ok(None);
     }
     let v = std::slice::from_raw_parts(p as *const u8, size).to_vec();
     GlobalUnlock(h);
-    Some(v)
+    Ok(Some(v))
 }
 
 unsafe fn open_clipboard_retry(owner: HWND) -> bool {
@@ -241,7 +245,7 @@ pub fn read_clipboard(respect_flags: bool, max_total: usize) -> Result<Snapshot,
                     excluded = true;
                 }
                 if n == "CanIncludeInClipboardHistory" {
-                    if let Some(d) = get_bytes(*id) {
+                    if let Ok(Some(d)) = get_bytes(*id, Some(64)) {
                         if d.len() >= 4 && u32::from_le_bytes([d[0], d[1], d[2], d[3]]) == 0 {
                             excluded = true;
                         }
@@ -256,13 +260,17 @@ pub fn read_clipboard(respect_flags: bool, max_total: usize) -> Result<Snapshot,
                 if skip_format(id, &name) {
                     continue;
                 }
-                if let Some(data) = get_bytes(id) {
-                    total += data.len();
-                    if total > max_total {
+                let remaining = max_total.saturating_sub(total);
+                match get_bytes(id, Some(remaining)) {
+                    Ok(Some(data)) => {
+                        total += data.len();
+                        formats.push(RawFormat { id, name, data });
+                    }
+                    Ok(None) => {}
+                    Err(()) => {
                         CloseClipboard();
                         return Err("clipboard content too large".into());
                     }
-                    formats.push(RawFormat { id, name, data });
                 }
             }
         }
@@ -275,10 +283,10 @@ pub fn read_clipboard(respect_flags: bool, max_total: usize) -> Result<Snapshot,
 
 /// Replaces the clipboard content. Registered formats are re-registered by name because
 /// their numeric ids can change between sessions. Returns the new sequence number.
-unsafe fn ensure_owner_hwnd() -> HWND {
+unsafe fn acquire_owner_hwnd() -> (HWND, bool) {
     let cur = OWNER_HWND.load(Ordering::SeqCst);
-    if cur != 0 {
-        return cur;
+    if cur != 0 && IsWindow(cur) != 0 {
+        return (cur, false);
     }
     let hinst = GetModuleHandleW(std::ptr::null());
     let class = wide("ClipNestCliClipboardOwner");
@@ -289,12 +297,7 @@ unsafe fn ensure_owner_hwnd() -> HWND {
     RegisterClassW(&wc);
     let hwnd =
         CreateWindowExW(0, class.as_ptr(), class.as_ptr(), 0, 0, 0, 0, 0, HWND_MESSAGE, 0, hinst, std::ptr::null());
-    if hwnd != 0 {
-        let _ = OWNER_HWND.compare_exchange(0, hwnd, Ordering::SeqCst, Ordering::SeqCst);
-        OWNER_HWND.load(Ordering::SeqCst)
-    } else {
-        0
-    }
+    (hwnd, hwnd != 0)
 }
 
 /// Reads plain UTF-16 text (`CF_UNICODETEXT`) directly from the system clipboard.
@@ -303,7 +306,11 @@ pub fn read_clipboard_text() -> Result<String, String> {
         if !open_clipboard_retry(0) {
             return Err("clipboard is busy".into());
         }
-        let text = get_bytes(CF_UNICODETEXT_ID).map(|b| crate::capture::decode_utf16(&b)).unwrap_or_default();
+        let text = get_bytes(CF_UNICODETEXT_ID, None)
+            .ok()
+            .flatten()
+            .map(|b| crate::capture::decode_utf16(&b))
+            .unwrap_or_default();
         CloseClipboard();
         Ok(text)
     }
@@ -311,12 +318,24 @@ pub fn read_clipboard_text() -> Result<String, String> {
 
 pub fn write_clipboard(items: &[(u32, String, Vec<u8>)]) -> Result<u32, String> {
     unsafe {
-        let owner = ensure_owner_hwnd();
+        let (owner, is_temp) = acquire_owner_hwnd();
+        if owner == 0 {
+            return Err("could not create clipboard owner window".into());
+        }
         // A real owner window is required, otherwise SetClipboardData fails after EmptyClipboard.
         if !open_clipboard_retry(owner) {
+            if is_temp {
+                DestroyWindow(owner);
+            }
             return Err("clipboard is busy".into());
         }
-        EmptyClipboard();
+        if EmptyClipboard() == 0 {
+            CloseClipboard();
+            if is_temp {
+                DestroyWindow(owner);
+            }
+            return Err("EmptyClipboard failed".into());
+        }
         for (id, name, data) in items {
             let fmt = if *id >= 0xC000 { RegisterClipboardFormatW(wide(name).as_ptr()) } else { *id };
             if fmt == 0 {
@@ -338,6 +357,9 @@ pub fn write_clipboard(items: &[(u32, String, Vec<u8>)]) -> Result<u32, String> 
             }
         }
         CloseClipboard();
+        if is_temp {
+            DestroyWindow(owner);
+        }
         Ok(GetClipboardSequenceNumber())
     }
 }
@@ -990,6 +1012,7 @@ extern "system" {
         ppv: *mut *mut c_void,
     ) -> i32;
     fn ILCreateFromPathW(psz_path: *const u16) -> *mut c_void;
+    fn ILFindLastID(pidl: *const c_void) -> *const c_void;
     fn ILFree(pidl: *const c_void);
     fn SHOpenFolderAndSelectItems(
         pidl_folder: *const c_void,
@@ -1011,7 +1034,7 @@ pub fn reveal_files_in_explorer(paths: &[String]) -> Result<(), String> {
     let mut groups: Vec<(String, Vec<String>)> = Vec::new();
     for raw in paths {
         let cleaned = raw.trim().trim_matches('"').replace('/', "\\");
-        if cleaned.is_empty() {
+        if cleaned.is_empty() || cleaned.contains(['"', '\0', '\r', '\n']) {
             continue;
         }
         let parent = Path::new(&cleaned).parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
@@ -1042,26 +1065,28 @@ pub fn reveal_files_in_explorer(paths: &[String]) -> Result<(), String> {
             let mut selected_ok = false;
 
             if !pidl_folder.is_null() {
-                let mut item_pidls: Vec<*const c_void> = Vec::with_capacity(files.len());
+                let mut full_pidls: Vec<*const c_void> = Vec::with_capacity(files.len());
+                let mut child_pidls: Vec<*const c_void> = Vec::with_capacity(files.len());
                 for f in files {
                     let wf = wide(f);
                     let pidl = ILCreateFromPathW(wf.as_ptr());
                     if !pidl.is_null() {
-                        item_pidls.push(pidl as *const c_void);
+                        full_pidls.push(pidl as *const c_void);
+                        child_pidls.push(ILFindLastID(pidl as *const c_void));
                     }
                 }
-                if !item_pidls.is_empty() {
+                if !child_pidls.is_empty() {
                     let hr = SHOpenFolderAndSelectItems(
                         pidl_folder as *const c_void,
-                        item_pidls.len() as u32,
-                        item_pidls.as_ptr(),
+                        child_pidls.len() as u32,
+                        child_pidls.as_ptr(),
                         0,
                     );
                     if hr >= 0 {
                         selected_ok = true;
                     }
                 }
-                for p in item_pidls {
+                for p in full_pidls {
                     ILFree(p);
                 }
                 ILFree(pidl_folder as *const c_void);
@@ -1184,6 +1209,7 @@ static HOOK_TX: OnceLock<Sender<u32>> = OnceLock::new();
 /// (modifier mask, virtual key, binding id)
 static BINDINGS: parking_lot::Mutex<Vec<(u8, u32, u32)>> = parking_lot::Mutex::new(Vec::new());
 static SWALLOWED_VK: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static HOOK_TID: parking_lot::Mutex<u32> = parking_lot::Mutex::new(0);
 
 pub fn is_win_shortcut(s: &str) -> bool {
     s.split('+').any(|p| matches!(p.trim().to_lowercase().as_str(), "super" | "win" | "meta" | "cmd" | "command"))
@@ -1276,7 +1302,21 @@ pub fn probe_hotkey_available(shortcut: &str) -> Result<bool, String> {
 }
 
 pub fn set_hook_bindings(v: Vec<(u8, u32, u32)>) {
+    let empty = v.is_empty();
     *BINDINGS.lock() = v;
+    let mut tid_guard = HOOK_TID.lock();
+    if empty {
+        let tid = std::mem::take(&mut *tid_guard);
+        if tid != 0 {
+            unsafe {
+                PostThreadMessageW(tid, WM_QUIT, 0, 0);
+            }
+        }
+    } else if *tid_guard == 0 {
+        if let Some(tid) = spawn_hook_thread_sync() {
+            *tid_guard = tid;
+        }
+    }
 }
 
 fn current_mods() -> u8 {
@@ -1328,25 +1368,49 @@ unsafe extern "system" fn ll_keyboard_proc(code: i32, wp: WPARAM, lp: LPARAM) ->
     CallNextHookEx(0, code, wp, lp)
 }
 
-/// Starts the hook thread once (idempotent). `tx` receives the binding id of every matched shortcut.
-pub fn start_hotkey_hook(tx: Sender<u32>) {
-    if HOOK_TX.set(tx).is_err() {
-        return;
+fn spawn_hook_thread_sync() -> Option<u32> {
+    if HOOK_TX.get().is_none() {
+        return None;
     }
-    std::thread::spawn(|| unsafe {
+    let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel::<Option<u32>>(1);
+    std::thread::spawn(move || unsafe {
+        let tid = GetCurrentThreadId();
+        // Force creation of the thread message queue before publishing `tid` so PostThreadMessageW never fails.
+        let mut init_msg: MSG = std::mem::zeroed();
+        PeekMessageW(&mut init_msg, 0, WM_USER, WM_USER, PM_NOREMOVE);
         let hinst = GetModuleHandleW(std::ptr::null());
         let hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(ll_keyboard_proc), hinst, 0);
         if hook == 0 {
             eprintln!("clipnest: could not install the keyboard hook");
+            let _ = ready_tx.send(None);
             return;
         }
+        let _ = ready_tx.send(Some(tid));
         let mut msg: MSG = std::mem::zeroed();
         while GetMessageW(&mut msg, 0, 0, 0) > 0 {
             TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
         UnhookWindowsHookEx(hook);
+        let mut guard = HOOK_TID.lock();
+        if *guard == tid {
+            *guard = 0;
+        }
     });
+    ready_rx.recv().ok().flatten()
+}
+
+/// Starts the hook thread once (idempotent). `tx` receives the binding id of every matched shortcut.
+pub fn start_hotkey_hook(tx: Sender<u32>) {
+    let _ = HOOK_TX.set(tx);
+    if !BINDINGS.lock().is_empty() {
+        let mut tid_guard = HOOK_TID.lock();
+        if *tid_guard == 0 {
+            if let Some(tid) = spawn_hook_thread_sync() {
+                *tid_guard = tid;
+            }
+        }
+    }
 }
 
 #[link(name = "bcrypt")]
@@ -1370,6 +1434,8 @@ pub fn random_bytes(len: usize) -> Result<Vec<u8>, String> {
 
 const KEY_READ_WRITE_ACCESS: u32 = 0x2001F;
 const REG_EXPAND_SZ_TYPE: u32 = 2;
+const ERROR_FILE_NOT_FOUND_CODE: i32 = 2;
+const ERROR_MORE_DATA_CODE: i32 = 234;
 
 fn norm_path_entry(p: &str) -> String {
     p.trim().trim_matches('"').trim_end_matches(['\\', '/']).to_lowercase()
@@ -1400,27 +1466,44 @@ pub fn get_user_path() -> Result<String, String> {
         let mut size: u32 = 0;
         let rc_q =
             RegQueryValueExW(hkey, wname.as_ptr(), std::ptr::null(), &mut dtype, std::ptr::null_mut(), &mut size);
-        if rc_q != 0 || size == 0 {
+        if rc_q == ERROR_FILE_NOT_FOUND_CODE || (rc_q == 0 && size == 0) {
             RegCloseKey(hkey);
             return Ok(String::new());
         }
-        let mut buf = vec![0u16; (size as usize / 2) + 2];
-        let mut actual = (buf.len() * 2) as u32;
-        let rc_read = RegQueryValueExW(
-            hkey,
-            wname.as_ptr(),
-            std::ptr::null(),
-            &mut dtype,
-            buf.as_mut_ptr() as *mut u8,
-            &mut actual,
-        );
-        RegCloseKey(hkey);
-        if rc_read != 0 {
-            return Ok(String::new());
+        if rc_q != 0 {
+            RegCloseKey(hkey);
+            return Err(format!("RegQueryValueExW(Path size) failed: code {rc_q}"));
         }
-        let len = (actual as usize / 2).min(buf.len());
-        let end = buf[..len].iter().position(|&c| c == 0).unwrap_or(len);
-        Ok(String::from_utf16_lossy(&buf[..end]))
+        let mut buf: Vec<u16>;
+        let mut actual: u32;
+        let mut rc_read = ERROR_MORE_DATA_CODE;
+        for _ in 0..4 {
+            buf = vec![0u16; (size as usize / 2) + 2];
+            actual = (buf.len() * 2) as u32;
+            rc_read = RegQueryValueExW(
+                hkey,
+                wname.as_ptr(),
+                std::ptr::null(),
+                &mut dtype,
+                buf.as_mut_ptr() as *mut u8,
+                &mut actual,
+            );
+            if rc_read == 0 {
+                RegCloseKey(hkey);
+                if dtype != REG_SZ_TYPE && dtype != REG_EXPAND_SZ_TYPE {
+                    return Err(format!("unexpected registry type for Path: {dtype}"));
+                }
+                let len = (actual as usize / 2).min(buf.len());
+                let end = buf[..len].iter().position(|&c| c == 0).unwrap_or(len);
+                return Ok(String::from_utf16_lossy(&buf[..end]));
+            }
+            if rc_read != ERROR_MORE_DATA_CODE {
+                break;
+            }
+            size = actual;
+        }
+        RegCloseKey(hkey);
+        Err(format!("RegQueryValueExW(Path read) failed: code {rc_read}"))
     }
 }
 

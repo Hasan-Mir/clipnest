@@ -5,16 +5,20 @@
 
 !macro NSIS_HOOK_POSTINSTALL
   ; Create console-friendly clipnest.cmd wrapper next to ClipNest.exe
+  ClearErrors
   FileOpen $0 "$INSTDIR\clipnest.cmd" w
-  FileWrite $0 "@echo off$\r$\n"
-  FileWrite $0 "setlocal$\r$\n"
-  FileWrite $0 "if exist $\"%~dp0clipnest-cli.exe$\" ($\r$\n"
-  FileWrite $0 "  $\"%~dp0clipnest-cli.exe$\" %*$\r$\n"
-  FileWrite $0 "  exit /b %ERRORLEVEL%$\r$\n"
-  FileWrite $0 ")$\r$\n"
-  FileWrite $0 "$\"%~dp0ClipNest.exe$\" %*$\r$\n"
-  FileWrite $0 "exit /b %ERRORLEVEL%$\r$\n"
-  FileClose $0
+  IfErrors _clipnest_skip_shim
+    FileWrite $0 "@echo off$\r$\n"
+    FileWrite $0 "setlocal$\r$\n"
+    FileWrite $0 "if exist $\"%~dp0clipnest-cli.exe$\" ($\r$\n"
+    FileWrite $0 "  $\"%~dp0clipnest-cli.exe$\" %*$\r$\n"
+    FileWrite $0 "  exit /b %ERRORLEVEL%$\r$\n"
+    FileWrite $0 ")$\r$\n"
+    FileWrite $0 "$\"%~dp0ClipNest.exe$\" %*$\r$\n"
+    FileWrite $0 "exit /b %ERRORLEVEL%$\r$\n"
+    FileClose $0
+  _clipnest_skip_shim:
+  ClearErrors
 
   ; Ask ClipNest to register $INSTDIR in HKCU\Environment\Path (safe, deduplicated, non-admin)
   nsExec::ExecToLog '"$INSTDIR\ClipNest.exe" path install'

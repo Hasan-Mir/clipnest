@@ -43,7 +43,9 @@ jobs:
         run: npm test
 
       - name: Check Rust formatting (rustfmt)
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+          cargo fmt --manifest-path packages/core/Cargo.toml --all -- --check
 
       - name: Run Rust core unit tests
         run: cargo test --manifest-path packages/core/Cargo.toml

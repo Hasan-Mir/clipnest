@@ -307,6 +307,12 @@ fn present_queue(app: &AppHandle) {
         let (_, t, r, _) = win::work_area_at(x, y);
         let width = w.outer_size().map(|s| s.width as i32).unwrap_or(360);
         let _ = w.set_position(PhysicalPosition::new(r - width - 16, t + 16));
+        if let Ok(s2) = w.outer_size() {
+            let width2 = s2.width as i32;
+            if width2 != width {
+                let _ = w.set_position(PhysicalPosition::new(r - width2 - 16, t + 16));
+            }
+        }
         win::show_no_activate(h);
         apply_protection_to(app, &w);
     }
@@ -334,15 +340,26 @@ pub fn show_tray(app: &AppHandle) {
 
     let (cx, cy) = win::cursor_pos();
     let (l, t, r, b) = win::work_area_at(cx, cy);
+    let place = |size: (i32, i32)| -> (i32, i32) {
+        let mut x = cx - size.0 / 2;
+        let mut y = cy - size.1 - 8;
+        if y < t + 8 {
+            y = cy + 8;
+        }
+        x = x.min(r - size.0 - 8).max(l + 8);
+        y = y.min(b - size.1 - 8).max(t + 8);
+        (x, y)
+    };
     let size = w.outer_size().map(|s| (s.width as i32, s.height as i32)).unwrap_or((246, 268));
-    let mut x = cx - size.0 / 2;
-    let mut y = cy - size.1 - 8;
-    if y < t + 8 {
-        y = cy + 8;
-    }
-    x = x.min(r - size.0 - 8).max(l + 8);
-    y = y.min(b - size.1 - 8).max(t + 8);
+    let (x, y) = place(size);
     let _ = w.set_position(PhysicalPosition::new(x, y));
+    if let Ok(s2) = w.outer_size() {
+        let size2 = (s2.width as i32, s2.height as i32);
+        if size2 != size {
+            let (x2, y2) = place(size2);
+            let _ = w.set_position(PhysicalPosition::new(x2, y2));
+        }
+    }
     let _ = w.show();
     apply_protection_to(app, &w);
     if let Some(h) = hwnd_of(&w) {

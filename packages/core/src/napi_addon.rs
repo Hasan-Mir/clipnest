@@ -2,7 +2,7 @@
 //!
 //! Exports `napi_register_module_v1` so Node.js can `require()` / `process.dlopen()` the compiled
 //! `clipnest_core` library directly as a native `.node` addon without needing `node-gyp` or `node.lib`
-//! at link time (resolves the 7 stable N-API C ABI symbols dynamically from the host `node.exe` process).
+//! at link time (resolves the 8 stable N-API C ABI symbols dynamically from the host `node.exe` process).
 
 use std::ffi::{c_char, c_void, CString};
 use std::path::Path;
@@ -142,6 +142,15 @@ unsafe fn make_string(napi: &NapiApi, env: NapiEnv, s: &str) -> NapiValue {
     out
 }
 
+unsafe fn throw_js_error(napi: &NapiApi, env: NapiEnv, msg: &str) {
+    let sanitized = msg.replace('\0', "");
+    if let Ok(cmsg) = CString::new(sanitized) {
+        let _ = (napi.throw_error)(env, std::ptr::null(), cmsg.as_ptr());
+    } else {
+        let _ = (napi.throw_error)(env, std::ptr::null(), b"native addon error\0".as_ptr() as *const c_char);
+    }
+}
+
 unsafe extern "C" fn js_dispatch_offline_json(env: NapiEnv, info: NapiCallbackInfo) -> NapiValue {
     let Some(napi) = api() else {
         return std::ptr::null_mut();
@@ -152,7 +161,13 @@ unsafe extern "C" fn js_dispatch_offline_json(env: NapiEnv, info: NapiCallbackIn
     let data_dir = if argc > 0 { read_arg_string(napi, env, argv[0]) } else { String::new() };
     let op = if argc > 1 { read_arg_string(napi, env, argv[1]) } else { String::new() };
     let params_raw = if argc > 2 { read_arg_string(napi, env, argv[2]) } else { String::from("{}") };
-    let params: serde_json::Value = serde_json::from_str(&params_raw).unwrap_or(serde_json::Value::Null);
+    let params: serde_json::Value = match serde_json::from_str(&params_raw) {
+        Ok(v) => v,
+        Err(e) => {
+            throw_js_error(napi, env, &format!("Invalid JSON params: {e}"));
+            return std::ptr::null_mut();
+        }
+    };
     let resolved_dir = if data_dir.trim().is_empty() {
         crate::ipc::resolve_cli_data_dir(None)
     } else {
@@ -175,9 +190,7 @@ unsafe extern "C" fn js_apply_transform(env: NapiEnv, info: NapiCallbackInfo) ->
     match crate::transforms::apply_transform(&tr_id, &input) {
         Ok(out) => make_string(napi, env, &out),
         Err(err) => {
-            if let Ok(cmsg) = CString::new(err) {
-                let _ = (napi.throw_error)(env, std::ptr::null(), cmsg.as_ptr());
-            }
+            throw_js_error(napi, env, &err);
             std::ptr::null_mut()
         }
     }
@@ -225,7 +238,13 @@ unsafe extern "C" fn js_run_cli_native(env: NapiEnv, info: NapiCallbackInfo) -> 
     let mut argv: [NapiValue; 1] = [std::ptr::null_mut(); 1];
     let _ = (napi.get_cb_info)(env, info, &mut argc, argv.as_mut_ptr(), std::ptr::null_mut(), std::ptr::null_mut());
     let raw = if argc > 0 { read_arg_string(napi, env, argv[0]) } else { String::from("[]") };
-    let args: Vec<String> = serde_json::from_str(&raw).unwrap_or_default();
+    let args: Vec<String> = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        Err(e) => {
+            throw_js_error(napi, env, &format!("Invalid JSON args array: {e}"));
+            return std::ptr::null_mut();
+        }
+    };
     let code = crate::ipc::run_cli(&args);
     let mut out: NapiValue = std::ptr::null_mut();
     let _ = (napi.create_int32)(env, code, &mut out);

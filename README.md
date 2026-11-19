@@ -29,11 +29,11 @@ Fast, accessible, private clipboard manager, file collector & automation CLI for
 
 1. **همراه با نصاب ویندوز ClipNest (بدون نیاز به Node.js):** پس از نصب برنامه، هر دو دستور `clipnest` و نام کوتاه `clipn` به‌طور خودکار به `PATH` کاربر اضافه می‌شوند. در نسخه‌ی Portable نیز می‌توانید با دستور `clipn path install` آن‌ها را به `PATH` اضافه کنید.
 2. **نصب از طریق npm:**
-   ```bash
-   npm install -g @seymi/clipnest-cli
-   clipn --help
-   clipnest --help
-   ```
+    ```bash
+    npm install -g @seymi/clipnest-cli
+    clipn --help
+    clipnest --help
+    ```
 
 ### راهنمای سریع تمام دستورات CLI (`-h` / `--help`)
 
@@ -45,37 +45,37 @@ clipn <command> --help
 clipn help <command>
 ```
 
-| دستور (با `clipn` یا `clipnest`) | توضیح و فلگ‌های اصلی |
-| --- | --- |
-| `add <text\|->` | افزودن متن، ورودی پایپ (`-`) یا فایل (`-f <path>`) به تاریخچه (`-c/--copy`، `-p/--pin`، `-b/--category <name>`، `-t/--tags`، `--title`) |
-| `list` (یا `ls`) | نمایش فهرست آخرین آیتم‌ها (`-n <limit>`، `-b/--category <name>`، `-k/--kind <kind>`، `--pinned`، `--json`) |
-| `search <query>` (یا `find`) | جستجو در تاریخچه (`-m smart\|fuzzy\|regex`، `-r/--regex`، `-z/--fuzzy`، `-b/--category <name>`، `-n <limit>`) |
-| `get [id]` | دریافت محتوای خام آیتم (`12` یا `@0`/`latest`) یا محتوای فعلی کلیپ‌بورد سیستم (بدون آرگومان)؛ پشتیبانی از `--format plain\|html\|meta\|formats` و `-o <file>` |
-| `copy <text\|->` (یا `cp`) | قرار دادن متن، `stdin` (`-`)، فایل (`-f`) یا آیتم تاریخچه (`--id <id>`) در کلیپ‌بورد سیستم (`--plain`) |
-| `paste [id]` | کپی آیتم (پیش‌فرض `@0`) در کلیپ‌بورد و پیست در پنجره‌ی فعال (`--plain`، `--rich`، `--auto`) |
-| `edit <id> [text\|-]` | ویرایش متن، عنوان (`--title`) یا برچسب‌های (`--tags`) یک آیتم |
-| `rename <id> <title>` | تنظیم یا پاک کردن عنوان سفارشی آیتم |
-| `delete <id...>` (یا `rm`) | حذف یک یا چند آیتم (حذف بیش از ۳ آیتم نیازمند `--yes` است) |
-| `pin <id...>` / `unpin <id...>` | سنجاق کردن یا برداشتن سنجاق آیتم‌ها (پشتیبانی از `--category <name>` برای پین مستقل در یک دسته‌بندی) |
-| `tag <id> [tags...]` | تنظیم، افزودن (`--add`)، حذف (`--remove`) یا پاک کردن (`--clear`) تگ‌های آیتم |
-| `move <id...> --to <cat\|main>` | انتقال یا کپی (`--copy`، `--from <cat>`) آیتم‌ها به دسته‌بندی مقصد، یا تغییر ترتیب (`--before <id>` / `--after <id>`) |
-| `merge <id1> <id2> [...]` | ادغام چند آیتم متنی در یک آیتم جدید (`--sep "\n---\n"`، `--copy`) |
-| `formats [id]` | مشاهده‌ی فرمت‌های ذخیره‌شده‌ی کلیپ‌بورد/MIME و حجم هرکدام |
-| `transform <tr\|list> [id\|-]` | اجرای تبدیل‌های متنی (`upper`, `lower`, `json-pretty`, `b64-enc`, `fa-normalize`, `fa-digits` و غیره) با `--save` و `--copy` |
-| `category <subcommand>` | مدیریت دسته‌بندی‌ها (`list`، `create <name> --color #hex --max N --active`، `update`، `delete <name> --yes`، `activate <name\|none>`)؛ نام مستعار: `cat`, `pinboard`, `board` |
-| `queue <subcommand>` | مدیریت صف پیست (`status`, `list`, `add <id...>`, `remove <id>`, `clear`, `toggle`, `close`, `fifo <on\|off>`) |
-| `basket <subcommand>` | مدیریت سبد فایل (`list`, `add <file\|id...>`, `remove <id>`, `cut <id>`, `paste-to <folder>`, `clear`) |
-| `rule <subcommand>` | مدیریت قوانین خودکار (`list`, `add`, `enable`, `disable`, `delete`) |
-| `action <subcommand>` | مدیریت و اجرای اکشن‌های سفارشی شل (`list`, `run <act> [id]`, `add <name> --cmd <cmd>`, `delete`) |
-| `config <subcommand>` | مشاهده و تغییر تنظیمات (`list`, `get <key>`, `set <key> <val>`, `reset [key] [--yes]`) |
-| `status` | نمایش وضعیت دیمون، کپچر، صف، تعداد آیتم‌ها و مسیر داده (`--check-running`، `--json`) |
-| `pause [min]` / `resume` | توقف موقت یا ادامه‌ی ثبت کلیپ‌بورد |
-| `plain [on\|off\|toggle]` | تغییر یا تنظیم حالت پیست متن ساده‌ی سراسری |
-| `export <file>` / `import <file>` | خروجی گرفتن یا وارد کردن تاریخچه و دسته‌بندی‌ها (`.json` یا `.db.gz`) یا تنظیمات (`--settings`) |
-| `backup [file]` | تهیه‌ی فوری اسنپ‌شات فشرده SQLite (`.db.gz`) |
-| `erase --yes` | پاک‌سازی تاریخچه (`--category <name>`، `--include-pinned`، `--all-boards`) |
-| `open` / `hide` / `settings` / `quit` | باز و بسته کردن پنجره‌ی پاپ‌آپ، باز کردن تنظیمات یا خروج کامل از برنامه |
-| `path [status\|install\|uninstall]` | بررسی، افزودن یا حذف `clipnest` و `clipn` در `PATH` کاربر ویندوز |
+| دستور (با `clipn` یا `clipnest`)      | توضیح و فلگ‌های اصلی                                                                                                                                                          |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `add <text\|->`                       | افزودن متن، ورودی پایپ (`-`) یا فایل (`-f <path>`) به تاریخچه (`-c/--copy`، `-p/--pin`، `-b/--category <name>`، `-t/--tags`، `--title`)                                       |
+| `list` (یا `ls`)                      | نمایش فهرست آخرین آیتم‌ها (`-n <limit>`، `-b/--category <name>`، `-k/--kind <kind>`، `--pinned`، `--json`)                                                                    |
+| `search <query>` (یا `find`)          | جستجو در تاریخچه (`-m smart\|fuzzy\|regex`، `-r/--regex`، `-z/--fuzzy`، `-b/--category <name>`، `-n <limit>`)                                                                 |
+| `get [id]`                            | دریافت محتوای خام آیتم (`12` یا `@0`/`latest`) یا محتوای فعلی کلیپ‌بورد سیستم (بدون آرگومان)؛ پشتیبانی از `--format plain\|html\|meta\|formats` و `-o <file>`                 |
+| `copy <text\|->` (یا `cp`)            | قرار دادن متن، `stdin` (`-`)، فایل (`-f`) یا آیتم تاریخچه (`--id <id>`) در کلیپ‌بورد سیستم (`--plain`)                                                                        |
+| `paste [id]`                          | کپی آیتم (پیش‌فرض `@0`) در کلیپ‌بورد و پیست در پنجره‌ی فعال (`--plain`، `--rich`، `--auto`)                                                                                   |
+| `edit <id> [text\|-]`                 | ویرایش متن، عنوان (`--title`) یا برچسب‌های (`--tags`) یک آیتم                                                                                                                 |
+| `rename <id> <title>`                 | تنظیم یا پاک کردن عنوان سفارشی آیتم                                                                                                                                           |
+| `delete <id...>` (یا `rm`)            | حذف یک یا چند آیتم (حذف بیش از ۳ آیتم نیازمند `--yes` است)                                                                                                                    |
+| `pin <id...>` / `unpin <id...>`       | سنجاق کردن یا برداشتن سنجاق آیتم‌ها (پشتیبانی از `--category <name>` برای پین مستقل در یک دسته‌بندی)                                                                          |
+| `tag <id> [tags...]`                  | تنظیم، افزودن (`--add`)، حذف (`--remove`) یا پاک کردن (`--clear`) تگ‌های آیتم                                                                                                 |
+| `move <id...> --to <cat\|main>`       | انتقال یا کپی (`--copy`، `--from <cat>`) آیتم‌ها به دسته‌بندی مقصد، یا تغییر ترتیب (`--before <id>` / `--after <id>`)                                                         |
+| `merge <id1> <id2> [...]`             | ادغام چند آیتم متنی در یک آیتم جدید (`--sep "\n---\n"`، `--copy`)                                                                                                             |
+| `formats [id]`                        | مشاهده‌ی فرمت‌های ذخیره‌شده‌ی کلیپ‌بورد/MIME و حجم هرکدام                                                                                                                     |
+| `transform <tr\|list> [id\|-]`        | اجرای تبدیل‌های متنی (`upper`, `lower`, `json-pretty`, `b64-enc`, `fa-normalize`, `fa-digits` و غیره) با `--save` و `--copy`                                                  |
+| `category <subcommand>`               | مدیریت دسته‌بندی‌ها (`list`، `create <name> --color #hex --max N --active`، `update`، `delete <name> --yes`، `activate <name\|none>`)؛ نام مستعار: `cat`, `pinboard`, `board` |
+| `queue <subcommand>`                  | مدیریت صف پیست (`status`, `list`, `add <id...>`, `remove <id>`, `clear`, `toggle`, `close`, `fifo <on\|off>`)                                                                 |
+| `basket <subcommand>`                 | مدیریت سبد فایل (`list`, `add <file\|id...>`, `remove <id>`, `cut <id>`, `paste-to <folder>`, `clear`)                                                                        |
+| `rule <subcommand>`                   | مدیریت قوانین خودکار (`list`, `add`, `enable`, `disable`, `delete`)                                                                                                           |
+| `action <subcommand>`                 | مدیریت و اجرای اکشن‌های سفارشی شل (`list`, `run <act> [id]`, `add <name> --cmd <cmd>`, `delete`)                                                                              |
+| `config <subcommand>`                 | مشاهده و تغییر تنظیمات (`list`, `get <key>`, `set <key> <val>`, `reset [key] [--yes]`)                                                                                        |
+| `status`                              | نمایش وضعیت دیمون، کپچر، صف، تعداد آیتم‌ها و مسیر داده (`--check-running`، `--json`)                                                                                          |
+| `pause [min]` / `resume`              | توقف موقت یا ادامه‌ی ثبت کلیپ‌بورد                                                                                                                                            |
+| `plain [on\|off\|toggle]`             | تغییر یا تنظیم حالت پیست متن ساده‌ی سراسری                                                                                                                                    |
+| `export <file>` / `import <file>`     | خروجی گرفتن یا وارد کردن تاریخچه و دسته‌بندی‌ها (`.json` یا `.db.gz`) یا تنظیمات (`--settings`)                                                                               |
+| `backup [file]`                       | تهیه‌ی فوری اسنپ‌شات فشرده SQLite (`.db.gz`)                                                                                                                                  |
+| `erase --yes`                         | پاک‌سازی تاریخچه (`--category <name>`، `--include-pinned`، `--all-boards`)                                                                                                    |
+| `open` / `hide` / `settings` / `quit` | باز و بسته کردن پنجره‌ی پاپ‌آپ، باز کردن تنظیمات یا خروج کامل از برنامه                                                                                                       |
+| `path [status\|install\|uninstall]`   | بررسی، افزودن یا حذف `clipnest` و `clipn` در `PATH` کاربر ویندوز                                                                                                              |
 
 ### مثال‌های کاربردی و Pipeline
 

@@ -205,8 +205,10 @@ pub fn apply_transform(id: &str, input: &str) -> Result<String, String> {
             let mut out = String::with_capacity(lower.len());
             let mut cap_next = true;
             for c in lower.chars() {
-                if cap_next && c.is_ascii_alphabetic() {
-                    out.push(c.to_ascii_uppercase());
+                if cap_next && c.is_alphabetic() {
+                    for u in c.to_uppercase() {
+                        out.push(u);
+                    }
                     cap_next = false;
                 } else {
                     out.push(c);
@@ -271,13 +273,14 @@ pub fn apply_transform(id: &str, input: &str) -> Result<String, String> {
         "join-lines-dense" => Ok(input.replace("\r\n", "").replace('\n', "")),
         "noblank" => Ok(input.lines().filter(|l| !l.trim().is_empty()).collect::<Vec<_>>().join("\n")),
         "dedupe" => {
-            let mut seen = Vec::new();
+            let mut seen = std::collections::HashSet::new();
+            let mut out = Vec::new();
             for line in input.lines() {
-                if !seen.contains(&line) {
-                    seen.push(line);
+                if seen.insert(line) {
+                    out.push(line);
                 }
             }
-            Ok(seen.join("\n"))
+            Ok(out.join("\n"))
         }
         "sort" => {
             let mut lines: Vec<&str> = input.lines().collect();
@@ -322,6 +325,8 @@ mod tests {
         assert_eq!(apply_transform("snake", "helloWorldExample").unwrap(), "hello_world_example");
         assert_eq!(apply_transform("fa-normalize", "كتاب شماره ٢ و ۳").unwrap(), "کتاب شماره 2 و 3");
         assert_eq!(apply_transform("fa-digits", "Version 1.2").unwrap(), "Version ۱.۲");
+        assert_eq!(apply_transform("sentence", "über. école. привет. мир!").unwrap(), "Über. École. Привет. Мир!");
+        assert_eq!(apply_transform("dedupe", "b\na\nb\nc\na").unwrap(), "b\na\nc");
         let b64 = apply_transform("b64-enc", "ClipNest CLI").unwrap();
         assert_eq!(apply_transform("b64-dec", &b64).unwrap(), "ClipNest CLI");
     }

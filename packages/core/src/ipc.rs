@@ -22,6 +22,7 @@ use std::time::Duration;
 pub const PROTOCOL_VERSION: u32 = 1;
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const MAX_STDIN_BYTES: usize = 64 * 1024 * 1024; // 64 MB
+pub const MAX_IMPORT_BYTES: u64 = 512 * 1024 * 1024; // 512 MB
 
 pub const EXIT_OK: i32 = 0;
 pub const EXIT_ERROR: i32 = 1;
@@ -200,11 +201,14 @@ pub fn resolve_item_id(conn: &Connection, spec: &Value) -> Result<i64, String> {
             return latest.ok_or_else(|| "history is empty".to_string());
         }
         if let Some(idx_str) = t.strip_prefix('@') {
-            if let Ok(offset) = idx_str.parse::<usize>() {
+            if let Ok(offset) = idx_str.parse::<i64>() {
+                if offset < 0 {
+                    return Err(format!("invalid item index '@{idx_str}'"));
+                }
                 let id: Option<i64> = conn
                     .query_row(
                         "SELECT id FROM clips ORDER BY pinned DESC, sort_ts DESC LIMIT 1 OFFSET ?1",
-                        params![offset as i64],
+                        params![offset],
                         |r| r.get(0),
                     )
                     .ok();
@@ -435,6 +439,39 @@ pub fn import_json_bundle(conn: &mut Connection, settings: &Settings, src: &Path
     }
     let _ = db::apply_limits(conn, settings);
     Ok(added)
+}
+
+pub fn prepare_import_db_temp(src: &Path, data_dir: &Path) -> Result<PathBuf, String> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static IMPORT_SEQ: AtomicU64 = AtomicU64::new(1);
+
+    let mut file = std::fs::File::open(src).map_err(|e| e.to_string())?;
+    let mut magic = [0u8; 2];
+    let n = file.read(&mut magic).map_err(|e| e.to_string())?;
+    let is_gzip = n == 2 && magic == [0x1f, 0x8b];
+    let file = std::fs::File::open(src).map_err(|e| e.to_string())?;
+
+    let seq = IMPORT_SEQ.fetch_add(1, Ordering::Relaxed);
+    let tmp = data_dir.join(format!("import-cli-{}-{}-{}.tmp.db", std::process::id(), db::now_ms(), seq));
+    let copy_res = (|| -> Result<u64, String> {
+        let mut dst = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
+        let written = if is_gzip {
+            let mut dec = flate2::read::GzDecoder::new(file).take(MAX_IMPORT_BYTES + 1);
+            std::io::copy(&mut dec, &mut dst).map_err(|e| format!("Invalid gzip backup: {e}"))?
+        } else {
+            let mut lim = file.take(MAX_IMPORT_BYTES + 1);
+            std::io::copy(&mut lim, &mut dst).map_err(|e| e.to_string())?
+        };
+        if written > MAX_IMPORT_BYTES {
+            return Err(format!("Import file exceeds maximum allowed size ({} MB)", MAX_IMPORT_BYTES / (1024 * 1024)));
+        }
+        Ok(written)
+    })();
+    if let Err(e) = copy_res {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
+    Ok(tmp)
 }
 
 pub fn dispatch_offline(data_dir: &Path, op: &str, p: &Value) -> IpcResponse {
@@ -875,11 +912,22 @@ pub fn dispatch_offline(data_dir: &Path, op: &str, p: &Value) -> IpcResponse {
             match add_item_shared(&mut conn, &settings, &merged_text, &Value::Null, false, None, None) {
                 Ok((row, _)) => {
                     if also_copy {
-                        let _ = win::write_clipboard(&[(
+                        if let Err(e) = win::write_clipboard(&[(
                             win::CF_UNICODETEXT_ID,
                             "CF_UNICODETEXT".into(),
                             utf16_bytes(&merged_text),
-                        )]);
+                        )]) {
+                            return IpcResponse {
+                                ok: false,
+                                exit_code: EXIT_PARTIAL,
+                                data: json!({ "id": row.id, "item": row, "copied": false }),
+                                error: Some(format!(
+                                    "Merged item #{} saved, but failed to copy to clipboard: {e}",
+                                    row.id
+                                )),
+                                hint: None,
+                            };
+                        }
                     }
                     IpcResponse::success(json!({ "id": row.id, "item": row, "copied": also_copy }))
                 }
@@ -1317,23 +1365,10 @@ pub fn dispatch_offline(data_dir: &Path, op: &str, p: &Value) -> IpcResponse {
                     Err(e) => IpcResponse::fail(EXIT_ERROR, e, None),
                 }
             } else {
-                let raw = match std::fs::read(&src) {
-                    Ok(b) => b,
-                    Err(e) => return IpcResponse::fail(EXIT_ERROR, e.to_string(), None),
+                let tmp = match prepare_import_db_temp(&src, data_dir) {
+                    Ok(p) => p,
+                    Err(e) => return IpcResponse::fail(EXIT_ERROR, e, None),
                 };
-                let bytes = if raw.starts_with(&[0x1f, 0x8b]) {
-                    let mut out = Vec::new();
-                    if let Err(e) = flate2::read::GzDecoder::new(&raw[..]).read_to_end(&mut out) {
-                        return IpcResponse::fail(EXIT_ERROR, format!("Invalid gzip backup: {e}"), None);
-                    }
-                    out
-                } else {
-                    raw
-                };
-                let tmp = data_dir.join(format!("import-cli-{}.tmp.db", db::now_ms()));
-                if let Err(e) = std::fs::write(&tmp, &bytes) {
-                    return IpcResponse::fail(EXIT_ERROR, e.to_string(), None);
-                }
                 let res = db::merge_from(&conn, &tmp);
                 let _ = std::fs::remove_file(&tmp);
                 match res {
@@ -1392,13 +1427,40 @@ pub fn call_ipc_or_offline(
                     };
                     if let Ok(mut bytes) = serde_json::to_vec(&req) {
                         bytes.push(b'\n');
-                        if stream.write_all(&bytes).is_ok() && stream.flush().is_ok() {
-                            let mut resp_line = String::new();
-                            let mut reader = BufReader::new(&stream);
-                            if reader.read_line(&mut resp_line).is_ok() && !resp_line.trim().is_empty() {
-                                if let Ok(resp) = serde_json::from_str::<IpcResponse>(&resp_line) {
-                                    return resp;
+                        if let Err(e) = stream.write_all(&bytes).and_then(|_| stream.flush()) {
+                            return IpcResponse::fail(
+                                EXIT_OFFLINE,
+                                format!("Failed to send IPC request to running ClipNest desktop app: {e}"),
+                                Some("Check if ClipNest is unresponsive or increase --timeout <ms>.".into()),
+                            );
+                        }
+                        let mut resp_line = String::new();
+                        let reader = BufReader::new(&stream);
+                        let mut limited = reader.take((MAX_STDIN_BYTES as u64) + 2 * 1024 * 1024);
+                        match limited.read_line(&mut resp_line) {
+                            Ok(0) => {
+                                return IpcResponse::fail(
+                                    EXIT_OFFLINE,
+                                    "ClipNest desktop app closed the IPC connection without responding",
+                                    None,
+                                );
+                            }
+                            Ok(_) => match serde_json::from_str::<IpcResponse>(&resp_line) {
+                                Ok(resp) => return resp,
+                                Err(e) => {
+                                    return IpcResponse::fail(
+                                        EXIT_ERROR,
+                                        format!("Invalid IPC response from ClipNest desktop app: {e}"),
+                                        None,
+                                    );
                                 }
+                            },
+                            Err(e) => {
+                                return IpcResponse::fail(
+                                    EXIT_OFFLINE,
+                                    format!("IPC request timed out or failed after {}ms: {e}", timeout_ms.max(200)),
+                                    Some("Check if ClipNest is busy or increase --timeout <ms>.".into()),
+                                );
                             }
                         }
                     }
@@ -1481,7 +1543,7 @@ pub fn is_cli_invocation(args: &[String]) -> bool {
     let mut i = 1usize;
     while i < args.len() {
         let arg = args[i].as_str();
-        if matches!(arg, "--explorer-files" | "--paste-basket" | "--collect-file" | "--portable") {
+        if matches!(arg, "--explorer-files" | "--paste-basket" | "--collect-file") {
             return false;
         }
         if arg == "--offline-rpc" || arg.starts_with("--offline-rpc=") {
@@ -1490,15 +1552,26 @@ pub fn is_cli_invocation(args: &[String]) -> bool {
         if matches!(arg, "-h" | "--help" | "-V" | "--version") {
             return true;
         }
-        if matches!(arg, "--json" | "--plain" | "--quiet" | "-q" | "--no-color" | "--online-only") {
+        if matches!(
+            arg,
+            "--json"
+                | "-y"
+                | "--yes"
+                | "--quiet"
+                | "-q"
+                | "--no-color"
+                | "--online-only"
+                | "--require-running"
+                | "--portable"
+        ) {
             i += 1;
             continue;
         }
-        if matches!(arg, "--data-dir" | "--timeout" | "--output" | "-o") {
+        if matches!(arg, "--data-dir" | "--timeout") {
             i += 2;
             continue;
         }
-        if arg.starts_with("--data-dir=") || arg.starts_with("--timeout=") || arg.starts_with("--output=") {
+        if arg.starts_with("--data-dir=") || arg.starts_with("--timeout=") {
             i += 1;
             continue;
         }
@@ -3119,9 +3192,25 @@ mod tests {
         assert!(is_cli_invocation(&s(&["ClipNest.exe", "--json", "--data-dir", r"C:\data", "list"])));
         assert!(is_cli_invocation(&s(&["ClipNest.exe", "--quiet", "--version"])));
         assert!(is_cli_invocation(&s(&["ClipNest.exe", "--offline-rpc", "list"])));
+        assert!(is_cli_invocation(&s(&["ClipNest.exe", "--yes", "erase"])));
+        assert!(is_cli_invocation(&s(&["ClipNest.exe", "--require-running", "status"])));
+        assert!(is_cli_invocation(&s(&["ClipNest.exe", "--portable", "list"])));
         assert!(!is_cli_invocation(&s(&["ClipNest.exe", "--portable"])));
         assert!(!is_cli_invocation(&s(&["ClipNest.exe", "--explorer-files", r"C:\tmp"])));
         assert!(!is_cli_invocation(&s(&["ClipNest.exe"])));
+    }
+
+    #[test]
+    fn resolve_item_id_boundary_checks() {
+        let dir = std::env::temp_dir().join(format!("clipnest_resolve_test_{}", db::now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let conn = db::open_with_recovery(&dir).unwrap();
+
+        // Negative offset or wrapped u64 should return Err
+        assert!(resolve_item_id(&conn, &json!("@-1")).is_err());
+        assert!(resolve_item_id(&conn, &json!("@18446744073709551615")).is_err());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

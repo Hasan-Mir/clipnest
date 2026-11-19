@@ -70,10 +70,14 @@ export interface CliIo {
 
 async function defaultReadClipboard(): Promise<string> {
     if (process.platform === 'win32') {
-        const r = spawnSync('powershell', ['-NoProfile', '-Command', 'Get-Clipboard -Raw'], {
-            encoding: 'utf8',
-            timeout: 4000,
-        });
+        const r = spawnSync(
+            'powershell',
+            ['-NoProfile', '-Command', '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Clipboard -Raw'],
+            {
+                encoding: 'utf8',
+                timeout: 4000,
+            }
+        );
         if (r.status === 0) {
             return (r.stdout || '').replace(/\r?\n$/, '');
         }
@@ -99,7 +103,7 @@ async function defaultWriteClipboard(text: string): Promise<void> {
             [
                 '-NoProfile',
                 '-Command',
-                '[Console]::InputEncoding = [System.Text.Encoding]::UTF8; Set-Clipboard -Value ([Console]::In.ReadToEnd())',
+                '[Console]::InputEncoding = [System.Text.Encoding]::UTF8; $v = [Console]::In.ReadToEnd(); if ($v.Length -eq 0) { Set-Clipboard -Value $null } else { Set-Clipboard -Value $v }',
             ],
             { input: text, encoding: 'utf8', timeout: 4000 }
         );
@@ -507,7 +511,7 @@ const COMMAND_HELP: Record<string, string[]> = {
         'Subcommands:',
         '  list                                          List all categories and item counts',
         '  create <name> [--color #hex] [--max N] [--active]  Create a new category',
-        '  update <id|name> [--name N] [--color C] [--max N] [--paste-mode auto|plain|rich]',
+        '  update <id|name> [--name N] [--color C] [--max N] [--paste-mode inherit|plain|rich]',
         '  delete <id|name> --yes                        Delete a category and its items',
         '  activate <id|name|none>                       Route new clipboard copies into this category',
         '',
@@ -728,7 +732,10 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
     let onlineOnly = false;
     let timeoutMs = 5000;
     let explicitDataDir = io.dataDir;
+    let portable = false;
     const args: string[] = [];
+
+    const hasNext = (arr: string[], idx: number) => idx + 1 < arr.length;
 
     for (let i = 0; i < rawArgs.length; i++) {
         const a = rawArgs[i];
@@ -738,12 +745,16 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
             assumeYes = true;
         } else if (a === '--online-only' || a === '--require-running') {
             onlineOnly = true;
-        } else if (a === '--timeout' && rawArgs[i + 1]) {
+        } else if (a === '--timeout' && hasNext(rawArgs, i)) {
             timeoutMs = Number(rawArgs[++i]) || 5000;
-        } else if (a === '--data-dir' && rawArgs[i + 1]) {
+        } else if (a.startsWith('--timeout=')) {
+            timeoutMs = Number(a.slice('--timeout='.length)) || 5000;
+        } else if (a === '--data-dir' && hasNext(rawArgs, i)) {
             explicitDataDir = rawArgs[++i];
+        } else if (a.startsWith('--data-dir=')) {
+            explicitDataDir = a.slice('--data-dir='.length);
         } else if (a === '--portable') {
-            // handled in data dir resolution
+            portable = true;
         } else {
             args.push(a);
         }
@@ -791,7 +802,7 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
 
     const cmd = args[0].toLowerCase();
     const rest = args.slice(1);
-    const dataDir = resolveDataDir(explicitDataDir);
+    const dataDir = resolveDataDir(explicitDataDir, portable);
 
     if (rest.includes('-h') || rest.includes('--help')) {
         io.stdout(getHelpText(cmd) + '\n');
@@ -820,14 +831,14 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                         pinned = true;
                     } else if (
                         (r === '-b' || r === '--board' || r === '--pinboard' || r === '--category') &&
-                        rest[j + 1]
+                        hasNext(rest, j)
                     ) {
                         board = rest[++j];
-                    } else if ((r === '-t' || r === '--tags' || r === '--tag') && rest[j + 1]) {
+                    } else if ((r === '-t' || r === '--tags' || r === '--tag') && hasNext(rest, j)) {
                         tags = rest[++j];
-                    } else if (r === '--title' && rest[j + 1]) {
+                    } else if (r === '--title' && hasNext(rest, j)) {
                         title = rest[++j];
-                    } else if ((r === '-f' || r === '--file') && rest[j + 1]) {
+                    } else if ((r === '-f' || r === '--file') && hasNext(rest, j)) {
                         filePath = rest[++j];
                     } else {
                         positional.push(r);
@@ -850,12 +861,12 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                     const r = rest[j];
                     if (
                         (r === '-b' || r === '--board' || r === '--pinboard' || r === '--category' || r === '-c') &&
-                        rest[j + 1]
+                        hasNext(rest, j)
                     ) {
                         board = rest[++j];
-                    } else if ((r === '-n' || r === '--limit') && rest[j + 1]) {
+                    } else if ((r === '-n' || r === '--limit') && hasNext(rest, j)) {
                         limit = Number(rest[++j]) || 30;
-                    } else if ((r === '-k' || r === '--kind' || r === '--type') && rest[j + 1]) {
+                    } else if ((r === '-k' || r === '--kind' || r === '--type') && hasNext(rest, j)) {
                         kind = rest[++j];
                     } else if (r === '--pinned') {
                         pinned = true;
@@ -876,12 +887,12 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                     const r = rest[j];
                     if (
                         (r === '-b' || r === '--board' || r === '--pinboard' || r === '--category' || r === '-c') &&
-                        rest[j + 1]
+                        hasNext(rest, j)
                     ) {
                         board = rest[++j];
-                    } else if ((r === '-n' || r === '--limit') && rest[j + 1]) {
+                    } else if ((r === '-n' || r === '--limit') && hasNext(rest, j)) {
                         limit = Number(rest[++j]) || 50;
-                    } else if ((r === '-m' || r === '--mode') && rest[j + 1]) {
+                    } else if ((r === '-m' || r === '--mode') && hasNext(rest, j)) {
                         mode = rest[++j];
                     } else if (r === '--regex' || r === '-r') {
                         mode = 'regex';
@@ -906,7 +917,7 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                 let format = 'plain';
                 for (let j = 0; j < rest.length; j++) {
                     const r = rest[j];
-                    if ((r === '--format' || r === '-f') && rest[j + 1]) {
+                    if ((r === '--format' || r === '-f') && hasNext(rest, j)) {
                         format = rest[++j];
                     } else if (r === '--html') {
                         format = 'html';
@@ -914,7 +925,7 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                         format = 'meta';
                     } else if (r === '--formats') {
                         format = 'formats';
-                    } else if ((r === '-o' || r === '--out' || r === '--output') && rest[j + 1]) {
+                    } else if ((r === '-o' || r === '--out' || r === '--output') && hasNext(rest, j)) {
                         outFile = rest[++j];
                     } else if (id === null) {
                         id = r;
@@ -933,11 +944,11 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                 const positional: string[] = [];
                 for (let j = 0; j < rest.length; j++) {
                     const r = rest[j];
-                    if ((r === '--id' || r === '-i') && rest[j + 1]) {
+                    if ((r === '--id' || r === '-i') && hasNext(rest, j)) {
                         id = rest[++j];
                     } else if (r === '--plain' || r === '-p') {
                         plain = true;
-                    } else if ((r === '-f' || r === '--file') && rest[j + 1]) {
+                    } else if ((r === '-f' || r === '--file') && hasNext(rest, j)) {
                         filePath = rest[++j];
                     } else {
                         positional.push(r);
@@ -986,11 +997,11 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                 const positional: string[] = [];
                 for (let j = 1; j < rest.length; j++) {
                     const r = rest[j];
-                    if (r === '--title' && rest[j + 1]) {
+                    if (r === '--title' && hasNext(rest, j)) {
                         title = rest[++j];
-                    } else if ((r === '-t' || r === '--tags') && rest[j + 1]) {
+                    } else if ((r === '-t' || r === '--tags') && hasNext(rest, j)) {
                         tags = rest[++j];
-                    } else if ((r === '-f' || r === '--file') && rest[j + 1]) {
+                    } else if ((r === '-f' || r === '--file') && hasNext(rest, j)) {
                         filePath = rest[++j];
                     } else {
                         positional.push(r);
@@ -1049,7 +1060,7 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                     const r = rest[j];
                     if (
                         (r === '-b' || r === '--board' || r === '--pinboard' || r === '--category' || r === '-c') &&
-                        rest[j + 1]
+                        hasNext(rest, j)
                     ) {
                         board = rest[++j];
                     } else if (!r.startsWith('-')) {
@@ -1106,18 +1117,18 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                     const r = rest[j];
                     if (
                         (r === '--to' || r === '-b' || r === '--board' || r === '--pinboard' || r === '--category') &&
-                        rest[j + 1]
+                        hasNext(rest, j)
                     ) {
                         to = rest[++j];
-                    } else if (r === '--from' && rest[j + 1]) {
+                    } else if (r === '--from' && hasNext(rest, j)) {
                         from = rest[++j];
                     } else if (r === '-c' || r === '--copy') {
                         copy = true;
-                    } else if (r === '--before' && rest[j + 1]) {
+                    } else if (r === '--before' && hasNext(rest, j)) {
                         before = rest[++j];
-                    } else if (r === '--after' && rest[j + 1]) {
+                    } else if (r === '--after' && hasNext(rest, j)) {
                         after = rest[++j];
-                    } else if (r === '--scope' && rest[j + 1]) {
+                    } else if (r === '--scope' && hasNext(rest, j)) {
                         board = rest[++j];
                     } else {
                         ids.push(r);
@@ -1137,7 +1148,7 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                 let copy = false;
                 for (let j = 0; j < rest.length; j++) {
                     const r = rest[j];
-                    if ((r === '-s' || r === '--sep' || r === '--separator') && rest[j + 1]) {
+                    if ((r === '-s' || r === '--sep' || r === '--separator') && hasNext(rest, j)) {
                         sep = rest[++j].replace(/\\n/g, '\n').replace(/\\t/g, '\t');
                     } else if (r === '-c' || r === '--copy') {
                         copy = true;
@@ -1173,7 +1184,7 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                             save = true;
                         } else if (r === '--copy' || r === '-c') {
                             copy = true;
-                        } else if ((r === '--text' || r === '-t') && rest[j + 1]) {
+                        } else if ((r === '--text' || r === '-t') && hasNext(rest, j)) {
                             text = rest[++j];
                         } else if (r === '-') {
                             text = await readStdin(io);
@@ -1218,13 +1229,13 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                     let active = false;
                     for (let j = 1; j < rest.length; j++) {
                         const r = rest[j];
-                        if ((r === '--color' || r === '-c') && rest[j + 1]) {
+                        if ((r === '--color' || r === '-c') && hasNext(rest, j)) {
                             color = rest[++j];
-                        } else if ((r === '--max' || r === '--max-items') && rest[j + 1]) {
+                        } else if ((r === '--max' || r === '--max-items') && hasNext(rest, j)) {
                             max_items = Number(rest[++j]) || 0;
-                        } else if (r === '--style' && rest[j + 1]) {
+                        } else if (r === '--style' && hasNext(rest, j)) {
                             list_style = rest[++j];
-                        } else if (r === '--paste-mode' && rest[j + 1]) {
+                        } else if (r === '--paste-mode' && hasNext(rest, j)) {
                             paste_mode = rest[++j];
                         } else if (r === '--active') {
                             active = true;
@@ -1238,15 +1249,15 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                     const pObj: Record<string, unknown> = { sub: 'update', board: rest[1] ?? '' };
                     for (let j = 2; j < rest.length; j++) {
                         const r = rest[j];
-                        if (r === '--name' && rest[j + 1]) {
+                        if (r === '--name' && hasNext(rest, j)) {
                             pObj.name = rest[++j];
-                        } else if ((r === '--color' || r === '-c') && rest[j + 1]) {
+                        } else if ((r === '--color' || r === '-c') && hasNext(rest, j)) {
                             pObj.color = rest[++j];
-                        } else if ((r === '--max' || r === '--max-items') && rest[j + 1]) {
+                        } else if ((r === '--max' || r === '--max-items') && hasNext(rest, j)) {
                             pObj.max_items = Number(rest[++j]) || 0;
-                        } else if (r === '--style' && rest[j + 1]) {
+                        } else if (r === '--style' && hasNext(rest, j)) {
                             pObj.list_style = rest[++j];
-                        } else if (r === '--paste-mode' && rest[j + 1]) {
+                        } else if (r === '--paste-mode' && hasNext(rest, j)) {
                             pObj.paste_mode = rest[++j];
                         } else if (r === '--active') {
                             pObj.active = true;
@@ -1312,19 +1323,19 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                     const kinds: string[] = [];
                     for (let j = 1; j < rest.length; j++) {
                         const r = rest[j];
-                        if (r === '--name' && rest[j + 1]) {
+                        if (r === '--name' && hasNext(rest, j)) {
                             name = rest[++j];
-                        } else if (r === '--action' && rest[j + 1]) {
+                        } else if (r === '--action' && hasNext(rest, j)) {
                             action = rest[++j];
-                        } else if (r === '--apps' && rest[j + 1]) {
+                        } else if (r === '--apps' && hasNext(rest, j)) {
                             apps = rest[++j];
-                        } else if (r === '--pattern' && rest[j + 1]) {
+                        } else if (r === '--pattern' && hasNext(rest, j)) {
                             pattern = rest[++j];
-                        } else if (r === '--value' && rest[j + 1]) {
+                        } else if (r === '--value' && hasNext(rest, j)) {
                             value = rest[++j];
-                        } else if ((r === '--board' || r === '--category') && rest[j + 1]) {
+                        } else if ((r === '--board' || r === '--category') && hasNext(rest, j)) {
                             board = Number(rest[++j]) || 0;
-                        } else if (r === '--kind' && rest[j + 1]) {
+                        } else if (r === '--kind' && hasNext(rest, j)) {
                             kinds.push(rest[++j]);
                         } else if (name === 'CLI Rule') {
                             name = r;
@@ -1355,9 +1366,9 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                     let output = 'new_item';
                     for (let j = 1; j < rest.length; j++) {
                         const r = rest[j];
-                        if ((r === '--cmd' || r === '--command' || r === '-c') && rest[j + 1]) {
+                        if ((r === '--cmd' || r === '--command' || r === '-c') && hasNext(rest, j)) {
                             command = rest[++j];
-                        } else if ((r === '--output' || r === '-o') && rest[j + 1]) {
+                        } else if ((r === '--output' || r === '-o') && hasNext(rest, j)) {
                             output = rest[++j];
                         } else if (!name) {
                             name = r;
@@ -1415,8 +1426,22 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                 params = {};
                 break;
             case 'pause':
-                op = 'pause';
-                params = { minutes: rest[0] ? Number(rest[0]) : null };
+                if (rest[0] !== undefined) {
+                    const mins = Number(rest[0]);
+                    if (!Number.isInteger(mins) || mins <= 0) {
+                        emitErr(
+                            EXIT_USAGE,
+                            `Invalid pause duration '${rest[0]}'`,
+                            'Provide a positive integer number of minutes, e.g. "clipnest pause 10".'
+                        );
+                        return EXIT_USAGE;
+                    }
+                    op = 'pause';
+                    params = { minutes: mins };
+                } else {
+                    op = 'pause';
+                    params = { minutes: null };
+                }
                 break;
             case 'resume':
                 op = 'resume';
@@ -1453,7 +1478,7 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                 let settingsOnly = false;
                 for (let j = 0; j < rest.length; j++) {
                     const r = rest[j];
-                    if ((r === '--format' || r === '-f') && rest[j + 1]) {
+                    if ((r === '--format' || r === '-f') && hasNext(rest, j)) {
                         format = rest[++j];
                     } else if (r === '--settings') {
                         settingsOnly = true;
@@ -1500,7 +1525,7 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                         allBoards = true;
                     } else if (
                         (r === '-b' || r === '--board' || r === '--pinboard' || r === '--category' || r === '-c') &&
-                        rest[j + 1]
+                        hasNext(rest, j)
                     ) {
                         board = rest[++j];
                     }
@@ -1576,7 +1601,14 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
     }
 
     if (jsonOut) {
-        io.stdout(JSON.stringify(resp.data, null, 2) + '\n');
+        const payload = JSON.stringify(resp.data, null, 2) + '\n';
+        if (outFile) {
+            const tmp = `${outFile}.${process.pid}.${Date.now()}.tmp`;
+            fs.writeFileSync(tmp, payload, 'utf8');
+            fs.renameSync(tmp, outFile);
+        } else {
+            io.stdout(payload);
+        }
         return resp.exit_code;
     }
 
@@ -1719,7 +1751,7 @@ function renderHuman(io: CliIo, op: string, data: Record<string, unknown>, outFi
         }
         const text = String(data.text ?? '');
         if (outFile) {
-            const tmp = `${outFile}.tmp`;
+            const tmp = `${outFile}.${process.pid}.${Date.now()}.tmp`;
             fs.writeFileSync(tmp, text, 'utf8');
             fs.renameSync(tmp, outFile);
             return EXIT_OK;

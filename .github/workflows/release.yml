@@ -33,6 +33,9 @@ jobs:
           node-version: 20
           cache: "npm"
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
@@ -67,8 +70,14 @@ jobs:
       - name: Extract release notes from CHANGELOG.md
         id: changelog
         shell: pwsh
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag_name }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          $rawTag = if ("${{ github.event.inputs.tag_name }}" -ne "") { "${{ github.event.inputs.tag_name }}" } else { "${{ github.ref_name }}" }
+          $rawTag = if (-not [string]::IsNullOrEmpty($env:INPUT_TAG)) { $env:INPUT_TAG } else { $env:REF_NAME }
+          if ($rawTag -notmatch '^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
+            throw "Invalid release tag format: $rawTag"
+          }
           $ver = $rawTag.TrimStart("v")
           $notes = ""
           if (Test-Path "CHANGELOG.md") {
@@ -114,13 +123,14 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.changelog.outputs.tag }}
         run: |
-          node scripts/build-portable.mjs
+          bun run scripts/build-portable.ts
           $zip = Get-ChildItem "src-tauri/target/release/bundle/*-portable.zip" | Select-Object -First 1
           if ($null -ne $zip) {
-            gh release upload "${{ steps.changelog.outputs.tag }}" $zip.FullName --clobber
+            gh release upload -- $env:RELEASE_TAG $zip.FullName --clobber
           }
           if (Test-Path "src-tauri/target/release/clipnest-cli.exe") {
             Copy-Item "src-tauri/target/release/clipnest-cli.exe" "src-tauri/target/release/clipnest-cli-win32-x64.exe" -Force
-            gh release upload "${{ steps.changelog.outputs.tag }}" "src-tauri/target/release/clipnest-cli-win32-x64.exe" --clobber
+            gh release upload -- $env:RELEASE_TAG "src-tauri/target/release/clipnest-cli-win32-x64.exe" --clobber
           }

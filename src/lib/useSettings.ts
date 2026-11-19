@@ -81,25 +81,53 @@ export function useSettings(): [Settings | null, (s: Settings) => void] {
     const timer = useRef<number | undefined>(undefined);
     const latest = useRef<Settings | null>(null);
     const lastSent = useRef(0);
+    const version = useRef(0);
+    const inFlightSaves = useRef(0);
 
-    const load = useCallback(() => {
-        if (timer.current !== undefined || Date.now() - lastSent.current < 700) {
+    const flush = useCallback(() => {
+        if (timer.current === undefined) {
             return;
         }
+        window.clearTimeout(timer.current);
+        timer.current = undefined;
+        const payload = latest.current;
+        if (!payload) {
+            return;
+        }
+        inFlightSaves.current += 1;
+        lastSent.current = Date.now();
+        api.setSettings(payload)
+            .catch(() => {})
+            .finally(() => {
+                inFlightSaves.current = Math.max(0, inFlightSaves.current - 1);
+                lastSent.current = Date.now();
+            });
+    }, []);
+
+    const load = useCallback(() => {
+        if (timer.current !== undefined || inFlightSaves.current > 0 || Date.now() - lastSent.current < 700) {
+            return;
+        }
+        const reqVer = version.current;
         api.getSettings()
-            .then(setS)
+            .then((next) => {
+                if (reqVer === version.current && timer.current === undefined && inFlightSaves.current === 0) {
+                    setS(next);
+                }
+            })
             .catch(() => {});
     }, []);
 
     useEffect(() => {
-        api.getSettings()
-            .then(setS)
-            .catch(() => {});
+        load();
         const p = on('settings-changed', load);
+        window.addEventListener('pagehide', flush);
         return () => {
-            p.then((u) => u());
+            window.removeEventListener('pagehide', flush);
+            flush();
+            p.then((u) => u()).catch(() => {});
         };
-    }, [load]);
+    }, [load, flush]);
 
     useEffect(() => {
         if (!s) {
@@ -161,18 +189,18 @@ export function useSettings(): [Settings | null, (s: Settings) => void] {
         return undefined;
     }, [s]);
 
-    const save = useCallback((next: Settings) => {
-        setS(next);
-        latest.current = next;
-        window.clearTimeout(timer.current);
-        timer.current = window.setTimeout(() => {
-            timer.current = undefined;
-            lastSent.current = Date.now();
-            if (latest.current) {
-                api.setSettings(latest.current).catch(() => {});
-            }
-        }, 250);
-    }, []);
+    const save = useCallback(
+        (next: Settings) => {
+            version.current += 1;
+            setS(next);
+            latest.current = next;
+            window.clearTimeout(timer.current);
+            timer.current = window.setTimeout(() => {
+                flush();
+            }, 250);
+        },
+        [flush]
+    );
 
     return [s, save];
 }

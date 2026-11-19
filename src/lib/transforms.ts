@@ -1,4 +1,4 @@
-// CopyQ-style text transformations. Each returns the new text or gracefully falls back.
+// CopyQ-style text transformations. Each returns the new text or gracefully falls back (b64-dec, url-dec, and jwt throw on invalid input).
 
 export interface Transform {
     id: string;

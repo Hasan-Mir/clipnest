@@ -276,13 +276,13 @@ export const fr: LocaleDefinition = {
         Default: 'Par défaut',
         'Default (Vazirmatn / System)': 'Par défaut (Vazirmatn / Système)',
         'Default height of the popup window in logical pixels.': 'Hauteur par défaut de la fenêtre en pixels logiques.',
-        'Default height of the popup window in logical pixels (minimum 380 px).':
-            'Hauteur par défaut de la fenêtre en pixels logiques (minimum 380 px).',
+        'Default height of the popup window in logical pixels (minimum 320 px).':
+            'Hauteur par défaut de la fenêtre en pixels logiques (minimum 320 px).',
         'Default paste (Enter)': 'Collage par défaut (Entrée)',
         'Default paste mode': 'Mode de collage par défaut',
         'Default width of the popup window in logical pixels.': 'Largeur par défaut de la fenêtre en pixels logiques.',
-        'Default width of the popup window in logical pixels (minimum 340 px).':
-            'Largeur par défaut de la fenêtre en pixels logiques (minimum 340 px).',
+        'Default width of the popup window in logical pixels (minimum 260 px).':
+            'Largeur par défaut de la fenêtre en pixels logiques (minimum 260 px).',
         'Delete "{name}" and its {n} item(s)?': 'Supprimer « {name} » et ses {n} élément(s) ?',
         'Delete (or remove inside a category)': 'Supprimer (ou retirer d’une catégorie)',
         'Delete permanently': 'Supprimer définitivement',

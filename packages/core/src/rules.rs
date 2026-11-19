@@ -80,7 +80,7 @@ pub fn apply(rules: &[AutoRule], clip: &mut NewClip, fmts: &mut Vec<StoredFormat
             "expire" => {
                 let m: i64 = rule.value.trim().parse().unwrap_or(0);
                 if m > 0 {
-                    clip.expires_at = Some(now_ms() + m * 60_000);
+                    clip.expires_at = Some(now_ms().saturating_add(m.saturating_mul(60_000)));
                 }
             }
             "run_action" if !rule.value.is_empty() => out.run.push(rule.value.clone()),
@@ -191,5 +191,24 @@ mod tests {
         }];
         let out = apply(&rules, &mut clip, &mut fmts);
         assert!(out.ignore);
+    }
+
+    #[test]
+    fn expire_rule_saturates_without_overflow() {
+        let mut clip = build_text_clip("sample", None, "App", "app.exe", false);
+        let mut fmts = vec![text_format(&clip.plain)];
+        let rules = vec![AutoRule {
+            id: "r_max".into(),
+            name: "Max Expire".into(),
+            enabled: true,
+            apps: "".into(),
+            kinds: vec![],
+            pattern: "".into(),
+            action: "expire".into(),
+            board: 0,
+            value: i64::MAX.to_string(),
+        }];
+        apply(&rules, &mut clip, &mut fmts);
+        assert_eq!(clip.expires_at, Some(i64::MAX));
     }
 }

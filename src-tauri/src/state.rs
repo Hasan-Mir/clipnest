@@ -49,6 +49,8 @@ pub struct AppState {
     /// True once the queue window's webview has rendered (the window is shown only after that).
     pub queue_ready: AtomicBool,
     pub queue_show_pending: AtomicBool,
+    /// True while `queue::on_paste_hotkey` is synthesizing a paste (blocks re-registration and overlap).
+    pub queue_pasting: AtomicBool,
 }
 
 impl AppState {
@@ -77,6 +79,7 @@ impl AppState {
             transfer_report: Mutex::new(None),
             queue_ready: AtomicBool::new(false),
             queue_show_pending: AtomicBool::new(false),
+            queue_pasting: AtomicBool::new(false),
         }
     }
 
@@ -90,5 +93,15 @@ impl AppState {
             return false;
         }
         true
+    }
+
+    /// Writes to the system clipboard while bracketing `self_write_at` and updating `self_seq`
+    /// so the capture loop never re-captures ClipNest's own write.
+    pub fn write_clipboard_self(&self, items: &[(u32, String, Vec<u8>)]) -> Result<u32, String> {
+        self.self_write_at.store(crate::db::now_ms(), Ordering::SeqCst);
+        let seq = crate::platform::win::write_clipboard(items)?;
+        self.self_seq.store(seq, Ordering::SeqCst);
+        self.self_write_at.store(crate::db::now_ms(), Ordering::SeqCst);
+        Ok(seq)
     }
 }

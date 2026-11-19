@@ -254,15 +254,29 @@ pub fn migrate(conn: &Connection) {
     }
 }
 
-fn try_open(path: &Path) -> Result<Connection, String> {
-    let conn = Connection::open(path).map_err(|e| e.to_string())?;
-    conn.execute_batch(PRAGMAS).map_err(|e| e.to_string())?;
-    let ok: String = conn.query_row("PRAGMA quick_check", [], |r| r.get(0)).map_err(|e| e.to_string())?;
+enum OpenErr {
+    Corrupt(String),
+    Other(String),
+}
+
+fn classify_sqlite_err(e: rusqlite::Error) -> OpenErr {
+    if let Some(code) = e.sqlite_error_code() {
+        if matches!(code, rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase) {
+            return OpenErr::Corrupt(e.to_string());
+        }
+    }
+    OpenErr::Other(e.to_string())
+}
+
+fn try_open(path: &Path) -> Result<Connection, OpenErr> {
+    let conn = Connection::open(path).map_err(classify_sqlite_err)?;
+    conn.execute_batch(PRAGMAS).map_err(classify_sqlite_err)?;
+    let ok: String = conn.query_row("PRAGMA quick_check", [], |r| r.get(0)).map_err(classify_sqlite_err)?;
     if ok != "ok" {
-        return Err(format!("integrity check failed: {ok}"));
+        return Err(OpenErr::Corrupt(format!("integrity check failed: {ok}")));
     }
     migrate(&conn);
-    conn.execute_batch(SCHEMA).map_err(|e| e.to_string())?;
+    conn.execute_batch(SCHEMA).map_err(classify_sqlite_err)?;
     Ok(conn)
 }
 
@@ -273,16 +287,24 @@ pub fn open_with_recovery(dir: &Path) -> Result<Connection, String> {
     let path = dir.join("clipnest.db");
     match try_open(&path) {
         Ok(c) => Ok(c),
-        Err(e) => {
+        Err(OpenErr::Other(e)) => Err(e),
+        Err(OpenErr::Corrupt(e)) => {
             eprintln!("database problem: {e}; trying to recover");
+            let stamp = now_ms();
             if path.exists() {
-                let bad = dir.join(format!("clipnest.corrupt-{}.db", now_ms()));
-                let _ = std::fs::rename(&path, &bad);
+                let bad = dir.join(format!("clipnest.corrupt-{stamp}.db"));
+                std::fs::rename(&path, &bad).map_err(|re| format!("{e}; quarantine failed: {re}"))?;
             }
-            let _ = std::fs::remove_file(dir.join("clipnest.db-wal"));
-            let _ = std::fs::remove_file(dir.join("clipnest.db-shm"));
+            for suffix in ["-wal", "-shm"] {
+                let sidecar = dir.join(format!("clipnest.db{suffix}"));
+                if sidecar.exists() {
+                    let _ = std::fs::rename(&sidecar, dir.join(format!("clipnest.corrupt-{stamp}.db{suffix}")));
+                }
+            }
             let _ = restore_latest_backup(dir, &path);
-            try_open(&path)
+            try_open(&path).map_err(|err| match err {
+                OpenErr::Corrupt(s) | OpenErr::Other(s) => s,
+            })
         }
     }
 }
@@ -323,13 +345,24 @@ fn list_backups(data_dir: &Path) -> Vec<PathBuf> {
 
 /// Writes `bytes` to `path` crash-safely: temp file, fsync, then atomic rename.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let tmp = PathBuf::from(format!("{}.tmp", path.to_string_lossy()));
-    {
+    static TMP_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = TMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = PathBuf::from(format!("{}.{}.{}.tmp", path.to_string_lossy(), std::process::id(), seq));
+    let res = (|| -> std::io::Result<()> {
         let mut f = std::fs::File::create(&tmp)?;
         f.write_all(bytes)?;
         f.sync_all()?;
+        Ok(())
+    })();
+    if let Err(e) = res {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
     }
-    std::fs::rename(&tmp, path)
+    if let Err(e) = std::fs::rename(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
+    Ok(())
 }
 
 /// Consistent snapshot (VACUUM INTO) compressed with gzip, streamed (no big RAM buffer).
@@ -556,56 +589,73 @@ pub fn assign_category(
     source_board: Option<i64>,
     copy: bool,
 ) -> Result<(), String> {
-    for id in ids {
-        let sort_ts: f64 = conn
-            .query_row("SELECT sort_ts FROM clips WHERE id=?1", params![id], |r| r.get(0))
-            .unwrap_or(now_ms() as f64);
-        match board {
-            Some(bid) => {
-                if !copy {
-                    if let Some(src) = source_board {
-                        if src != bid {
-                            let _ = conn.execute(
-                                "DELETE FROM clip_categories WHERE clip_id=?1 AND board_id=?2",
-                                params![id, src],
-                            );
+    conn.execute("SAVEPOINT assign_cat", []).map_err(|e| e.to_string())?;
+    let res = (|| -> Result<(), String> {
+        for id in ids {
+            let sort_ts: f64 = conn
+                .query_row("SELECT sort_ts FROM clips WHERE id=?1", params![id], |r| r.get(0))
+                .unwrap_or(now_ms() as f64);
+            match board {
+                Some(bid) => {
+                    if !copy {
+                        if let Some(src) = source_board {
+                            if src != bid {
+                                conn.execute(
+                                    "DELETE FROM clip_categories WHERE clip_id=?1 AND board_id=?2",
+                                    params![id, src],
+                                )
+                                .map_err(|e| e.to_string())?;
+                            }
+                        } else {
+                            conn.execute("DELETE FROM clip_categories WHERE clip_id=?1", params![id])
+                                .map_err(|e| e.to_string())?;
                         }
-                    } else {
-                        let _ = conn.execute("DELETE FROM clip_categories WHERE clip_id=?1", params![id]);
                     }
-                }
-                conn.execute(
-                    "INSERT INTO clip_categories(clip_id, board_id, pinned, sort_ts) VALUES(?1, ?2, 0, ?3)
-                     ON CONFLICT(clip_id, board_id) DO UPDATE SET sort_ts=excluded.sort_ts",
-                    params![id, bid, sort_ts],
-                )
-                .map_err(|e| e.to_string())?;
-                conn.execute("UPDATE clips SET pinboard_id=?1 WHERE id=?2", params![Some(bid), id])
+                    conn.execute(
+                        "INSERT INTO clip_categories(clip_id, board_id, pinned, sort_ts) VALUES(?1, ?2, 0, ?3)
+                         ON CONFLICT(clip_id, board_id) DO UPDATE SET sort_ts=excluded.sort_ts",
+                        params![id, bid, sort_ts],
+                    )
                     .map_err(|e| e.to_string())?;
-            }
-            None => {
-                if let Some(src) = source_board {
-                    let _ =
-                        conn.execute("DELETE FROM clip_categories WHERE clip_id=?1 AND board_id=?2", params![id, src]);
-                } else {
-                    let _ = conn.execute("DELETE FROM clip_categories WHERE clip_id=?1", params![id]);
+                    conn.execute("UPDATE clips SET pinboard_id=?1 WHERE id=?2", params![Some(bid), id])
+                        .map_err(|e| e.to_string())?;
                 }
-                let remaining: Option<i64> = conn
-                    .query_row("SELECT board_id FROM clip_categories WHERE clip_id=?1 LIMIT 1", params![id], |r| {
-                        r.get(0)
-                    })
-                    .optional()
-                    .ok()
-                    .flatten();
-                conn.execute("UPDATE clips SET pinboard_id=?1 WHERE id=?2", params![remaining, id])
-                    .map_err(|e| e.to_string())?;
+                None => {
+                    if let Some(src) = source_board {
+                        conn.execute("DELETE FROM clip_categories WHERE clip_id=?1 AND board_id=?2", params![id, src])
+                            .map_err(|e| e.to_string())?;
+                    } else {
+                        conn.execute("DELETE FROM clip_categories WHERE clip_id=?1", params![id])
+                            .map_err(|e| e.to_string())?;
+                    }
+                    let remaining: Option<i64> = conn
+                        .query_row("SELECT board_id FROM clip_categories WHERE clip_id=?1 LIMIT 1", params![id], |r| {
+                            r.get(0)
+                        })
+                        .optional()
+                        .map_err(|e| e.to_string())?;
+                    conn.execute("UPDATE clips SET pinboard_id=?1 WHERE id=?2", params![remaining, id])
+                        .map_err(|e| e.to_string())?;
+                }
             }
         }
+        if let Some(b) = board {
+            trim_board(conn, b);
+        }
+        Ok(())
+    })();
+    match res {
+        Ok(()) => conn.execute("RELEASE SAVEPOINT assign_cat", []).map(|_| ()).map_err(|e| {
+            let _ = conn.execute("ROLLBACK TO SAVEPOINT assign_cat", []);
+            let _ = conn.execute("RELEASE SAVEPOINT assign_cat", []);
+            e.to_string()
+        }),
+        Err(e) => {
+            let _ = conn.execute("ROLLBACK TO SAVEPOINT assign_cat", []);
+            let _ = conn.execute("RELEASE SAVEPOINT assign_cat", []);
+            Err(e)
+        }
     }
-    if let Some(b) = board {
-        trim_board(conn, b);
-    }
-    Ok(())
 }
 
 pub fn set_pinboard(conn: &Connection, ids: &[i64], board: Option<i64>) -> Result<(), String> {
@@ -764,8 +814,13 @@ pub fn delete_pinboard(conn: &Connection, id: i64) -> Result<(), String> {
     })();
     match res {
         Ok(()) => {
-            let _ = conn.execute("RELEASE SAVEPOINT del_pb", []);
-            Ok(())
+            if let Err(e) = conn.execute("RELEASE SAVEPOINT del_pb", []) {
+                let _ = conn.execute("ROLLBACK TO SAVEPOINT del_pb", []);
+                let _ = conn.execute("RELEASE SAVEPOINT del_pb", []);
+                Err(e.to_string())
+            } else {
+                Ok(())
+            }
         }
         Err(e) => {
             let _ = conn.execute("ROLLBACK TO SAVEPOINT del_pb", []);
@@ -892,121 +947,149 @@ pub fn move_item(conn: &Connection, id: i64, target: i64, after: bool, scope: Op
     if id == target {
         return Ok(());
     }
-    if let Some(bid) = scope {
-        let (_, t_pinned): (f64, i64) = conn
-            .query_row(
-                "SELECT sort_ts, pinned FROM clip_categories WHERE clip_id=?1 AND board_id=?2",
-                params![target, bid],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
-            .map_err(|e| e.to_string())?;
-        // Normalize sort_ts if any two items in this category+pinned group share the same sort_ts
-        let dup_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) - COUNT(DISTINCT sort_ts) FROM clip_categories WHERE board_id=?1 AND pinned=?2",
-                params![bid, t_pinned],
-                |r| r.get(0),
-            )
-            .unwrap_or(0);
-        if dup_count > 0 {
-            let ordered_ids: Vec<i64> = conn
-                .prepare("SELECT clip_id FROM clip_categories WHERE board_id=?1 AND pinned=?2 ORDER BY sort_ts DESC, clip_id DESC")
-                .and_then(|mut st| {
-                    let rows = st.query_map(params![bid, t_pinned], |r| r.get::<_, i64>(0))?;
-                    Ok(rows.filter_map(|r| r.ok()).collect())
-                })
-                .unwrap_or_default();
-            let base = now_ms() as f64;
-            for (idx, cid) in ordered_ids.iter().enumerate() {
-                let _ = conn.execute(
-                    "UPDATE clip_categories SET sort_ts=?1 WHERE board_id=?2 AND clip_id=?3",
-                    params![base - (idx as f64) * 1000.0, bid, cid],
-                );
+    conn.execute("SAVEPOINT move_item", []).map_err(|e| e.to_string())?;
+    let res = (|| -> Result<(), String> {
+        let compute = |t_sort: f64, neighbour: Option<f64>| -> Option<f64> {
+            let cand = match (after, neighbour) {
+                (true, Some(lo)) => (t_sort + lo) / 2.0,
+                (true, None) => t_sort - 1000.0,
+                (false, Some(hi)) => (t_sort + hi) / 2.0,
+                (false, None) => t_sort + 1000.0,
+            };
+            if neighbour.is_some_and(|n| cand == t_sort || cand == n) {
+                None
+            } else {
+                Some(cand)
             }
-        }
-        let t_sort: f64 = conn
-            .query_row(
-                "SELECT sort_ts FROM clip_categories WHERE clip_id=?1 AND board_id=?2",
-                params![target, bid],
-                |r| r.get(0),
-            )
-            .map_err(|e| e.to_string())?;
-        let neighbour: Option<f64> = if after {
-            conn.query_row(
-                "SELECT MAX(sort_ts) FROM clip_categories WHERE board_id=?1 AND pinned=?2 AND sort_ts<?3 AND clip_id<>?4",
-                params![bid, t_pinned, t_sort, id],
-                |r| r.get(0),
-            )
-        } else {
-            conn.query_row(
-                "SELECT MIN(sort_ts) FROM clip_categories WHERE board_id=?1 AND pinned=?2 AND sort_ts>?3 AND clip_id<>?4",
-                params![bid, t_pinned, t_sort, id],
-                |r| r.get(0),
-            )
-        }
-        .map_err(|e| e.to_string())?;
-        let new = match (after, neighbour) {
-            (true, Some(lo)) => (t_sort + lo) / 2.0,
-            (true, None) => t_sort - 1000.0,
-            (false, Some(hi)) => (t_sort + hi) / 2.0,
-            (false, None) => t_sort + 1000.0,
         };
-        return conn
-            .execute(
+
+        if let Some(bid) = scope {
+            let (mut t_sort, t_pinned): (f64, i64) = conn
+                .query_row(
+                    "SELECT sort_ts, pinned FROM clip_categories WHERE clip_id=?1 AND board_id=?2",
+                    params![target, bid],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .map_err(|e| e.to_string())?;
+            let fetch_neighbour = |ts: f64| -> Result<Option<f64>, String> {
+                if after {
+                    conn.query_row(
+                        "SELECT MAX(sort_ts) FROM clip_categories WHERE board_id=?1 AND pinned=?2 AND sort_ts<?3 AND clip_id<>?4",
+                        params![bid, t_pinned, ts, id],
+                        |r| r.get(0),
+                    )
+                } else {
+                    conn.query_row(
+                        "SELECT MIN(sort_ts) FROM clip_categories WHERE board_id=?1 AND pinned=?2 AND sort_ts>?3 AND clip_id<>?4",
+                        params![bid, t_pinned, ts, id],
+                        |r| r.get(0),
+                    )
+                }
+                .map_err(|e| e.to_string())
+            };
+            let dup_count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) - COUNT(DISTINCT sort_ts) FROM clip_categories WHERE board_id=?1 AND pinned=?2",
+                    params![bid, t_pinned],
+                    |r| r.get(0),
+                )
+                .unwrap_or(0);
+            let mut neighbour = fetch_neighbour(t_sort)?;
+            if dup_count > 0 || compute(t_sort, neighbour).is_none() {
+                let ordered_ids: Vec<i64> = {
+                    let mut st = conn
+                        .prepare("SELECT clip_id FROM clip_categories WHERE board_id=?1 AND pinned=?2 ORDER BY sort_ts DESC, clip_id DESC")
+                        .map_err(|e| e.to_string())?;
+                    let rows =
+                        st.query_map(params![bid, t_pinned], |r| r.get::<_, i64>(0)).map_err(|e| e.to_string())?;
+                    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+                };
+                let base = now_ms() as f64;
+                for (idx, cid) in ordered_ids.iter().enumerate() {
+                    conn.execute(
+                        "UPDATE clip_categories SET sort_ts=?1 WHERE board_id=?2 AND clip_id=?3",
+                        params![base - (idx as f64) * 1000.0, bid, cid],
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+                t_sort = conn
+                    .query_row(
+                        "SELECT sort_ts FROM clip_categories WHERE clip_id=?1 AND board_id=?2",
+                        params![target, bid],
+                        |r| r.get(0),
+                    )
+                    .map_err(|e| e.to_string())?;
+                neighbour = fetch_neighbour(t_sort)?;
+            }
+            let new = compute(t_sort, neighbour).unwrap_or(if after { t_sort - 1.0 } else { t_sort + 1.0 });
+            conn.execute(
                 "UPDATE clip_categories SET sort_ts=?1, pinned=?2 WHERE clip_id=?3 AND board_id=?4",
                 params![new, t_pinned, id, bid],
             )
-            .map(|_| ())
-            .map_err(|e| e.to_string());
-    }
+            .map_err(|e| e.to_string())?;
+            return Ok(());
+        }
 
-    let (_, t_pinned): (f64, i64) = conn
-        .query_row("SELECT sort_ts,pinned FROM clips WHERE id=?1", params![target], |r| Ok((r.get(0)?, r.get(1)?)))
-        .map_err(|e| e.to_string())?;
-    let dup_count: i64 = conn
-        .query_row("SELECT COUNT(*) - COUNT(DISTINCT sort_ts) FROM clips WHERE pinned=?1", params![t_pinned], |r| {
-            r.get(0)
-        })
-        .unwrap_or(0);
-    if dup_count > 0 {
-        let ordered_ids: Vec<i64> = conn
-            .prepare("SELECT id FROM clips WHERE pinned=?1 ORDER BY sort_ts DESC, id DESC")
-            .and_then(|mut st| {
-                let rows = st.query_map(params![t_pinned], |r| r.get::<_, i64>(0))?;
-                Ok(rows.filter_map(|r| r.ok()).collect())
+        let (mut t_sort, t_pinned): (f64, i64) = conn
+            .query_row("SELECT sort_ts,pinned FROM clips WHERE id=?1", params![target], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(|e| e.to_string())?;
+        let fetch_neighbour = |ts: f64| -> Result<Option<f64>, String> {
+            if after {
+                conn.query_row(
+                    "SELECT MAX(sort_ts) FROM clips WHERE pinned=?1 AND sort_ts<?2 AND id<>?3",
+                    params![t_pinned, ts, id],
+                    |r| r.get(0),
+                )
+            } else {
+                conn.query_row(
+                    "SELECT MIN(sort_ts) FROM clips WHERE pinned=?1 AND sort_ts>?2 AND id<>?3",
+                    params![t_pinned, ts, id],
+                    |r| r.get(0),
+                )
+            }
+            .map_err(|e| e.to_string())
+        };
+        let dup_count: i64 = conn
+            .query_row("SELECT COUNT(*) - COUNT(DISTINCT sort_ts) FROM clips WHERE pinned=?1", params![t_pinned], |r| {
+                r.get(0)
             })
-            .unwrap_or_default();
-        let base = now_ms() as f64;
-        for (idx, cid) in ordered_ids.iter().enumerate() {
-            let _ = conn.execute("UPDATE clips SET sort_ts=?1 WHERE id=?2", params![base - (idx as f64) * 1000.0, cid]);
+            .unwrap_or(0);
+        let mut neighbour = fetch_neighbour(t_sort)?;
+        if dup_count > 0 || compute(t_sort, neighbour).is_none() {
+            let ordered_ids: Vec<i64> = {
+                let mut st = conn
+                    .prepare("SELECT id FROM clips WHERE pinned=?1 ORDER BY sort_ts DESC, id DESC")
+                    .map_err(|e| e.to_string())?;
+                let rows = st.query_map(params![t_pinned], |r| r.get::<_, i64>(0)).map_err(|e| e.to_string())?;
+                rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+            };
+            let base = now_ms() as f64;
+            for (idx, cid) in ordered_ids.iter().enumerate() {
+                conn.execute("UPDATE clips SET sort_ts=?1 WHERE id=?2", params![base - (idx as f64) * 1000.0, cid])
+                    .map_err(|e| e.to_string())?;
+            }
+            t_sort = conn
+                .query_row("SELECT sort_ts FROM clips WHERE id=?1", params![target], |r| r.get(0))
+                .map_err(|e| e.to_string())?;
+            neighbour = fetch_neighbour(t_sort)?;
+        }
+        let new = compute(t_sort, neighbour).unwrap_or(if after { t_sort - 1.0 } else { t_sort + 1.0 });
+        conn.execute("UPDATE clips SET sort_ts=?1, pinned=?2 WHERE id=?3", params![new, t_pinned, id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    })();
+    match res {
+        Ok(()) => conn.execute("RELEASE SAVEPOINT move_item", []).map(|_| ()).map_err(|e| {
+            let _ = conn.execute("ROLLBACK TO SAVEPOINT move_item", []);
+            let _ = conn.execute("RELEASE SAVEPOINT move_item", []);
+            e.to_string()
+        }),
+        Err(e) => {
+            let _ = conn.execute("ROLLBACK TO SAVEPOINT move_item", []);
+            let _ = conn.execute("RELEASE SAVEPOINT move_item", []);
+            Err(e)
         }
     }
-    let t_sort: f64 = conn
-        .query_row("SELECT sort_ts FROM clips WHERE id=?1", params![target], |r| r.get(0))
-        .map_err(|e| e.to_string())?;
-    let neighbour: Option<f64> = if after {
-        conn.query_row(
-            "SELECT MAX(sort_ts) FROM clips WHERE pinned=?1 AND sort_ts<?2 AND id<>?3",
-            params![t_pinned, t_sort, id],
-            |r| r.get(0),
-        )
-    } else {
-        conn.query_row(
-            "SELECT MIN(sort_ts) FROM clips WHERE pinned=?1 AND sort_ts>?2 AND id<>?3",
-            params![t_pinned, t_sort, id],
-            |r| r.get(0),
-        )
-    }
-    .map_err(|e| e.to_string())?;
-    let new = match (after, neighbour) {
-        (true, Some(lo)) => (t_sort + lo) / 2.0,
-        (true, None) => t_sort - 1000.0,
-        (false, Some(hi)) => (t_sort + hi) / 2.0,
-        (false, None) => t_sort + 1000.0,
-    };
-    conn.execute("UPDATE clips SET sort_ts=?1, pinned=?2 WHERE id=?3", params![new, t_pinned, id])
-        .map(|_| ())
-        .map_err(|e| e.to_string())
 }
 
 // ───────────────────────────── app icons ─────────────────────────────
@@ -1056,7 +1139,7 @@ pub fn merge_from(conn: &Connection, imp: &Path) -> Result<usize, String> {
             let boards: Vec<(i64, String, String)> = {
                 let mut st = conn.prepare("SELECT id,name,color FROM imp.pinboards").map_err(|e| e.to_string())?;
                 let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).map_err(|e| e.to_string())?;
-                rows.filter_map(|r| r.ok()).collect()
+                rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
             };
             for (old, name, color) in boards {
                 let existing: Option<i64> = conn
@@ -1098,7 +1181,7 @@ pub fn merge_from(conn: &Connection, imp: &Path) -> Result<usize, String> {
                 params![max_before],
             )
             .map_err(|e| e.to_string())?;
-            let _ = conn.execute(
+            conn.execute(
                 "INSERT OR IGNORE INTO main.clip_categories(clip_id, board_id, pinned, sort_ts)
                  SELECT mc.id, m.new, icc.pinned, icc.sort_ts
                  FROM imp.clip_categories icc
@@ -1106,12 +1189,14 @@ pub fn merge_from(conn: &Connection, imp: &Path) -> Result<usize, String> {
                  JOIN main.clips mc ON mc.hash = ic.hash
                  JOIN pbmap m ON m.old = icc.board_id",
                 [],
-            );
-            let _ = conn.execute(
+            )
+            .map_err(|e| e.to_string())?;
+            conn.execute(
                 "INSERT OR IGNORE INTO main.clip_categories(clip_id, board_id, pinned, sort_ts)
                  SELECT id, pinboard_id, 0, sort_ts FROM main.clips WHERE id>?1 AND pinboard_id IS NOT NULL",
                 params![max_before],
-            );
+            )
+            .map_err(|e| e.to_string())?;
             if let Ok(all_boards) = list_pinboards(conn) {
                 for b in all_boards {
                     trim_board(conn, b.id);
@@ -1121,8 +1206,12 @@ pub fn merge_from(conn: &Connection, imp: &Path) -> Result<usize, String> {
         })();
         match body {
             Ok(n) => {
-                conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
-                Ok(n)
+                if let Err(e) = conn.execute_batch("COMMIT") {
+                    let _ = conn.execute_batch("ROLLBACK");
+                    Err(e.to_string())
+                } else {
+                    Ok(n)
+                }
             }
             Err(e) => {
                 let _ = conn.execute_batch("ROLLBACK");
@@ -1411,5 +1500,62 @@ mod tests {
         drop(conn_dst);
         let _ = std::fs::remove_dir_all(&dir_src);
         let _ = std::fs::remove_dir_all(&dir_dst);
+    }
+
+    #[test]
+    fn move_item_consecutive_halving_preserves_strict_order() {
+        let dir = std::env::temp_dir().join(format!("clipnest_db_move_halving_{}", now_ms()));
+        let mut conn = open_with_recovery(&dir).unwrap();
+
+        let c1 = build_text_clip("clip 1", None, "App", "app.exe", false);
+        let (id1, _) = insert_clip(&mut conn, &c1, &[text_format("clip 1")]).unwrap();
+
+        let c2 = build_text_clip("clip 2", None, "App", "app.exe", false);
+        let (id2, _) = insert_clip(&mut conn, &c2, &[text_format("clip 2")]).unwrap();
+
+        let c3 = build_text_clip("moving clip", None, "App", "app.exe", false);
+        let (id3, _) = insert_clip(&mut conn, &c3, &[text_format("moving clip")]).unwrap();
+
+        // Seed deterministic distinct timestamps near current epoch ms (high f64 ULP).
+        let base = now_ms() as f64;
+        conn.execute("UPDATE clips SET sort_ts=?1 WHERE id=?2", params![base, id1]).unwrap();
+        conn.execute("UPDATE clips SET sort_ts=?1 WHERE id=?2", params![base + 1000.0, id2]).unwrap();
+        conn.execute("UPDATE clips SET sort_ts=?1 WHERE id=?2", params![base + 2000.0, id3]).unwrap();
+
+        // Perform 30 consecutive moves of id3 between id1 and id2
+        for _ in 0..30 {
+            move_item(&conn, id3, id1, false, None).expect("move_item must succeed and auto-normalize on collapse");
+            let s1: f64 = conn.query_row("SELECT sort_ts FROM clips WHERE id=?1", params![id1], |r| r.get(0)).unwrap();
+            let s2: f64 = conn.query_row("SELECT sort_ts FROM clips WHERE id=?1", params![id2], |r| r.get(0)).unwrap();
+            let s3: f64 = conn.query_row("SELECT sort_ts FROM clips WHERE id=?1", params![id3], |r| r.get(0)).unwrap();
+            assert!(s1 < s3 && s3 < s2, "Strict ordering must hold: s1={s1}, s3={s3}, s2={s2}");
+            let mut st = conn.prepare("SELECT id FROM clips ORDER BY pinned DESC, sort_ts DESC, id DESC").unwrap();
+            let order: Vec<i64> = st.query_map([], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect();
+            assert_eq!(order, vec![id2, id3, id1]);
+        }
+
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn classify_sqlite_err_identifies_corruption_vs_transient_locks() {
+        let err_busy = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_BUSY),
+            Some("database is locked".into()),
+        );
+        assert!(matches!(classify_sqlite_err(err_busy), OpenErr::Other(_)));
+
+        let err_corrupt = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CORRUPT),
+            Some("database disk image is malformed".into()),
+        );
+        assert!(matches!(classify_sqlite_err(err_corrupt), OpenErr::Corrupt(_)));
+
+        let err_not_a_db = rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_NOTADB),
+            Some("file is not a database".into()),
+        );
+        assert!(matches!(classify_sqlite_err(err_not_a_db), OpenErr::Corrupt(_)));
     }
 }

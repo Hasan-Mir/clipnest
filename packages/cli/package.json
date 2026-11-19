@@ -28,15 +28,15 @@
     "files": [
         "dist",
         "bin",
-        "scripts",
         "README.md"
     ],
     "scripts": {
         "build": "tsc",
         "typecheck": "tsc --noEmit --skipLibCheck",
-        "typecheck:bun": "bun check --skipLibCheck",
-        "test": "node --test tests/run-cli-tests.mjs",
-        "postinstall": "node scripts/install-binary.cjs",
+        "typecheck:bun": "bun check --skipLibCheck && bun check --skipLibCheck tests/run-cli.test.ts",
+        "test": "bun test tests/run-cli.test.ts",
+        "prepublishOnly": "npm run build",
+        "postinstall": "node -e \"const fs=require('node:fs');if(fs.existsSync('dist/install-binary.js'))import('./dist/install-binary.js')\"",
         "start": "node dist/index.js"
     },
     "dependencies": {

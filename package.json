@@ -24,8 +24,8 @@
         "prepare": "husky",
         "bundle:context": "bun run scripts/bundle-context.ts",
         "tauri": "tauri dev",
-        "tauri:build": "tauri build && cargo build --release --manifest-path packages/core/Cargo.toml --bin clipnest-cli && node scripts/build-portable.mjs",
-        "tauri:portable": "tauri build --no-bundle && cargo build --release --manifest-path packages/core/Cargo.toml --bin clipnest-cli && node scripts/build-portable.mjs"
+        "tauri:build": "tauri build && cargo build --release --manifest-path packages/core/Cargo.toml --bin clipnest-cli && bun run scripts/build-portable.ts",
+        "tauri:portable": "tauri build --no-bundle && cargo build --release --manifest-path packages/core/Cargo.toml --bin clipnest-cli && bun run scripts/build-portable.ts"
     },
     "dependencies": {
         "@floating-ui/dom": "^1.8.0",

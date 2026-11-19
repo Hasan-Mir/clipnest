@@ -164,13 +164,13 @@ export const FA: Record<string, string> = {
     Default: 'پیش‌فرض',
     'Default (Vazirmatn / System)': 'پیش‌فرض (وزیرمتن / سیستم)',
     'Default height of the popup window in logical pixels.': 'ارتفاع پیش‌فرض پنجره‌ی اصلی بر حسب پیکسل منطقی.',
-    'Default height of the popup window in logical pixels (minimum 380 px).':
-        'ارتفاع پیش‌فرض پنجره‌ی اصلی بر حسب پیکسل (حداقل ۳۸۰ پیکسل).',
+    'Default height of the popup window in logical pixels (minimum 320 px).':
+        'ارتفاع پیش‌فرض پنجره‌ی اصلی بر حسب پیکسل (حداقل ۳۲۰ پیکسل).',
     'Default paste (Enter)': 'پیست پیش‌فرض (Enter)',
     'Default paste mode': 'حالت پیست پیش‌فرض',
     'Default width of the popup window in logical pixels.': 'عرض پیش‌فرض پنجره‌ی اصلی بر حسب پیکسل منطقی.',
-    'Default width of the popup window in logical pixels (minimum 340 px).':
-        'عرض پیش‌فرض پنجره‌ی اصلی بر حسب پیکسل (حداقل ۳۴۰ پیکسل).',
+    'Default width of the popup window in logical pixels (minimum 260 px).':
+        'عرض پیش‌فرض پنجره‌ی اصلی بر حسب پیکسل (حداقل ۲۶۰ پیکسل).',
     Delete: 'حذف',
     'Delete "{name}" and its {n} item(s)?': '«{name}» و {n} آیتمِ آن حذف شود؟',
     'Delete (or unpin inside a pinboard)': 'حذف (داخل دسته‌بندی: برداشتن از آن)',

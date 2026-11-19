@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect, useState } from 'react';
 import { api, ClipRow } from '../lib/api';
 import { appColor, basename, extOf, hostOf, relTime } from '../lib/format';
 import { highlightText, SearchMode } from '../lib/highlightMatch';
@@ -29,7 +29,9 @@ function Thumb({ id, w, h }: { id: number; w: number | null; h: number | null })
                 }
             })
             .catch(() => {
-                thumbCache.set(id, null);
+                if (alive) {
+                    setSrc(null);
+                }
             });
         return () => {
             alive = false;
@@ -166,6 +168,7 @@ function Body({
     highlight: boolean;
 }) {
     const [missing, setMissing] = useState(false);
+    const handleMissing = useCallback(() => setMissing(true), []);
     useEffect(() => {
         setMissing(false);
     }, [item.id, item.ts, item.has_rich]);
@@ -227,7 +230,7 @@ function Body({
                         query={query}
                         searchMode={searchMode}
                         highlight={highlight}
-                        onMissing={() => setMissing(true)}
+                        onMissing={handleMissing}
                     />
                 );
             }

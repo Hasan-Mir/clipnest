@@ -75,12 +75,11 @@ pub async fn copy_item(app: AppHandle, id: i64, mode: String) -> Res<()> {
 /// Copies arbitrary text (e.g. a colour value) and marks it as our own write.
 #[tauri::command]
 pub async fn copy_text(state: State<'_, AppState>, text: String) -> Res<()> {
-    let seq = crate::platform::win::write_clipboard(&[(
+    state.write_clipboard_self(&[(
         crate::platform::win::CF_UNICODETEXT_ID,
         "CF_UNICODETEXT".into(),
         crate::capture::utf16_bytes(&text),
     )])?;
-    state.self_seq.store(seq, Ordering::SeqCst);
     Ok(())
 }
 
@@ -323,12 +322,11 @@ pub fn exec_action(app: &AppHandle, id: i64, action: &str) -> Res<Option<i64>> {
     match act.output.as_str() {
         "new_item" => Ok(Some(store_text(app, &state, &out)?)),
         "clipboard" => {
-            let seq = crate::platform::win::write_clipboard(&[(
+            state.write_clipboard_self(&[(
                 crate::platform::win::CF_UNICODETEXT_ID,
                 "CF_UNICODETEXT".into(),
                 crate::capture::utf16_bytes(&out),
             )])?;
-            state.self_seq.store(seq, Ordering::SeqCst);
             Ok(None)
         }
         _ => Ok(None),
@@ -541,8 +539,7 @@ pub async fn reveal_paths(paths: Vec<String>) -> Res<()> {
         let mut cur = Path::new(raw.trim()).parent();
         while let Some(dir) = cur {
             if dir.exists() {
-                use std::os::windows::process::CommandExt;
-                let _ = std::process::Command::new("explorer").raw_arg(format!("\"{}\"", dir.display())).spawn();
+                let _ = std::process::Command::new("explorer").arg(dir).spawn();
                 return Ok(());
             }
             cur = dir.parent();
@@ -560,7 +557,9 @@ pub async fn queue_ready(app: AppHandle) -> Res<()> {
 
 #[tauri::command]
 pub async fn basket_paste_here(app: AppHandle) -> Res<usize> {
-    crate::queue::basket_paste_here(&app)
+    tauri::async_runtime::spawn_blocking(move || crate::queue::basket_paste_here(&app))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -892,7 +891,6 @@ pub async fn export_data(app: AppHandle) -> Res<Option<String>> {
 #[tauri::command]
 pub async fn import_data(app: AppHandle) -> Res<Option<usize>> {
     tauri::async_runtime::spawn_blocking(move || {
-        use std::io::Read;
         use tauri_plugin_dialog::DialogExt;
         let state = app.state::<AppState>();
         let picked = app
@@ -903,16 +901,7 @@ pub async fn import_data(app: AppHandle) -> Res<Option<usize>> {
             .blocking_pick_file();
         let Some(picked) = picked else { return Ok(None) };
         let path = picked.into_path().map_err(|e| e.to_string())?;
-        let raw = std::fs::read(&path).map_err(|e| e.to_string())?;
-        let bytes = if raw.starts_with(&[0x1f, 0x8b]) {
-            let mut out = Vec::new();
-            flate2::read::GzDecoder::new(&raw[..]).read_to_end(&mut out).map_err(|e| e.to_string())?;
-            out
-        } else {
-            raw
-        };
-        let tmp = state.data_dir.join("import.tmp.db");
-        db::write_atomic(&tmp, &bytes).map_err(|e| e.to_string())?;
+        let tmp = clipnest_core::ipc::prepare_import_db_temp(&path, &state.data_dir)?;
         let result = db::merge_from(&state.db.lock(), &tmp);
         let _ = std::fs::remove_file(&tmp);
         let n = result?;

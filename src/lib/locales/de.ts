@@ -276,14 +276,14 @@ export const de: LocaleDefinition = {
         Default: 'Standard',
         'Default (Vazirmatn / System)': 'Standard (Vazirmatn / System)',
         'Default height of the popup window in logical pixels.': 'Standardhöhe des Popup-Fensters in logischen Pixeln.',
-        'Default height of the popup window in logical pixels (minimum 380 px).':
-            'Standardhöhe des Popup-Fensters in logischen Pixeln (mindestens 380 px).',
+        'Default height of the popup window in logical pixels (minimum 320 px).':
+            'Standardhöhe des Popup-Fensters in logischen Pixeln (mindestens 320 px).',
         'Default paste (Enter)': 'Standard-Einfügen (Eingabetaste)',
         'Default paste mode': 'Standard-Einfügemodus',
         'Default width of the popup window in logical pixels.':
             'Standardbreite des Popup-Fensters in logischen Pixeln.',
-        'Default width of the popup window in logical pixels (minimum 340 px).':
-            'Standardbreite des Popup-Fensters in logischen Pixeln (mindestens 340 px).',
+        'Default width of the popup window in logical pixels (minimum 260 px).':
+            'Standardbreite des Popup-Fensters in logischen Pixeln (mindestens 260 px).',
         'Delete "{name}" and its {n} item(s)?': '„{name}“ und die {n} enthaltenen Einträge löschen?',
         'Delete (or remove inside a category)': 'Löschen (oder aus Kategorie entfernen)',
         'Delete permanently': 'Dauerhaft löschen',

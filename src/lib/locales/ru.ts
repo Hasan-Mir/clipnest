@@ -276,14 +276,14 @@ export const ru: LocaleDefinition = {
         'Default (Vazirmatn / System)': 'По умолчанию (Vazirmatn / Системный)',
         'Default height of the popup window in logical pixels.':
             'Высота всплывающего окна по умолчанию в логических пикселях.',
-        'Default height of the popup window in logical pixels (minimum 380 px).':
-            'Высота всплывающего окна по умолчанию в логических пикселях (минимум 380 пикс.).',
+        'Default height of the popup window in logical pixels (minimum 320 px).':
+            'Высота всплывающего окна по умолчанию в логических пикселях (минимум 320 пикс.).',
         'Default paste (Enter)': 'Вставка по умолчанию (Enter)',
         'Default paste mode': 'Режим вставки по умолчанию',
         'Default width of the popup window in logical pixels.':
             'Ширина всплывающего окна по умолчанию в логических пикселях.',
-        'Default width of the popup window in logical pixels (minimum 340 px).':
-            'Ширина всплывающего окна по умолчанию в логических пикселях (минимум 340 пикс.).',
+        'Default width of the popup window in logical pixels (minimum 260 px).':
+            'Ширина всплывающего окна по умолчанию в логических пикселях (минимум 260 пикс.).',
         'Delete "{name}" and its {n} item(s)?': 'Удалить «{name}» и её элементы ({n})?',
         'Delete (or remove inside a category)': 'Удалить (или убрать из категории)',
         'Delete permanently': 'Удалить навсегда',

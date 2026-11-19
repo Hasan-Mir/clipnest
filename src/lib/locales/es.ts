@@ -278,14 +278,14 @@ export const es: LocaleDefinition = {
         'Default (Vazirmatn / System)': 'Predeterminada (Vazirmatn / Sistema)',
         'Default height of the popup window in logical pixels.':
             'Altura predeterminada de la ventana emergente en píxeles lógicos.',
-        'Default height of the popup window in logical pixels (minimum 380 px).':
-            'Altura predeterminada de la ventana emergente en píxeles lógicos (mínimo 380 px).',
+        'Default height of the popup window in logical pixels (minimum 320 px).':
+            'Altura predeterminada de la ventana emergente en píxeles lógicos (mínimo 320 px).',
         'Default paste (Enter)': 'Pegado predeterminado (Intro)',
         'Default paste mode': 'Modo de pegado predeterminado',
         'Default width of the popup window in logical pixels.':
             'Anchura predeterminada de la ventana emergente en píxeles lógicos.',
-        'Default width of the popup window in logical pixels (minimum 340 px).':
-            'Anchura predeterminada de la ventana emergente en píxeles lógicos (mínimo 340 px).',
+        'Default width of the popup window in logical pixels (minimum 260 px).':
+            'Anchura predeterminada de la ventana emergente en píxeles lógicos (mínimo 260 px).',
         'Delete "{name}" and its {n} item(s)?': '¿Eliminar «{name}» y sus {n} elemento(s)?',
         'Delete (or remove inside a category)': 'Eliminar (o quitar dentro de una categoría)',
         'Delete permanently': 'Eliminar permanentemente',

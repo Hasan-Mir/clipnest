@@ -380,12 +380,22 @@ export function applyCoreTransform(id: string, input: string): string {
     return found.run(input);
 }
 
-export function resolveDataDir(explicit?: string): string {
+export function resolveDataDir(explicit?: string, portable = false): string {
     if (explicit) {
         return explicit;
     }
     if (process.env.CLIPNEST_DATA_DIR?.trim()) {
         return process.env.CLIPNEST_DATA_DIR.trim();
+    }
+    const cwd = process.cwd();
+    const hasPortableMarker =
+        fs.existsSync(path.join(cwd, 'portable.txt')) ||
+        fs.existsSync(path.join(cwd, '.portable')) ||
+        fs.existsSync(path.join(cwd, 'portable_data'));
+    if (portable || hasPortableMarker) {
+        return fs.existsSync(path.join(cwd, 'portable_data'))
+            ? path.join(cwd, 'portable_data')
+            : path.join(cwd, 'data');
     }
     const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
     return path.join(appData, 'com.clipnest.app');
@@ -408,16 +418,22 @@ export function findNativeBinary(): string | null {
         path.resolve(pkgRoot, '..', '..', 'src-tauri', 'target', 'release', isWin ? 'clipnest.exe' : 'clipnest'),
     ];
     if (isWin) {
-        const localAppData = process.env.LOCALAPPDATA || '';
-        const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
-        candidates.push(
-            path.join(localAppData, 'Programs', 'ClipNest', 'clipnest-cli.exe'),
-            path.join(localAppData, 'Programs', 'ClipNest', 'ClipNest.exe'),
-            path.join(localAppData, 'ClipNest', 'clipnest-cli.exe'),
-            path.join(localAppData, 'ClipNest', 'ClipNest.exe'),
-            path.join(programFiles, 'ClipNest', 'clipnest-cli.exe'),
-            path.join(programFiles, 'ClipNest', 'ClipNest.exe')
-        );
+        const localAppData = (process.env.LOCALAPPDATA || '').trim();
+        const programFiles = (process.env.ProgramFiles || 'C:\\Program Files').trim();
+        if (localAppData && path.isAbsolute(localAppData)) {
+            candidates.push(
+                path.join(localAppData, 'Programs', 'ClipNest', 'clipnest-cli.exe'),
+                path.join(localAppData, 'Programs', 'ClipNest', 'ClipNest.exe'),
+                path.join(localAppData, 'ClipNest', 'clipnest-cli.exe'),
+                path.join(localAppData, 'ClipNest', 'ClipNest.exe')
+            );
+        }
+        if (programFiles && path.isAbsolute(programFiles)) {
+            candidates.push(
+                path.join(programFiles, 'ClipNest', 'clipnest-cli.exe'),
+                path.join(programFiles, 'ClipNest', 'ClipNest.exe')
+            );
+        }
     }
     for (const c of candidates) {
         if (c && fs.existsSync(c)) {
@@ -514,6 +530,20 @@ export async function callIpc(
                 }
             }
         });
+        socket.on('end', () => {
+            if (settled) return;
+            const raw = Buffer.concat(chunks).toString('utf8').trim();
+            if (raw) {
+                try {
+                    finish(JSON.parse(raw) as IpcResponse);
+                    return;
+                } catch {
+                    // fall through
+                }
+            }
+            finish(null);
+        });
+        socket.on('close', () => finish(null));
         socket.connect(ep.port, '127.0.0.1', () => {
             const req: IpcRequest = {
                 protocol: PROTOCOL_VERSION,

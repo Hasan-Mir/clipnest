@@ -3,9 +3,9 @@
 //! "smart" mode: whitespace separated tokens.
 //!   * a token equal to a type word (text, code, link, image, file, color …) filters by kind;
 //!   * "quoted words" are always literal content terms;
-//!   * every remaining token must appear in the text, title, app name, app exe or tags.
-//! "fuzzy" mode: the characters of the query must appear in order.
-//! "regex" mode: case-insensitive regular expression over the (normalised) text.
+//!   * exact terms match against text, title, app name, app exe, or tags (typo-tolerant matching checks text, title, and apps).
+//! "fuzzy" mode: the characters of the query must appear in order within text, title, or app name.
+//! "regex" mode: case-insensitive regular expression over searchable text, preview, and normalised title.
 
 use crate::classify::normalize;
 use crate::db::{row_from, ClipRow, ROW_COLS};

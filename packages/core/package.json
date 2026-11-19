@@ -13,9 +13,9 @@
     ],
     "scripts": {
         "build": "tsc",
-        "build:native": "node scripts/build-native.mjs",
+        "build:native": "bun run scripts/build-native.ts",
         "typecheck": "tsc --noEmit --skipLibCheck",
-        "typecheck:bun": "bun check --skipLibCheck"
+        "typecheck:bun": "bun check --skipLibCheck && bun check --skipLibCheck scripts/build-native.ts"
     },
     "devDependencies": {
         "@types/node": "^22.10.0"

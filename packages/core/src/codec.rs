@@ -76,15 +76,17 @@ pub fn parse_hdrop(d: &[u8]) -> Vec<String> {
     if wide {
         let units: Vec<u16> = body.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
         for part in units.split(|&u| u == 0) {
-            if !part.is_empty() {
-                out.push(String::from_utf16_lossy(part));
+            if part.is_empty() {
+                break;
             }
+            out.push(String::from_utf16_lossy(part));
         }
     } else {
         for part in body.split(|&b| b == 0) {
-            if !part.is_empty() {
-                out.push(String::from_utf8_lossy(part).to_string());
+            if part.is_empty() {
+                break;
             }
+            out.push(String::from_utf8_lossy(part).to_string());
         }
     }
     out
@@ -128,23 +130,32 @@ pub fn decode_image(png: Option<&[u8]>, dib: Option<&[u8]>) -> Option<image::Dyn
     }
     // CF_DIB has no BITMAPFILEHEADER: build one so the BMP decoder accepts it.
     let hsize = u32::from_le_bytes([dib[0], dib[1], dib[2], dib[3]]) as usize;
+    if hsize < 40 || hsize > dib.len() {
+        return None;
+    }
     let bits = u16::from_le_bytes([dib[14], dib[15]]) as u32;
     let compression = u32::from_le_bytes([dib[16], dib[17], dib[18], dib[19]]);
     let clr_used = u32::from_le_bytes([dib[32], dib[33], dib[34], dib[35]]);
     let mut extra = 0usize;
-    if bits <= 8 {
+    if bits > 0 && bits <= 8 {
         let n = if clr_used > 0 { clr_used } else { 1u32 << bits };
-        extra += (n as usize) * 4;
+        extra = extra.checked_add((n as usize).checked_mul(4)?)?;
     }
     if compression == 3 && hsize == 40 {
-        extra += 12;
+        extra = extra.checked_add(12)?;
     }
-    let offset = 14 + hsize + extra;
-    let mut bmp = Vec::with_capacity(14 + dib.len());
+    let total_len = 14usize.checked_add(dib.len())?;
+    let total_len_u32 = u32::try_from(total_len).ok()?;
+    let offset = 14usize.checked_add(hsize)?.checked_add(extra)?;
+    if offset > total_len {
+        return None;
+    }
+    let offset_u32 = u32::try_from(offset).ok()?;
+    let mut bmp = Vec::with_capacity(total_len);
     bmp.extend_from_slice(b"BM");
-    bmp.extend_from_slice(&((14 + dib.len()) as u32).to_le_bytes());
+    bmp.extend_from_slice(&total_len_u32.to_le_bytes());
     bmp.extend_from_slice(&[0, 0, 0, 0]);
-    bmp.extend_from_slice(&(offset as u32).to_le_bytes());
+    bmp.extend_from_slice(&offset_u32.to_le_bytes());
     bmp.extend_from_slice(dib);
     let img = image::load_from_memory(&bmp).ok()?;
     // Many apps leave the alpha channel of 32-bit DIBs at 0: treat that as fully opaque.
@@ -255,5 +266,30 @@ mod tests {
         let decoded = decode_image(None, Some(&dib)).expect("decode dib");
         assert_eq!(decoded.width(), 4);
         assert_eq!(decoded.height(), 3);
+    }
+
+    #[test]
+    fn parse_hdrop_terminates_on_double_nul_ignoring_trailing_garbage() {
+        let paths = vec![r"C:\test\file1.txt".to_string(), r"C:\test\file2.txt".to_string()];
+        let mut raw = build_hdrop(&paths);
+        // Append uninitialized heap garbage past the double-NUL boundary
+        raw.extend_from_slice(b"TRAINLING_GARBAGE_DATA_12345");
+        let parsed = parse_hdrop(&raw);
+        assert_eq!(parsed, paths);
+    }
+
+    #[test]
+    fn decode_image_rejects_malformed_headers_without_panic() {
+        // hsize < 40
+        let mut bad_hsize = vec![0u8; 64];
+        bad_hsize[0..4].copy_from_slice(&20u32.to_le_bytes());
+        assert!(decode_image(None, Some(&bad_hsize)).is_none());
+
+        // hsize = 40, bits = 8, clr_used = u32::MAX (arithmetic overflow scenario)
+        let mut overflow_dib = vec![0u8; 64];
+        overflow_dib[0..4].copy_from_slice(&40u32.to_le_bytes());
+        overflow_dib[14..16].copy_from_slice(&8u16.to_le_bytes());
+        overflow_dib[32..36].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert!(decode_image(None, Some(&overflow_dib)).is_none());
     }
 }

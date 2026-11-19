@@ -245,10 +245,20 @@ export const RichView = memo(function RichView({
     onMissing,
 }: Props) {
     const host = useRef<HTMLDivElement>(null);
+    const onMissingRef = useRef(onMissing);
+    onMissingRef.current = onMissing;
     const key = cacheKey(id, ts);
+    const [prevKey, setPrevKey] = useState(key);
     const [state, setState] = useState<'loading' | 'ok' | 'none'>(
         cache.has(key) ? (cache.get(key) ? 'ok' : 'none') : 'loading'
     );
+    if (prevKey !== key) {
+        setPrevKey(key);
+        const next = cache.has(key) ? (cache.get(key) ? 'ok' : 'none') : 'loading';
+        if (state !== next) {
+            setState(next);
+        }
+    }
     const [paper, setPaper] = useState<string | null>(null);
     const [overflowing, setOverflowing] = useState(false);
 
@@ -260,7 +270,7 @@ export const RichView = memo(function RichView({
             }
             if (!html || !host.current) {
                 setState('none');
-                onMissing?.();
+                onMissingRef.current?.();
                 return;
             }
             const customFontOn = document.documentElement.dataset.customFont === 'on';
@@ -281,7 +291,7 @@ export const RichView = memo(function RichView({
         return () => {
             alive = false;
         };
-    }, [id, ts, full, query, searchMode, highlight, onMissing]);
+    }, [id, ts, key, full, query, searchMode, highlight]);
 
     if (state === 'none') {
         return null;

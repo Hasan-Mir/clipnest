@@ -22,6 +22,14 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutEvent, S
 /// Uses `<exe_dir>/data` when running in portable mode (triggered by `portable.txt`, `.portable`,
 /// `portable_data` folder next to the executable, `--portable` CLI flag, or `portable` in the `.exe` name).
 fn resolve_data_dir(app: &tauri::App) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    if let Ok(env_dir) = std::env::var("CLIPNEST_DATA_DIR") {
+        let trimmed = env_dir.trim();
+        if !trimmed.is_empty() {
+            let pb = PathBuf::from(trimmed);
+            std::fs::create_dir_all(&pb)?;
+            return Ok(pb);
+        }
+    }
     let args: Vec<String> = std::env::args().collect();
     let flag_portable = args.iter().any(|a| a.eq_ignore_ascii_case("--portable"));
     if let Ok(exe_path) = std::env::current_exe() {
@@ -37,8 +45,12 @@ fn resolve_data_dir(app: &tauri::App) -> Result<PathBuf, Box<dyn std::error::Err
                 } else {
                     exe_dir.join("data")
                 };
-                if std::fs::create_dir_all(&portable_dir).is_ok() {
-                    return Ok(portable_dir);
+                match std::fs::create_dir_all(&portable_dir) {
+                    Ok(()) => return Ok(portable_dir),
+                    Err(e) => eprintln!(
+                        "clipnest: portable data dir {} not writable ({e}); falling back to app_data_dir",
+                        portable_dir.display()
+                    ),
                 }
             }
         }
@@ -569,11 +581,16 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building ClipNest");
 
-    app.run(|_app, event| {
-        if let tauri::RunEvent::ExitRequested { code, api, .. } = event {
+    app.run(|app_handle, event| match event {
+        tauri::RunEvent::ExitRequested { code, api, .. } => {
             if code.is_none() {
                 api.prevent_exit();
             }
         }
+        tauri::RunEvent::Exit => {
+            let data_dir = app_handle.state::<AppState>().data_dir.clone();
+            cli::remove_endpoint_file(&data_dir);
+        }
+        _ => {}
     });
 }

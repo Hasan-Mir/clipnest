@@ -10,12 +10,35 @@ use crate::search::{self, ListArgs};
 use crate::state::{AppState, AutoRule, CustomAction, Settings};
 use crate::transforms::{self, TRANSFORM_LIST};
 use serde_json::{json, Value};
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
-use std::time::Duration;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
+
+const MAX_CONCURRENT_IPC_CLIENTS: usize = 16;
+const MAX_IPC_FRAME_BYTES: usize = MAX_STDIN_BYTES + 1024 * 1024;
+const IPC_TOTAL_READ_DEADLINE: Duration = Duration::from_secs(15);
+
+struct ActiveConnGuard(Arc<AtomicUsize>);
+impl Drop for ActiveConnGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (&x, &y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
 
 pub fn spawn_ipc_server(app: AppHandle) {
     let data_dir = app.state::<AppState>().data_dir.clone();
@@ -51,35 +74,85 @@ pub fn spawn_ipc_server(app: AppHandle) {
             let _ = db::write_atomic(&endpoint_file(&data_dir), &json_bytes);
         }
 
+        let active_conns = Arc::new(AtomicUsize::new(0));
         for incoming in listener.incoming() {
             let Ok(stream) = incoming else {
                 continue;
             };
+            if active_conns.fetch_add(1, Ordering::AcqRel) >= MAX_CONCURRENT_IPC_CLIENTS {
+                active_conns.fetch_sub(1, Ordering::AcqRel);
+                drop(stream);
+                continue;
+            }
+            let guard = ActiveConnGuard(Arc::clone(&active_conns));
             let app_clone = app.clone();
             let expected_token = token.clone();
             std::thread::spawn(move || {
+                let _guard = guard;
                 handle_ipc_client(stream, &app_clone, &expected_token);
             });
         }
     });
 }
 
-fn handle_ipc_client(mut stream: TcpStream, app: &AppHandle, expected_token: &str) {
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(15)));
-    let _ = stream.set_write_timeout(Some(Duration::from_secs(15)));
-
-    let mut line = String::new();
-    {
-        let reader = BufReader::new(&stream);
-        let mut limited = reader.take((MAX_STDIN_BYTES as u64) + 1024 * 1024);
-        if limited.read_line(&mut line).is_err() || line.trim().is_empty() {
-            return;
+fn read_ipc_line(stream: &TcpStream, max_bytes: usize, deadline: Instant) -> Result<Option<String>, String> {
+    let mut buf = Vec::with_capacity(4096);
+    let mut chunk = [0u8; 8192];
+    let mut reader = stream;
+    loop {
+        let Some(rem) = deadline.checked_duration_since(Instant::now()) else {
+            return Err("IPC read deadline exceeded".into());
+        };
+        let _ = stream.set_read_timeout(Some(rem));
+        match reader.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(n) => {
+                if let Some(nl) = chunk[..n].iter().position(|&b| b == b'\n') {
+                    buf.extend_from_slice(&chunk[..nl]);
+                    break;
+                }
+                if buf.len().saturating_add(n) > max_bytes {
+                    return Err(format!("IPC request exceeds maximum frame size ({max_bytes} bytes)"));
+                }
+                buf.extend_from_slice(&chunk[..n]);
+            }
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::Interrupted | std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) =>
+            {
+                continue
+            }
+            Err(e) => return Err(format!("IPC read failed: {e}")),
         }
     }
+    if buf.is_empty() {
+        return Ok(None);
+    }
+    String::from_utf8(buf).map(Some).map_err(|e| format!("Invalid UTF-8 in IPC request: {e}"))
+}
+
+fn handle_ipc_client(mut stream: TcpStream, app: &AppHandle, expected_token: &str) {
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(15)));
+
+    let line = match read_ipc_line(&stream, MAX_IPC_FRAME_BYTES, Instant::now() + IPC_TOTAL_READ_DEADLINE) {
+        Ok(Some(l)) if !l.trim().is_empty() => l,
+        Ok(_) => return,
+        Err(msg) => {
+            let resp = IpcResponse::fail(EXIT_USAGE, msg, None);
+            if let Ok(mut out) = serde_json::to_vec(&resp) {
+                out.push(b'\n');
+                let _ = stream.write_all(&out);
+                let _ = stream.flush();
+            }
+            return;
+        }
+    };
 
     let resp = match serde_json::from_str::<IpcRequest>(&line) {
         Ok(req) => {
-            if req.token != expected_token {
+            if !constant_time_eq(req.token.as_bytes(), expected_token.as_bytes()) {
                 IpcResponse::fail(EXIT_OFFLINE, "IPC authentication failed (invalid token)", None)
             } else if req.protocol != PROTOCOL_VERSION {
                 IpcResponse::fail(
@@ -166,19 +239,16 @@ fn dispatch_online(app: &AppHandle, op: &str, p: &Value) -> IpcResponse {
                 Ok((row, is_new)) => {
                     emit_items();
                     if also_copy {
-                        match win::write_clipboard(&[(
+                        match state.write_clipboard_self(&[(
                             win::CF_UNICODETEXT_ID,
                             "CF_UNICODETEXT".into(),
                             utf16_bytes(text),
                         )]) {
-                            Ok(seq) => {
-                                state.self_seq.store(seq, Ordering::SeqCst);
-                                IpcResponse::success(json!({
-                                    "item": row,
-                                    "created": is_new,
-                                    "copied": true
-                                }))
-                            }
+                            Ok(_seq) => IpcResponse::success(json!({
+                                "item": row,
+                                "created": is_new,
+                                "copied": true
+                            })),
                             Err(copy_err) => IpcResponse {
                                 ok: false,
                                 exit_code: EXIT_PARTIAL,
@@ -318,15 +388,16 @@ fn dispatch_online(app: &AppHandle, op: &str, p: &Value) -> IpcResponse {
                 }
             } else {
                 let text = p.get("text").and_then(|v| v.as_str()).unwrap_or("");
-                match win::write_clipboard(&[(win::CF_UNICODETEXT_ID, "CF_UNICODETEXT".into(), utf16_bytes(text))]) {
-                    Ok(seq) => {
-                        state.self_seq.store(seq, Ordering::SeqCst);
-                        IpcResponse::success(json!({
-                            "copied": true,
-                            "chars": text.chars().count(),
-                            "bytes": text.len()
-                        }))
-                    }
+                match state.write_clipboard_self(&[(
+                    win::CF_UNICODETEXT_ID,
+                    "CF_UNICODETEXT".into(),
+                    utf16_bytes(text),
+                )]) {
+                    Ok(_seq) => IpcResponse::success(json!({
+                        "copied": true,
+                        "chars": text.chars().count(),
+                        "bytes": text.len()
+                    })),
                     Err(e) => IpcResponse::fail(EXIT_ERROR, e, None),
                 }
             }
@@ -589,10 +660,20 @@ fn dispatch_online(app: &AppHandle, op: &str, p: &Value) -> IpcResponse {
             let merged_text = parts.join(sep);
             match crate::commands::store_text(app, &state, &merged_text) {
                 Ok(new_id) => {
-                    if also_copy {
-                        let _ = crate::paste::copy_only(app, new_id, "auto");
-                    }
                     let row = db::get_row(&state.db.lock(), new_id);
+                    if also_copy {
+                        if let Err(e) = crate::paste::copy_only(app, new_id, "auto") {
+                            return IpcResponse {
+                                ok: false,
+                                exit_code: EXIT_PARTIAL,
+                                data: json!({ "id": new_id, "item": row, "copied": false }),
+                                error: Some(format!(
+                                    "Merged item #{new_id} saved, but failed to copy to clipboard: {e}"
+                                )),
+                                hint: None,
+                            };
+                        }
+                    }
                     IpcResponse::success(json!({ "id": new_id, "item": row, "copied": also_copy }))
                 }
                 Err(e) => IpcResponse::fail(EXIT_ERROR, e, None),
@@ -647,8 +728,12 @@ fn dispatch_online(app: &AppHandle, op: &str, p: &Value) -> IpcResponse {
                 }
             }
             if copy {
-                match win::write_clipboard(&[(win::CF_UNICODETEXT_ID, "CF_UNICODETEXT".into(), utf16_bytes(&out))]) {
-                    Ok(seq) => state.self_seq.store(seq, Ordering::SeqCst),
+                match state.write_clipboard_self(&[(
+                    win::CF_UNICODETEXT_ID,
+                    "CF_UNICODETEXT".into(),
+                    utf16_bytes(&out),
+                )]) {
+                    Ok(_seq) => {}
                     Err(e) => {
                         if saved_id.is_some() {
                             return IpcResponse::fail(
@@ -1290,23 +1375,10 @@ fn dispatch_online(app: &AppHandle, op: &str, p: &Value) -> IpcResponse {
                     Err(e) => IpcResponse::fail(EXIT_ERROR, e, None),
                 }
             } else {
-                let raw = match std::fs::read(&src) {
-                    Ok(b) => b,
-                    Err(e) => return IpcResponse::fail(EXIT_ERROR, e.to_string(), None),
+                let tmp = match prepare_import_db_temp(&src, &state.data_dir) {
+                    Ok(p) => p,
+                    Err(e) => return IpcResponse::fail(EXIT_ERROR, e, None),
                 };
-                let bytes = if raw.starts_with(&[0x1f, 0x8b]) {
-                    let mut out = Vec::new();
-                    if let Err(e) = flate2::read::GzDecoder::new(&raw[..]).read_to_end(&mut out) {
-                        return IpcResponse::fail(EXIT_ERROR, format!("Invalid gzip backup: {e}"), None);
-                    }
-                    out
-                } else {
-                    raw
-                };
-                let tmp = state.data_dir.join(format!("import-cli-{}.tmp.db", db::now_ms()));
-                if let Err(e) = std::fs::write(&tmp, &bytes) {
-                    return IpcResponse::fail(EXIT_ERROR, e.to_string(), None);
-                }
                 let res = db::merge_from(&state.db.lock(), &tmp);
                 let _ = std::fs::remove_file(&tmp);
                 match res {

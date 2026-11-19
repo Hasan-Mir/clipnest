@@ -429,4 +429,99 @@ describe('ClipNest CLI & Local IPC integration suite', () => {
 
         await new Promise<void>((resolve) => transientServer.close(() => resolve()));
     });
+
+    it('12. pause rejects non-integer duration strings with EXIT_USAGE', async () => {
+        let err = '';
+        const code = await runCli(['pause', '10m'], {
+            stdout: () => {},
+            stderr: (s) => (err += s),
+            dataDir: tmpDir,
+        });
+        expect(code).toBe(EXIT_USAGE);
+        expect(err).toContain("Invalid pause duration '10m'");
+    });
+
+    it('13. edit and merge handle empty-string option values without corruption', async () => {
+        let lastOp = '';
+        let lastParams: Record<string, unknown> = {};
+        await startMockIpcServer((op, params) => {
+            lastOp = op;
+            lastParams = params;
+            return { ok: true, exit_code: EXIT_OK, data: { item: { id: 12 } } };
+        });
+
+        // Edit with empty title
+        const codeEdit = await runCli(['edit', '12', '--title', ''], {
+            stdout: () => {},
+            stderr: () => {},
+            dataDir: tmpDir,
+        });
+        expect(codeEdit).toBe(EXIT_OK);
+        expect(lastOp).toBe('edit');
+        expect(lastParams.id).toBe('12');
+        expect(lastParams.title).toBe('');
+
+        // Merge with empty separator
+        const codeMerge = await runCli(['merge', '1', '2', '--sep', ''], {
+            stdout: () => {},
+            stderr: () => {},
+            dataDir: tmpDir,
+        });
+        expect(codeMerge).toBe(EXIT_OK);
+        expect(lastOp).toBe('merge');
+        expect(lastParams.sep).toBe('');
+    });
+
+    it('14. get with --json and --out writes formatted json to target file', async () => {
+        await startMockIpcServer((op) => ({
+            ok: true,
+            exit_code: EXIT_OK,
+            data: { id: 42, text: 'content to write' },
+        }));
+
+        const outPath = path.join(tmpDir, 'exported.json');
+        let stdout = '';
+        const code = await runCli(['get', '42', '--json', '--out', outPath], {
+            stdout: (s) => (stdout += s),
+            stderr: () => {},
+            dataDir: tmpDir,
+        });
+        expect(code).toBe(EXIT_OK);
+        expect(stdout).toBe(''); // stdout should be silent when --out is specified
+        expect(fs.existsSync(outPath)).toBe(true);
+        const parsed = JSON.parse(fs.readFileSync(outPath, 'utf8'));
+        expect(parsed.id).toBe(42);
+        expect(parsed.text).toBe('content to write');
+    });
+
+    it('15. callIpc resolves null immediately on clean socket EOF without timing out', async () => {
+        const eofServer = net.createServer((sock) => {
+            sock.end(); // immediate FIN
+            sock.destroy();
+        });
+        await new Promise<void>((r) => eofServer.listen(0, '127.0.0.1', () => r()));
+        const eofPort = (eofServer.address() as net.AddressInfo).port;
+
+        const epFile = path.join(tmpDir, 'cli-rpc.json');
+        fs.writeFileSync(
+            epFile,
+            JSON.stringify({
+                version: '0.2.0',
+                protocol: 1,
+                port: eofPort,
+                token: 'test-token',
+                pid: 1234,
+            }),
+            'utf8'
+        );
+
+        const start = Date.now();
+        const res = await callIpc(tmpDir, 'status', {}, 4000);
+        const elapsed = Date.now() - start;
+
+        expect(res).toBeNull();
+        expect(elapsed).toBeLessThan(1000); // Must resolve well before the 4000ms timeout
+
+        await new Promise<void>((r) => eofServer.close(() => r()));
+    });
 });

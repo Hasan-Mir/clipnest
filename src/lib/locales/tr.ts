@@ -275,14 +275,14 @@ export const tr: LocaleDefinition = {
         'Default (Vazirmatn / System)': 'Varsayılan (Vazirmatn / Sistem)',
         'Default height of the popup window in logical pixels.':
             'Açılır pencerenin mantıksal piksel cinsinden varsayılan yüksekliği.',
-        'Default height of the popup window in logical pixels (minimum 380 px).':
-            'Açılır pencerenin mantıksal piksel cinsinden varsayılan yüksekliği (en az 380 px).',
+        'Default height of the popup window in logical pixels (minimum 320 px).':
+            'Açılır pencerenin mantıksal piksel cinsinden varsayılan yüksekliği (en az 320 px).',
         'Default paste (Enter)': 'Varsayılan yapıştırma (Enter)',
         'Default paste mode': 'Varsayılan yapıştırma modu',
         'Default width of the popup window in logical pixels.':
             'Açılır pencerenin mantıksal piksel cinsinden varsayılan genişliği.',
-        'Default width of the popup window in logical pixels (minimum 340 px).':
-            'Açılır pencerenin mantıksal piksel cinsinden varsayılan genişliği (en az 340 px).',
+        'Default width of the popup window in logical pixels (minimum 260 px).':
+            'Açılır pencerenin mantıksal piksel cinsinden varsayılan genişliği (en az 260 px).',
         'Delete "{name}" and its {n} item(s)?': '“{name}” ve içindeki {n} öğe silinsin mi?',
         'Delete (or remove inside a category)': 'Sil (veya kategoriden çıkar)',
         'Delete permanently': 'Kalıcı olarak sil',

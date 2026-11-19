@@ -2,12 +2,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
-const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+interface PackageJson {
+    version: string;
+    [key: string]: unknown;
+}
+
+const pkgContent = fs.readFileSync('package.json', 'utf8');
+const pkg = JSON.parse(pkgContent) as PackageJson;
 const version = pkg.version;
 const relDir = path.join('src-tauri', 'target', 'release');
 const bundleDir = path.join(relDir, 'bundle');
 
-const exeCandidates = [path.join(relDir, 'clipnest.exe'), path.join(relDir, 'ClipNest.exe')];
+const exeCandidates: string[] = [path.join(relDir, 'clipnest.exe'), path.join(relDir, 'ClipNest.exe')];
 const exePath = exeCandidates.find((p) => fs.existsSync(p));
 
 if (!exePath) {
@@ -21,7 +27,7 @@ fs.mkdirSync(path.join(stageDir, 'data'), { recursive: true });
 
 fs.copyFileSync(exePath, path.join(stageDir, 'ClipNest.exe'));
 
-const cliCandidates = [
+const cliCandidates: string[] = [
     path.join('packages', 'core', 'target', 'release', 'clipnest-cli.exe'),
     path.join(relDir, 'clipnest-cli.exe'),
 ];
@@ -59,9 +65,16 @@ execFileSync(
     [
         '-NoProfile',
         '-Command',
-        `Compress-Archive -Path '${path.resolve(stageDir)}\\*' -DestinationPath '${zipOut}' -Force`,
+        'Compress-Archive -Path (Join-Path $env:CLIPNEST_STAGE_DIR "*") -DestinationPath $env:CLIPNEST_ZIP_OUT -Force',
     ],
-    { stdio: 'inherit' }
+    {
+        stdio: 'inherit',
+        env: {
+            ...process.env,
+            CLIPNEST_STAGE_DIR: path.resolve(stageDir),
+            CLIPNEST_ZIP_OUT: zipOut,
+        },
+    }
 );
 
 console.log('Created portable archive:', zipOut);

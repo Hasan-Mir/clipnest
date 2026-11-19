@@ -226,14 +226,45 @@ function Num({
     max?: number;
     step?: number;
 }) {
+    const [draft, setDraft] = useState(String(v));
+    useEffect(() => {
+        setDraft(String(v));
+    }, [v]);
+
+    const commit = (raw: string) => {
+        const parsed = Number(raw);
+        if (!raw.trim() || !Number.isFinite(parsed)) {
+            setDraft(String(v));
+            return;
+        }
+        const clamped = Math.max(min, Math.min(max, Math.round(parsed)));
+        setDraft(String(clamped));
+        if (clamped !== v) {
+            on(clamped);
+        }
+    };
+
     return (
         <input
             type="number"
-            value={v}
+            value={draft}
             min={min}
             max={max}
             step={step}
-            onChange={(e) => on(Math.max(min, Math.min(max, Number(e.target.value) || 0)))}
+            onChange={(e) => {
+                const raw = e.target.value;
+                setDraft(raw);
+                const parsed = Number(raw);
+                if (raw.trim() && Number.isInteger(parsed) && parsed >= min && parsed <= max) {
+                    on(parsed);
+                }
+            }}
+            onBlur={() => commit(draft)}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                    commit(draft);
+                }
+            }}
         />
     );
 }
@@ -313,7 +344,13 @@ function ShortcutInput({
                             setLiveMods('');
                             return;
                         }
-                        if ((e.key === 'Backspace' || e.key === 'Delete') && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+                        if (
+                            (e.key === 'Backspace' || e.key === 'Delete') &&
+                            !e.ctrlKey &&
+                            !e.altKey &&
+                            !e.shiftKey &&
+                            !e.metaKey
+                        ) {
                             on('');
                             setRec(false);
                             setLiveMods('');
@@ -338,7 +375,13 @@ function ShortcutInput({
                 >
                     <span>{rec ? recordingText : v || t('— none —')}</span>
                 </button>
-                <label className="winbox" data-tip={t('Include the Windows key')}>
+                <label
+                    className="winbox"
+                    data-tip={t('Include the Windows key')}
+                    onMouseDown={(e) => {
+                        if (rec) e.preventDefault();
+                    }}
+                >
                     <input
                         type="checkbox"
                         checked={hasWin}
@@ -777,10 +820,10 @@ export default function SettingsView() {
         'Choose where the popup appears on screen when opened with the global shortcut.',
         'popup_width',
         'Popup width (px)',
-        'Default width of the popup window in logical pixels (minimum 340 px).',
+        'Default width of the popup window in logical pixels (minimum 260 px).',
         'popup_height',
         'Popup height (px)',
-        'Default height of the popup window in logical pixels (minimum 380 px).',
+        'Default height of the popup window in logical pixels (minimum 320 px).',
         'remember_popup_size',
         'Preserve popup size when resized with mouse',
         'Automatically saves the new width and height when you drag the edges of the popup window.',
@@ -1700,7 +1743,7 @@ export default function SettingsView() {
                             searchQuery={q}
                             onGearMenu={openGearMenu}
                             label="Popup width (px)"
-                            hint="Default width of the popup window in logical pixels (minimum 340 px)."
+                            hint="Default width of the popup window in logical pixels (minimum 260 px)."
                         >
                             <Num v={s.popup_width} on={(n) => set('popup_width', n)} min={260} max={1400} step={10} />
                         </Row>
@@ -1710,7 +1753,7 @@ export default function SettingsView() {
                             searchQuery={q}
                             onGearMenu={openGearMenu}
                             label="Popup height (px)"
-                            hint="Default height of the popup window in logical pixels (minimum 380 px)."
+                            hint="Default height of the popup window in logical pixels (minimum 320 px)."
                         >
                             <Num v={s.popup_height} on={(n) => set('popup_height', n)} min={320} max={1400} step={10} />
                         </Row>
@@ -2156,7 +2199,7 @@ export default function SettingsView() {
                                     {
                                         id: `r${Date.now()}`,
                                         name: '',
-                                        enabled: true,
+                                        enabled: false,
                                         apps: '',
                                         kinds: [],
                                         pattern: '',

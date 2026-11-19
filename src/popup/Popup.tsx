@@ -89,6 +89,8 @@ export default function Popup() {
     dropMarkRef.current = dropMark;
     const dragOverTabRef = useRef<number | null>(null);
     dragOverTabRef.current = dragOverTabId;
+    const dragCtrlRef = useRef(false);
+    dragCtrlRef.current = dragCtrl;
     const pointerDragState = useRef<{
         pendingId: number | null;
         startX: number;
@@ -248,6 +250,12 @@ export default function Popup() {
                 setDragCtrl(false);
                 setDraggingId(null);
                 setDragInTabs(false);
+                setDragOverTabId(null);
+                setDropMark(null);
+                dragId.current = null;
+                pointerDragState.current.pendingId = null;
+                pointerDragState.current.active = false;
+                document.body.classList.remove('dragging-card');
             }),
             on('popup-shown', () => {
                 if (Date.now() - hiddenAt.current > 60_000) {
@@ -266,6 +274,10 @@ export default function Popup() {
                 setDragCtrl(false);
                 setDraggingId(null);
                 setDragInTabs(false);
+                dragId.current = null;
+                pointerDragState.current.pendingId = null;
+                pointerDragState.current.active = false;
+                document.body.classList.remove('dragging-card');
                 syncExplorerTarget();
                 reloadRef.current();
                 loadStatus();
@@ -980,7 +992,7 @@ export default function Popup() {
             }, 40);
 
             if (targetBoardId !== null && targetBoardId !== tab) {
-                const shouldCopy = tab === null || e.ctrlKey || e.metaKey || dragCtrl;
+                const shouldCopy = tab === null || e.ctrlKey || e.metaKey || dragCtrlRef.current;
                 const targetBoard = boards.find((b) => b.id === targetBoardId);
                 const ids = multi.includes(id) ? multi : [id];
                 api.setPinboard(ids, targetBoardId, tab, shouldCopy)
@@ -1011,7 +1023,7 @@ export default function Popup() {
             window.removeEventListener('pointercancel', onPointerUp);
             document.body.classList.remove('dragging-card');
         };
-    }, [tab, boards, multi, dragCtrl, reorder, updateCardDropMarkAtY, showToast, fail]);
+    }, [tab, boards, multi, reorder, updateCardDropMarkAtY, showToast, fail]);
 
     const openMenu = (it: ClipRow, x: number, y: number) => {
         const idx = items.findIndex((i) => i.id === it.id);
@@ -1049,10 +1061,10 @@ export default function Popup() {
             { sep: true }
         );
         if (it.kind === 'link') {
-            e.push({ label: t('Open link'), hint: 'Ctrl+O', onClick: () => api.openItem(it.id) });
+            e.push({ label: t('Open link'), hint: 'Ctrl+O', onClick: () => api.openItem(it.id).catch(fail) });
         }
         if (it.kind === 'file') {
-            e.push({ label: t('Open'), hint: 'Ctrl+O', onClick: () => api.openItem(it.id) });
+            e.push({ label: t('Open'), hint: 'Ctrl+O', onClick: () => api.openItem(it.id).catch(fail) });
             e.push({
                 label: t('Show in Explorer'),
                 onClick: () => {
@@ -1376,7 +1388,7 @@ export default function Popup() {
                 doCopy();
             } else if (isKey(e, 'o') && cur) {
                 e.preventDefault();
-                api.openItem(cur.id);
+                api.openItem(cur.id).catch(fail);
             } else if (isKey(e, 'r')) {
                 e.preventDefault();
                 renameItem();
@@ -1412,9 +1424,6 @@ export default function Popup() {
     // unmounts a scrolled card or after deleting an item), ArrowUp / ArrowDown / Delete still navigate cleanly.
     useEffect(() => {
         const onGlobalKeyDown = (e: KeyboardEvent) => {
-            if (e.defaultPrevented) {
-                return;
-            }
             const popupEl = document.querySelector('.popup');
             const active = document.activeElement;
             if (!popupEl || !active || !popupEl.contains(active)) {

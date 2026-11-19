@@ -280,13 +280,13 @@ export const ar: LocaleDefinition = {
         Default: 'افتراضي',
         'Default (Vazirmatn / System)': 'الافتراضي (Vazirmatn / النظام)',
         'Default height of the popup window in logical pixels.': 'الارتفاع الافتراضي للنافذة المنبثقة بالبكسل المنطقي.',
-        'Default height of the popup window in logical pixels (minimum 380 px).':
-            'الارتفاع الافتراضي للنافذة المنبثقة بالبكسل المنطقي (الحد الأدنى 380 بكسل).',
+        'Default height of the popup window in logical pixels (minimum 320 px).':
+            'الارتفاع الافتراضي للنافذة المنبثقة بالبكسل المنطقي (الحد الأدنى 320 بكسل).',
         'Default paste (Enter)': 'اللصق الافتراضي (Enter)',
         'Default paste mode': 'وضع اللصق الافتراضي',
         'Default width of the popup window in logical pixels.': 'العرض الافتراضي للنافذة المنبثقة بالبكسل المنطقي.',
-        'Default width of the popup window in logical pixels (minimum 340 px).':
-            'العرض الافتراضي للنافذة المنبثقة بالبكسل المنطقي (الحد الأدنى 340 بكسل).',
+        'Default width of the popup window in logical pixels (minimum 260 px).':
+            'العرض الافتراضي للنافذة المنبثقة بالبكسل المنطقي (الحد الأدنى 260 بكسل).',
         'Delete "{name}" and its {n} item(s)?': 'هل تريد حذف «{name}» وعناصرها البالغ عددها {n}؟',
         'Delete (or remove inside a category)': 'حذف (أو إزالة من داخل الفئة)',
         'Delete permanently': 'حذف نهائي',

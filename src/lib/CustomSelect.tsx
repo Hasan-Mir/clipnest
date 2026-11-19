@@ -33,6 +33,10 @@ export function CustomSelect<T extends string | number>({
     const [filter, setFilter] = useState('');
     const [focusIdx, setFocusIdx] = useState(0);
     const searchRef = useRef<HTMLInputElement>(null);
+    const optionsRef = useRef(options);
+    optionsRef.current = options;
+    const valueRef = useRef(value);
+    valueRef.current = value;
 
     const { refs, floatingStyles, isPositioned } = useFloating({
         open,
@@ -74,20 +78,23 @@ export function CustomSelect<T extends string | number>({
     const selectedLabel = selectedOpt?.label ?? String(value);
 
     useEffect(() => {
-        if (open) {
-            setFilter('');
-            const idx = Math.max(
-                0,
-                options.findIndex((o) => o.value === value)
-            );
-            setFocusIdx(idx);
-            if (searchable) {
-                window.setTimeout(() => {
-                    searchRef.current?.focus();
-                }, 15);
-            }
+        if (!open) {
+            return;
         }
-    }, [open, options, value, searchable]);
+        setFilter('');
+        const idx = Math.max(
+            0,
+            optionsRef.current.findIndex((o) => o.value === valueRef.current)
+        );
+        setFocusIdx(idx);
+        if (searchable) {
+            const timer = window.setTimeout(() => {
+                searchRef.current?.focus();
+            }, 15);
+            return () => window.clearTimeout(timer);
+        }
+        return undefined;
+    }, [open, searchable]);
 
     useEffect(() => {
         if (!open) {

@@ -41,22 +41,33 @@ export function Preview({
     const lang = useLang();
     const [text, setText] = useState<string | null>(null);
     const [img, setImg] = useState<string | null>(null);
+    const [imgLoading, setImgLoading] = useState(false);
     const [formats, setFormats] = useState<FormatMeta[] | null>(null);
     const [showFormats, setShowFormats] = useState(startFormats);
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState('');
     const [autoSaved, setAutoSaved] = useState(false);
     const [styled, setStyled] = useState(richDefault);
+    const [richMissing, setRichMissing] = useState(false);
     const root = useRef<HTMLDivElement>(null);
     const autoSaveTimer = useRef<number | undefined>(undefined);
+    const saveSeq = useRef(0);
+    const mountedRef = useRef(true);
+    useEffect(() => {
+        return () => {
+            mountedRef.current = false;
+        };
+    }, []);
     const editable = item.kind !== 'image' && item.kind !== 'file';
-    const canStyle = item.has_rich && (item.kind === 'text' || item.kind === 'code');
+    const canStyle = item.has_rich && !richMissing && (item.kind === 'text' || item.kind === 'code');
+    const handleRichMissing = useCallback(() => setRichMissing(true), []);
 
     useEffect(() => {
         let alive = true;
         root.current?.focus();
         setAutoSaved(false);
         setEditing(false);
+        setRichMissing(false);
         setImg(null);
         setFormats(null);
         api.getFormats(item.id)
@@ -66,12 +77,21 @@ export function Preview({
             .catch(() => {});
         if (item.kind === 'image') {
             setText(null);
+            setImgLoading(true);
             api.getImage(item.id)
                 .then((im) => {
-                    if (alive) setImg(im);
+                    if (alive) {
+                        setImg(im);
+                        setImgLoading(false);
+                    }
                 })
-                .catch(() => {});
+                .catch(() => {
+                    if (alive) {
+                        setImgLoading(false);
+                    }
+                });
         } else {
+            setImgLoading(false);
             api.getText(item.id)
                 .then((x) => {
                     if (!alive) return;
@@ -104,12 +124,18 @@ export function Preview({
                 }
                 return;
             }
+            const mySave = ++saveSeq.current;
             try {
                 await api.updateItemText(item.id, value);
                 forgetHtml(item.id);
+                if (!mountedRef.current || mySave !== saveSeq.current) {
+                    return;
+                }
                 setText(value);
                 api.getFormats(item.id)
-                    .then(setFormats)
+                    .then((f) => {
+                        if (mountedRef.current && mySave === saveSeq.current) setFormats(f);
+                    })
                     .catch(() => {});
                 if (closeEditor) {
                     setEditing(false);
@@ -118,9 +144,7 @@ export function Preview({
                     setAutoSaved(true);
                 }
             } catch (e) {
-                if (closeEditor) {
-                    onToast(errText(e));
-                }
+                onToast(errText(e));
             }
         },
         [item.id, text, onToast]
@@ -295,7 +319,7 @@ export function Preview({
                         {img ? (
                             <img src={img} alt={item.title || t('image')} />
                         ) : (
-                            <div className="muted">{t('Loading…')}</div>
+                            <div className="muted">{imgLoading ? t('Loading…') : t('Image data not found')}</div>
                         )}
                         <div className="muted small">
                             {item.img_w}×{item.img_h} px
@@ -335,7 +359,11 @@ export function Preview({
                         <div className="link-url wrap" dir="ltr">
                             {highlightText(text, query, searchMode, highlight)}
                         </div>
-                        <button type="button" className="btn" onClick={() => api.openItem(item.id)}>
+                        <button
+                            type="button"
+                            className="btn"
+                            onClick={() => api.openItem(item.id).catch((e) => onToast(errText(e)))}
+                        >
                             {t('Open in browser')}
                         </button>
                     </div>
@@ -355,7 +383,11 @@ export function Preview({
                                     </span>
                                 </div>
                             ))}
-                        <button type="button" className="btn" onClick={() => api.revealItem(item.id)}>
+                        <button
+                            type="button"
+                            className="btn"
+                            onClick={() => api.revealItem(item.id).catch((e) => onToast(errText(e)))}
+                        >
                             {t('Show in Explorer')}
                         </button>
                     </div>
@@ -382,6 +414,7 @@ export function Preview({
                         query={query}
                         searchMode={searchMode}
                         highlight={highlight}
+                        onMissing={handleRichMissing}
                     />
                 )}
                 {editable &&

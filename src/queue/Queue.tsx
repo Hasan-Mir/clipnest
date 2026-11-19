@@ -79,24 +79,34 @@ export default function QueueView() {
     const [report, setReport] = useState<TransferReport | null>(null);
     const [toast, setToast] = useState('');
     const readySent = useRef(false);
+    const loadSeq = useRef(0);
+    const toastTimer = useRef<number | undefined>(undefined);
+    const transferActive = transfer !== null;
 
     const flash = useCallback((m: string) => {
         setToast(m);
-        window.setTimeout(() => setToast(''), 2800);
+        window.clearTimeout(toastTimer.current);
+        toastTimer.current = window.setTimeout(() => setToast(''), 2800);
     }, []);
 
     const load = useCallback(() => {
+        const seq = ++loadSeq.current;
         api.status()
-            .then((st) => {
+            .then(async (st) => {
+                if (seq !== loadSeq.current) {
+                    return;
+                }
                 setStatus(st);
                 if (st.queue_mode === 'basket') {
-                    api.basketGet()
-                        .then(setRows)
-                        .catch(() => {});
+                    const nextRows = await api.basketGet();
+                    if (seq === loadSeq.current) {
+                        setRows(nextRows);
+                    }
                 } else {
-                    api.queueGet()
-                        .then(setItems)
-                        .catch(() => {});
+                    const nextItems = await api.queueGet();
+                    if (seq === loadSeq.current) {
+                        setItems(nextItems);
+                    }
                 }
             })
             .catch(() => {});
@@ -172,12 +182,16 @@ export default function QueueView() {
     // Fallback polling while a transfer is active so the progress bar never gets stuck even if an
     // event arrives before the invoke resolves or is coalesced by WebView2.
     useEffect(() => {
-        if (!transfer) {
+        if (!transferActive) {
             return;
         }
+        let alive = true;
         const timer = window.setInterval(() => {
             api.basketTransferStatus()
                 .then((st) => {
+                    if (!alive) {
+                        return;
+                    }
                     if (st.report) {
                         handleReport(st.report);
                     } else if (st.busy && st.progress) {
@@ -189,8 +203,11 @@ export default function QueueView() {
                 })
                 .catch(() => {});
         }, 120);
-        return () => window.clearInterval(timer);
-    }, [transfer, handleReport, load]);
+        return () => {
+            alive = false;
+            window.clearInterval(timer);
+        };
+    }, [transferActive, handleReport, load]);
 
     const onPasteToFolder = async () => {
         try {

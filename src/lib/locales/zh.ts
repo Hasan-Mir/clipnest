@@ -264,13 +264,13 @@ export const zh: LocaleDefinition = {
         Default: '默认',
         'Default (Vazirmatn / System)': '默认 (Vazirmatn / 系统)',
         'Default height of the popup window in logical pixels.': '弹窗的默认逻辑像素高度。',
-        'Default height of the popup window in logical pixels (minimum 380 px).':
-            '弹窗的默认逻辑像素高度（最小 380 px）。',
+        'Default height of the popup window in logical pixels (minimum 320 px).':
+            '弹窗的默认逻辑像素高度（最小 320 px）。',
         'Default paste (Enter)': '默认粘贴方式 (Enter)',
         'Default paste mode': '默认粘贴模式',
         'Default width of the popup window in logical pixels.': '弹窗的默认逻辑像素宽度。',
-        'Default width of the popup window in logical pixels (minimum 340 px).':
-            '弹窗的默认逻辑像素宽度（最小 340 px）。',
+        'Default width of the popup window in logical pixels (minimum 260 px).':
+            '弹窗的默认逻辑像素宽度（最小 260 px）。',
         'Delete "{name}" and its {n} item(s)?': '确定删除“{name}”及其中的 {n} 个项目吗？',
         'Delete (or remove inside a category)': '删除（或从分类中移除）',
         'Delete permanently': '永久删除',

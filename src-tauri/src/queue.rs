@@ -25,6 +25,9 @@ fn changed(app: &AppHandle) {
 /// Registers/unregisters the global Ctrl+V interception depending on the queue state.
 pub fn sync_intercept(app: &AppHandle) {
     let st = app.state::<AppState>();
+    if st.queue_pasting.load(Ordering::SeqCst) {
+        return;
+    }
     let want = {
         let q = st.queue.lock();
         q.active && q.mode == "queue" && !q.items.is_empty()
@@ -311,11 +314,10 @@ pub fn clear(app: &AppHandle) {
 }
 
 /// Materializes an image clip to `%TEMP%\ClipNestDrops\clipnest-image-<id>-<ts>.png`.
-fn materialize_image(conn: &rusqlite::Connection, id: i64, dir: &Path) -> Result<PathBuf, String> {
+fn materialize_image_bytes(id: i64, png: &[u8], dir: &Path) -> Result<PathBuf, String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    let png = db::get_format_data(conn, id, "PNG").ok_or("image data not found")?;
     let file_path = dir.join(format!("clipnest-image-{id}-{}.png", db::now_ms()));
-    std::fs::write(&file_path, &png).map_err(|e| e.to_string())?;
+    std::fs::write(&file_path, png).map_err(|e| e.to_string())?;
     Ok(file_path)
 }
 
@@ -325,6 +327,9 @@ fn materialize_image(conn: &rusqlite::Connection, id: i64, dir: &Path) -> Result
 /// file is marked Cut, so a file marked Copy can never be moved by accident.
 pub fn basket_paste_here(app: &AppHandle) -> Result<usize, String> {
     let st = app.state::<AppState>();
+    if st.transfer_busy.load(Ordering::SeqCst) {
+        return Err("A transfer is already running".into());
+    }
     let allow_cut = st.settings.read().basket_allow_cut;
     let basket = st.queue.lock().basket.clone();
     if basket.is_empty() {
@@ -335,23 +340,30 @@ pub fn basket_paste_here(app: &AppHandle) -> Result<usize, String> {
     let mut file_entries = 0usize;
     let mut cut_entries = 0usize;
     let mut has_temp_image = false;
-    {
+    let image_blobs: std::collections::HashMap<i64, Vec<u8>> = {
         let conn = st.db.lock();
-        for entry in &basket {
-            match &entry.path {
-                Some(p) => {
-                    if Path::new(p).exists() {
-                        file_entries += 1;
-                        if entry.cut && allow_cut {
-                            cut_entries += 1;
-                        }
-                        if !all_paths.iter().any(|x| x.eq_ignore_ascii_case(p)) {
-                            all_paths.push(p.clone());
-                        }
+        basket
+            .iter()
+            .filter(|e| e.path.is_none())
+            .filter_map(|e| db::get_format_data(&conn, e.id, "PNG").map(|b| (e.id, b)))
+            .collect()
+    };
+    for entry in &basket {
+        match &entry.path {
+            Some(p) => {
+                if Path::new(p).exists() {
+                    file_entries += 1;
+                    if entry.cut && allow_cut {
+                        cut_entries += 1;
+                    }
+                    if !all_paths.iter().any(|x| x.eq_ignore_ascii_case(p)) {
+                        all_paths.push(p.clone());
                     }
                 }
-                None => {
-                    if let Ok(p) = materialize_image(&conn, entry.id, &temp_drops) {
+            }
+            None => {
+                if let Some(png) = image_blobs.get(&entry.id) {
+                    if let Ok(p) = materialize_image_bytes(entry.id, png, &temp_drops) {
                         all_paths.push(p.to_string_lossy().to_string());
                         has_temp_image = true;
                     }
@@ -1044,8 +1056,20 @@ pub fn basket_paste_to_folder(app: &AppHandle) -> Result<Option<usize>, String> 
 
 /// Called when the intercepted Ctrl+V is pressed.
 pub fn on_paste_hotkey(app: &AppHandle) {
+    struct PastingGuard(AppHandle);
+    impl Drop for PastingGuard {
+        fn drop(&mut self) {
+            self.0.state::<AppState>().queue_pasting.store(false, Ordering::SeqCst);
+            sync_intercept(&self.0);
+        }
+    }
+
+    if app.state::<AppState>().queue_pasting.swap(true, Ordering::SeqCst) {
+        return;
+    }
     let app = app.clone();
     std::thread::spawn(move || {
+        let _guard = PastingGuard(app.clone());
         let st = app.state::<AppState>();
         let fifo = st.settings.read().queue_fifo;
         let id = {
@@ -1059,7 +1083,6 @@ pub fn on_paste_hotkey(app: &AppHandle) {
             }
         };
         let Some(id) = id else {
-            sync_intercept(&app);
             return;
         };
         // Release the hotkey so the synthesized Ctrl+V reaches the target app instead of us.
@@ -1074,7 +1097,6 @@ pub fn on_paste_hotkey(app: &AppHandle) {
         }
         std::thread::sleep(Duration::from_millis(150));
         changed(&app);
-        sync_intercept(&app);
     });
 }
 

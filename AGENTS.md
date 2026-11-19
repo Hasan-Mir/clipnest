@@ -15,11 +15,13 @@ bun run typecheck:bun
 ```
 
 ### Why:
+
 - **Speed**: Executes in **~100–200ms** total across the root and all monorepo packages (`packages/core` and `packages/cli`).
 - **Command Used**: Uses `concurrently` with labels (`[root]`, `[core]`, `[cli]`) to run `bun check --skipLibCheck` across all workspaces in parallel.
 - **Efficiency**: Avoids re-parsing deep library declarations while rigorously validating project TypeScript types.
 
 If checking an individual package directly:
+
 - `packages/core`: `bun --cwd packages/core run typecheck:bun`
 - `packages/cli`: `bun --cwd packages/cli run typecheck:bun`
 
@@ -44,19 +46,19 @@ This creates `<project>-context.zip` (e.g. `clipnest-context.zip`) containing al
 Before and after applying modifications:
 
 1. **Type Checking**:
-   ```bash
-   bun run typecheck:bun
-   ```
+    ```bash
+    bun run typecheck:bun
+    ```
 2. **Rust Tests**:
-   ```bash
-   cargo test --manifest-path packages/core/Cargo.toml
-   cargo test --manifest-path src-tauri/Cargo.toml
-   ```
+    ```bash
+    cargo test --manifest-path packages/core/Cargo.toml
+    cargo test --manifest-path src-tauri/Cargo.toml
+    ```
 3. **Frontend Tests**:
-   ```bash
-   npm test
-   ```
+    ```bash
+    npm test
+    ```
 4. **Formatting**:
-   ```bash
-   npm run format
-   ```
+    ```bash
+    npm run format
+    ```

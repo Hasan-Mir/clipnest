@@ -547,7 +547,7 @@ export function Prompt({ p, onClose }: { p: PromptState; onClose: () => void }) 
                     e.preventDefault();
                     e.stopPropagation();
                     onClose();
-                } else if (e.key === 'Enter' && p.confirm) {
+                } else if (e.key === 'Enter' && p.confirm && !(e.target as HTMLElement | null)?.closest('button')) {
                     e.preventDefault();
                     e.stopPropagation();
                     submit();
