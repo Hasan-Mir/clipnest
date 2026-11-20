@@ -71,6 +71,32 @@ fn tokenize(q: &str) -> Vec<(String, bool)> {
     out
 }
 
+fn normalize_regex_pattern(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            out.push('\\');
+            if let Some(next) = chars.next() {
+                out.push(next);
+            }
+            continue;
+        }
+        match ch {
+            '\u{200C}' | '\u{200D}' | '\u{200B}' | '\u{0640}' | '\u{0670}' => {}
+            '\u{064B}'..='\u{065F}' => {}
+            'ي' | 'ى' | 'ئ' => out.push('ی'),
+            'ك' => out.push('ک'),
+            'ة' => out.push('ه'),
+            'أ' | 'إ' | 'ٱ' => out.push('ا'),
+            '۰'..='۹' => out.push((b'0' + (ch as u32 - '۰' as u32) as u8) as char),
+            '٠'..='٩' => out.push((b'0' + (ch as u32 - '٠' as u32) as u8) as char),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 fn parse(query: &str, mode: &str) -> Result<Parsed, String> {
     let mut p = Parsed { kinds: vec![], terms: vec![], regex: None, fuzzy: None };
     let q = query.trim();
@@ -78,12 +104,9 @@ fn parse(query: &str, mode: &str) -> Result<Parsed, String> {
         return Ok(p);
     }
     if mode == "regex" {
-        let norm_q = normalize(q);
-        let pat = if norm_q != q.to_lowercase() && !norm_q.is_empty() {
-            format!("(?i)(?:{q})|(?:{norm_q})")
-        } else {
-            format!("(?i){q}")
-        };
+        let norm_q = normalize_regex_pattern(q);
+        let pat =
+            if norm_q != q && !norm_q.is_empty() { format!("(?i)(?:{q})|(?:{norm_q})") } else { format!("(?i){q}") };
         let re = Regex::new(&pat)
             .or_else(|_| Regex::new(&format!("(?i){q}")))
             .map_err(|e| format!("Invalid regular expression: {e}"))?;
@@ -454,5 +477,33 @@ mod tests {
         assert_eq!(res_pb_max.items.len(), 1);
         assert_eq!(res_pb_max.total, 1);
         assert!(res_pb_max.error.is_none());
+    }
+
+    #[test]
+    fn regex_mode_preserves_escaped_character_classes_with_persian_normalization() {
+        let cnt = TEST_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir =
+            std::env::temp_dir().join(format!("clipnest_regex_test_{}_{}_{}", std::process::id(), db::now_ms(), cnt));
+        let mut conn = db::open_with_recovery(&dir).expect("open db");
+
+        let c1 = build_text_clip("کتاب5", None, "App", "app.exe", false);
+        let c2 = build_text_clip("کتابa", None, "App", "app.exe", false);
+        let c3 = build_text_clip("15", None, "App", "app.exe", false);
+        let c4 = build_text_clip("1x", None, "App", "app.exe", false);
+
+        db::insert_clip(&mut conn, &c1, &[text_format(&c1.plain)]).unwrap();
+        db::insert_clip(&mut conn, &c2, &[text_format(&c2.plain)]).unwrap();
+        db::insert_clip(&mut conn, &c3, &[text_format(&c3.plain)]).unwrap();
+        db::insert_clip(&mut conn, &c4, &[text_format(&c4.plain)]).unwrap();
+
+        // Testing Persian Arabic 'ك' + regex escape \D (non-digit)
+        let r1 = list(&conn, &ListArgs { pinboard: None, query: r"كتاب\D".into(), mode: "regex".into(), limit: 50 });
+        assert_eq!(r1.total, 1);
+        assert_eq!(r1.items[0].preview, "کتابa");
+
+        // Testing Persian numeral '۱' + regex escape \D (non-digit)
+        let r2 = list(&conn, &ListArgs { pinboard: None, query: r"۱\D".into(), mode: "regex".into(), limit: 50 });
+        assert_eq!(r2.total, 1);
+        assert_eq!(r2.items[0].preview, "1x");
     }
 }

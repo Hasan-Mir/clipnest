@@ -387,4 +387,83 @@ describe('@seymi/clipnest-cli end-to-end verification', () => {
         const tmpFiles = files.filter((f) => f.endsWith('.tmp'));
         assert.equal(tmpFiles.length, 0, 'No temporary files should be left behind');
     });
+
+    it('honors -o / --out for get --meta and get --formats in human mode', async () => {
+        await startMockIpcServer((op, params) => {
+            assert.equal(op, 'get');
+            if (params.format === 'meta') {
+                return {
+                    ok: true,
+                    exit_code: EXIT_OK,
+                    data: {
+                        item: { id: 12, kind: 'text', preview: 'meta-preview', pinned: false },
+                    },
+                };
+            }
+            if (params.format === 'formats') {
+                return {
+                    ok: true,
+                    exit_code: EXIT_OK,
+                    data: {
+                        formats: [{ name: 'CF_TEXT', mime: 'text/plain', size: 55 }],
+                    },
+                };
+            }
+            throw new Error(`Unexpected format ${String(params.format)}`);
+        });
+
+        const metaOut = path.join(tmpDir, 'meta-out.json');
+        let stdoutMeta = '';
+        const codeMeta = await runCli(['get', '12', '--meta', '-o', metaOut], {
+            dataDir: tmpDir,
+            stdout: (s) => (stdoutMeta += s),
+            stderr: () => {},
+        });
+        assert.equal(codeMeta, EXIT_OK);
+        assert.equal(stdoutMeta, '', 'stdout should be empty when -o is provided');
+        assert.equal(fs.existsSync(metaOut), true);
+        const metaContent = fs.readFileSync(metaOut, 'utf8');
+        assert.match(metaContent, /"id":\s*12/);
+        assert.match(metaContent, /"meta-preview"/);
+
+        const fmtsOut = path.join(tmpDir, 'fmts-out.txt');
+        let stdoutFmts = '';
+        const codeFmts = await runCli(['get', '12', '--formats', '-o', fmtsOut], {
+            dataDir: tmpDir,
+            stdout: (s) => (stdoutFmts += s),
+            stderr: () => {},
+        });
+        assert.equal(codeFmts, EXIT_OK);
+        assert.equal(stdoutFmts, '', 'stdout should be empty when -o is provided');
+        assert.equal(fs.existsSync(fmtsOut), true);
+        const fmtsContent = fs.readFileSync(fmtsOut, 'utf8');
+        assert.match(fmtsContent, /CF_TEXT/);
+        assert.match(fmtsContent, /55 B/);
+    });
+
+    it('reports spawnSync launch errors in clipnest path', async () => {
+        const dummyBin = path.join(tmpDir, 'not-an-executable.txt');
+        fs.writeFileSync(dummyBin, 'not a valid binary');
+        const oldBin = process.env.CLIPNEST_BIN;
+        process.env.CLIPNEST_BIN = dummyBin;
+        try {
+            let err = '';
+            const code = await runCli(['path', 'status', '--json'], {
+                dataDir: tmpDir,
+                stdout: () => {},
+                stderr: (s) => (err += s),
+            });
+            assert.equal(code, EXIT_ERROR);
+            const parsed = JSON.parse(err.trim());
+            assert.equal(parsed.ok, false);
+            assert.equal(parsed.exit_code, EXIT_ERROR);
+            assert.match(parsed.error, /Failed to execute native ClipNest binary/);
+        } finally {
+            if (oldBin !== undefined) {
+                process.env.CLIPNEST_BIN = oldBin;
+            } else {
+                delete process.env.CLIPNEST_BIN;
+            }
+        }
+    });
 });

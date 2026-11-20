@@ -853,6 +853,7 @@ pub fn run_transfer(app: &AppHandle, entries: &[BasketEntry], dest_dir: &Path) -
         let st = app.state::<AppState>();
         *st.transfer_progress.lock() = None;
         *st.transfer_report.lock() = Some(report.clone());
+        st.transfer_busy.store(false, Ordering::SeqCst);
     }
     let _ = app.emit("basket-finished", report.clone());
     report

@@ -355,7 +355,7 @@ if (fs.existsSync(zipFileName)) {
 let archiveSuccess = false;
 let archiveError: unknown = null;
 
-// Method 1: tar.exe (fastest, standard in Windows 10/11 & POSIX)
+// Method 1: tar.exe (fastest, built into Windows 10/11)
 try {
     execFileSync('tar.exe', ['-a', '-c', '-f', zipFileName, '-T', manifestPath], {
         cwd: ROOT_DIR,

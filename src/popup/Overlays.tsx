@@ -206,6 +206,9 @@ export function ContextMenu({
                 setOpenSub(null);
             }
         } else if (e.key === 'Enter' || e.key === ' ') {
+            if ((e.target as HTMLElement | null)?.closest('.menu-chips button')) {
+                return;
+            }
             const entry = entries[focusIdx];
             if (!entry || entry.disabled) {
                 return;

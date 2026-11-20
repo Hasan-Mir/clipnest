@@ -1850,7 +1850,7 @@ export default function Popup() {
                 }`}
                 onWheel={(e) => {
                     if (!wrapCategories && tabsRef.current && e.deltaY !== 0 && e.deltaX === 0) {
-                        tabsRef.current.scrollLeft += e.deltaY;
+                        tabsRef.current.scrollLeft += isRtl(lang) ? -e.deltaY : e.deltaY;
                     }
                 }}
                 onMouseDown={(e) => {

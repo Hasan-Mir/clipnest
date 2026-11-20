@@ -986,6 +986,9 @@ fn dispatch_online(app: &AppHandle, op: &str, p: &Value) -> IpcResponse {
                         }
                         added_ids.push(id);
                     }
+                    if !added_ids.is_empty() {
+                        crate::windowing::show_queue(app);
+                    }
                     crate::queue::sync_intercept(app);
                     emit_status();
                     IpcResponse::success(json!({ "added": added_ids }))

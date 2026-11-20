@@ -7,6 +7,7 @@ use crate::state::AppState;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 /// Decides plain vs rich and which key combination to send.
 /// `mode`: "auto" (settings + per-app rules + per-pinboard paste_mode) | "plain" | "rich".
@@ -120,6 +121,19 @@ pub fn copy_only(app: &AppHandle, id: i64, mode: &str) -> Result<(), String> {
 
 /// Returns focus to the app that was active before the popup, then sends the keys.
 pub fn send_to_target(app: AppHandle, keys: String) {
+    struct InterceptSuspendGuard {
+        app: AppHandle,
+        acquired: bool,
+    }
+    impl Drop for InterceptSuspendGuard {
+        fn drop(&mut self) {
+            if self.acquired {
+                self.app.state::<AppState>().queue_pasting.store(false, Ordering::SeqCst);
+                crate::queue::sync_intercept(&self.app);
+            }
+        }
+    }
+
     std::thread::spawn(move || {
         let st = app.state::<AppState>();
         let target = st.target_hwnd.load(Ordering::SeqCst);
@@ -137,8 +151,20 @@ pub fn send_to_target(app: AppHandle, keys: String) {
             focused = win::foreground() == target;
         }
         if focused {
+            let needs_suspend = keys.eq_ignore_ascii_case("ctrl+v");
+            let _guard = if needs_suspend && !st.queue_pasting.swap(true, Ordering::SeqCst) {
+                if let Some(sc) = st.queue_sc.lock().take() {
+                    let _ = app.global_shortcut().unregister(sc);
+                }
+                Some(InterceptSuspendGuard { app: app.clone(), acquired: true })
+            } else {
+                None
+            };
             std::thread::sleep(Duration::from_millis(40));
             win::send_paste_keys(&keys);
+            if _guard.is_some() {
+                std::thread::sleep(Duration::from_millis(150));
+            }
         }
     });
 }

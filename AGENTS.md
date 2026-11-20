@@ -112,3 +112,21 @@ Regression tests added / verified:
 - `<test-file.test.ts>`: <description of attack-vectors or edge-cases tested>
 ```
 
+---
+
+## 🔍 5. Applying External AI Reviews: Mandatory Divergence & Adaptation Reporting
+
+Whenever implementing, applying, or adapting directives, patches, or code reviews originating from an external AI or second-opinion agent (e.g. `REVIEW_REPORT.md`, external code review outputs, second-opinion prompt artifacts):
+
+1. **Do NOT blindly apply external code**:
+   - Thoroughly validate proposed changes against the live codebase, type invariants, and runtime behavior.
+   - Actively identify flawed assumptions, shadowing conflicts, missing/invalid imports, non-existent database columns/schemas, or broken logic in external AI recommendations.
+
+2. **Mandatory Divergence & Adaptation Section in Chat Report**:
+   In the completion report presented to the user in chat, the agent **MUST** include a prominent, dedicated section titled **"Divergences & Adaptations from External AI Directives"**. This section must explicitly specify:
+   - **Corrections made to external suggestions**: Any syntax errors, TypeScript shadowing collisions, or invalid database schemas present in the external AI's snippets that were corrected before applying.
+   - **Architectural or logic adjustments**: Where and why the agent deviated from the external AI's proposed solution to prevent regressions or invariant violations.
+   - **Rejected suggestions / False positives**: Any recommendation from the external review that was rejected or altered, along with the concrete technical reasoning.
+   - **Tests adjusted or added**: Any test proposed by the external AI that had incorrect assertions or broken assumptions, and how it was made compliant with the actual codebase.
+
+

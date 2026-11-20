@@ -1571,6 +1571,13 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                 const nativeBin = findNativeBinary();
                 if (nativeBin) {
                     const r = spawnSync(nativeBin, rawArgs, { encoding: 'utf8' });
+                    if (r.error) {
+                        emitErr(
+                            EXIT_ERROR,
+                            `Failed to execute native ClipNest binary '${nativeBin}': ${r.error.message}`
+                        );
+                        return EXIT_ERROR;
+                    }
                     if (r.stdout) {
                         io.stdout(r.stdout);
                     }
@@ -1783,22 +1790,21 @@ async function executeOfflineFallback(
 
 function renderHuman(io: CliIo, op: string, data: Record<string, unknown>, outFile?: string): number {
     if (op === 'get') {
+        let rendered: string;
         if (Array.isArray(data.formats)) {
-            for (const f of data.formats as { name: string; mime: string; size: number }[]) {
-                io.stdout(`${f.name.padEnd(28)} ${f.mime.padEnd(26)} ${f.size} B\n`);
-            }
-            return EXIT_OK;
+            rendered = (data.formats as { name: string; mime: string; size: number }[])
+                .map((f) => `${f.name.padEnd(28)} ${f.mime.padEnd(26)} ${f.size} B\n`)
+                .join('');
+        } else if (data.item && data.text === undefined) {
+            rendered = JSON.stringify(data.item, null, 2) + '\n';
+        } else {
+            rendered = String(data.text ?? '');
         }
-        if (data.item && data.text === undefined) {
-            io.stdout(JSON.stringify(data.item, null, 2) + '\n');
-            return EXIT_OK;
-        }
-        const text = String(data.text ?? '');
         if (outFile) {
-            writeFileAtomically(outFile, text);
+            writeFileAtomically(outFile, rendered);
             return EXIT_OK;
         }
-        io.stdout(text);
+        io.stdout(rendered);
         return EXIT_OK;
     }
 

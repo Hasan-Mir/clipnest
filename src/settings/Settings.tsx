@@ -5,6 +5,7 @@ import {
     AppRule,
     AutoRule,
     CustomAction,
+    on as onEvent,
     Pinboard,
     Settings,
     ShortcutConflict,
@@ -302,19 +303,26 @@ function ShortcutInput({
             return;
         }
         let alive = true;
-        api.checkShortcutConflict(trimmed, role)
-            .then((res) => {
-                if (alive) {
-                    setConflict(res);
-                }
-            })
-            .catch(() => {
-                if (alive) {
-                    setConflict(null);
-                }
-            });
+        let reqSeq = 0;
+        const check = () => {
+            const my = ++reqSeq;
+            api.checkShortcutConflict(trimmed, role)
+                .then((res) => {
+                    if (alive && my === reqSeq) {
+                        setConflict(res);
+                    }
+                })
+                .catch(() => {
+                    if (alive && my === reqSeq) {
+                        setConflict(null);
+                    }
+                });
+        };
+        check();
+        const sub = onEvent('settings-changed', check);
         return () => {
             alive = false;
+            sub.then((u) => u()).catch(() => {});
         };
     }, [v, role]);
 

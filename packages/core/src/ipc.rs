@@ -433,13 +433,19 @@ pub fn import_json_bundle(conn: &mut Connection, settings: &Settings, src: &Path
         if let Ok((id, is_new)) = db::insert_clip(conn, &nc, &[text_format(&item.plain)]) {
             if is_new {
                 added += 1;
+                if item.pinned {
+                    let _ = db::set_pinned_scoped(conn, &[id], true, None, false);
+                }
+                let mut assigned_board = None;
                 if let Some(old_bid) = item.pinboard_id {
                     if let Some(&new_bid) = board_map.get(&old_bid) {
-                        let _ = db::assign_category(conn, &[id], Some(new_bid), None, false);
+                        if db::assign_category(conn, &[id], Some(new_bid), None, false).is_ok() {
+                            assigned_board = Some(new_bid);
+                        }
                     }
                 }
-                if item.pinned {
-                    let _ = db::set_pinned(conn, &[id], true);
+                if item.pinned && assigned_board.is_some() {
+                    let _ = db::set_pinned_scoped(conn, &[id], true, assigned_board, false);
                 }
                 if let Some(t) = &item.title {
                     let _ = db::rename(conn, id, t);
@@ -1872,6 +1878,17 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
     let mut offline_rpc_op: Option<String> = None;
     let mut args: Vec<String> = Vec::new();
 
+    macro_rules! require_next {
+        ($slice:expr, $idx:expr, $flag:expr) => {{
+            let Some(v) = $slice.get($idx + 1) else {
+                emit_err(json_out, EXIT_USAGE, &format!("Missing value for option '{}'", $flag), None);
+                return EXIT_USAGE;
+            };
+            $idx += 1;
+            v
+        }};
+    }
+
     let mut i = 0;
     while i < raw_args.len() {
         let a = &raw_args[i];
@@ -1881,28 +1898,20 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
             "--online-only" | "--require-running" => online_only = true,
             "-q" | "--quiet" | "--no-color" => {}
             "--timeout" => {
-                if let Some(v) = raw_args.get(i + 1) {
-                    timeout_ms = v.parse().unwrap_or(5000);
-                    i += 1;
-                }
+                let v = require_next!(raw_args, i, a);
+                timeout_ms = v.parse().unwrap_or(5000);
             }
             s if s.starts_with("--timeout=") => {
                 timeout_ms = s.trim_start_matches("--timeout=").parse().unwrap_or(5000);
             }
             "--data-dir" => {
-                if let Some(v) = raw_args.get(i + 1) {
-                    custom_data_dir = Some(v.clone());
-                    i += 1;
-                }
+                custom_data_dir = Some(require_next!(raw_args, i, a).clone());
             }
             s if s.starts_with("--data-dir=") => {
                 custom_data_dir = Some(s.trim_start_matches("--data-dir=").to_string());
             }
             "--offline-rpc" => {
-                if let Some(v) = raw_args.get(i + 1) {
-                    offline_rpc_op = Some(v.clone());
-                    i += 1;
-                }
+                offline_rpc_op = Some(require_next!(raw_args, i, a).clone());
             }
             s if s.starts_with("--offline-rpc=") => {
                 offline_rpc_op = Some(s.trim_start_matches("--offline-rpc=").to_string());
@@ -2058,28 +2067,20 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
                     "-c" | "--copy" => copy = true,
                     "-p" | "--pin" | "--pinned" => pinned = true,
                     "-b" | "--board" | "--pinboard" | "--category" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            board = Value::String(v.clone());
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        board = Value::String(v.clone());
                     }
                     "-t" | "--tags" | "--tag" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            tags = Some(v.clone());
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        tags = Some(v.clone());
                     }
                     "--title" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            title = Some(v.clone());
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        title = Some(v.clone());
                     }
                     "-f" | "--file" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            file_path = Some(v.clone());
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        file_path = Some(v.clone());
                     }
                     arg => positional.push(arg.to_string()),
                 }
@@ -2114,22 +2115,16 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
             while j < rest.len() {
                 match rest[j].as_str() {
                     "-b" | "--board" | "--pinboard" | "--category" | "-c" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            board = Value::String(v.clone());
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        board = Value::String(v.clone());
                     }
                     "-n" | "--limit" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            limit = v.parse().unwrap_or(30);
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        limit = v.parse().unwrap_or(30);
                     }
                     "-k" | "--kind" | "--type" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            kind = Some(v.clone());
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        kind = Some(v.clone());
                     }
                     "--pinned" => pinned = true,
                     _ => {}
@@ -2152,22 +2147,16 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
             while j < rest.len() {
                 match rest[j].as_str() {
                     "-b" | "--board" | "--pinboard" | "--category" | "-c" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            board = Value::String(v.clone());
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        board = Value::String(v.clone());
                     }
                     "-n" | "--limit" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            limit = v.parse().unwrap_or(50);
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        limit = v.parse().unwrap_or(50);
                     }
                     "-m" | "--mode" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            mode = v.clone();
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        mode = v.clone();
                     }
                     "--regex" | "-r" => mode = "regex".into(),
                     "--fuzzy" | "-z" => mode = "fuzzy".into(),
@@ -2196,19 +2185,15 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
             while j < rest.len() {
                 match rest[j].as_str() {
                     "--format" | "-f" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            fmt = v.clone();
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        fmt = v.clone();
                     }
                     "--html" => fmt = "html".into(),
                     "--meta" => fmt = "meta".into(),
                     "--formats" => fmt = "formats".into(),
                     "-o" | "--out" | "--output" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            out_file = Some(v.clone());
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        out_file = Some(v.clone());
                     }
                     arg if id_val.is_null() => id_val = Value::String(arg.to_string()),
                     _ => {}
@@ -2227,17 +2212,13 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
             while j < rest.len() {
                 match rest[j].as_str() {
                     "--id" | "-i" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            id_val = Value::String(v.clone());
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        id_val = Value::String(v.clone());
                     }
                     "--plain" | "-p" => plain = true,
                     "-f" | "--file" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            file_path = Some(v.clone());
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        file_path = Some(v.clone());
                     }
                     arg => positional.push(arg.to_string()),
                 }
@@ -2301,22 +2282,16 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
             while j < rest.len() {
                 match rest[j].as_str() {
                     "--title" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            title = Some(v.clone());
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        title = Some(v.clone());
                     }
                     "-t" | "--tags" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            tags = Some(v.clone());
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        tags = Some(v.clone());
                     }
                     "-f" | "--file" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            file_path = Some(v.clone());
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        file_path = Some(v.clone());
                     }
                     arg => positional.push(arg.to_string()),
                 }
@@ -2386,10 +2361,8 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
             while j < rest.len() {
                 match rest[j].as_str() {
                     "-b" | "--board" | "--pinboard" | "--category" | "-c" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            board = Value::String(v.clone());
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        board = Value::String(v.clone());
                     }
                     arg if !arg.starts_with('-') => ids.push(Value::String(arg.to_string())),
                     _ => {}
@@ -2443,35 +2416,25 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
             while j < rest.len() {
                 match rest[j].as_str() {
                     "--to" | "-b" | "--board" | "--pinboard" | "--category" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            to = Value::String(v.clone());
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        to = Value::String(v.clone());
                     }
                     "--from" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            from = Value::String(v.clone());
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        from = Value::String(v.clone());
                     }
                     "-c" | "--copy" => copy = true,
                     "--before" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            before = Value::String(v.clone());
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        before = Value::String(v.clone());
                     }
                     "--after" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            after = Value::String(v.clone());
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        after = Value::String(v.clone());
                     }
                     "--scope" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            board = Value::String(v.clone());
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        board = Value::String(v.clone());
                     }
                     arg => ids.push(Value::String(arg.to_string())),
                 }
@@ -2495,10 +2458,8 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
             while j < rest.len() {
                 match rest[j].as_str() {
                     "-s" | "--sep" | "--separator" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            sep = v.replace("\\n", "\n").replace("\\t", "\t");
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        sep = v.replace("\\n", "\n").replace("\\t", "\t");
                     }
                     "-c" | "--copy" => copy = true,
                     arg => ids.push(Value::String(arg.to_string())),
@@ -2528,10 +2489,8 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
                         "--save" | "-s" => save = true,
                         "--copy" | "-c" => copy = true,
                         "--text" | "-t" => {
-                            if let Some(v) = rest.get(j + 1) {
-                                text_opt = Some(v.clone());
-                                j += 1;
-                            }
+                            let v = require_next!(rest, j, &rest[j]);
+                            text_opt = Some(v.clone());
                         }
                         "-" => match read_stdin_all() {
                             Ok(s) => text_opt = Some(s),
@@ -2569,28 +2528,20 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
                     while j < rest.len() {
                         match rest[j].as_str() {
                             "--color" | "-c" => {
-                                if let Some(v) = rest.get(j + 1) {
-                                    color = v.clone();
-                                    j += 1;
-                                }
+                                let v = require_next!(rest, j, &rest[j]);
+                                color = v.clone();
                             }
                             "--max" | "--max-items" => {
-                                if let Some(v) = rest.get(j + 1) {
-                                    max_items = v.parse().unwrap_or(0);
-                                    j += 1;
-                                }
+                                let v = require_next!(rest, j, &rest[j]);
+                                max_items = v.parse().unwrap_or(0);
                             }
                             "--style" => {
-                                if let Some(v) = rest.get(j + 1) {
-                                    list_style = v.clone();
-                                    j += 1;
-                                }
+                                let v = require_next!(rest, j, &rest[j]);
+                                list_style = v.clone();
                             }
                             "--paste-mode" => {
-                                if let Some(v) = rest.get(j + 1) {
-                                    paste_mode = v.clone();
-                                    j += 1;
-                                }
+                                let v = require_next!(rest, j, &rest[j]);
+                                paste_mode = v.clone();
                             }
                             "--active" => active = true,
                             arg if name.is_empty() => name = arg.to_string(),
@@ -2619,34 +2570,24 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
                     while j < rest.len() {
                         match rest[j].as_str() {
                             "--name" => {
-                                if let Some(v) = rest.get(j + 1) {
-                                    params_obj["name"] = Value::String(v.clone());
-                                    j += 1;
-                                }
+                                let v = require_next!(rest, j, &rest[j]);
+                                params_obj["name"] = Value::String(v.clone());
                             }
                             "--color" | "-c" => {
-                                if let Some(v) = rest.get(j + 1) {
-                                    params_obj["color"] = Value::String(v.clone());
-                                    j += 1;
-                                }
+                                let v = require_next!(rest, j, &rest[j]);
+                                params_obj["color"] = Value::String(v.clone());
                             }
                             "--max" | "--max-items" => {
-                                if let Some(v) = rest.get(j + 1) {
-                                    params_obj["max_items"] = json!(v.parse::<i64>().unwrap_or(0));
-                                    j += 1;
-                                }
+                                let v = require_next!(rest, j, &rest[j]);
+                                params_obj["max_items"] = json!(v.parse::<i64>().unwrap_or(0));
                             }
                             "--style" => {
-                                if let Some(v) = rest.get(j + 1) {
-                                    params_obj["list_style"] = Value::String(v.clone());
-                                    j += 1;
-                                }
+                                let v = require_next!(rest, j, &rest[j]);
+                                params_obj["list_style"] = Value::String(v.clone());
                             }
                             "--paste-mode" => {
-                                if let Some(v) = rest.get(j + 1) {
-                                    params_obj["paste_mode"] = Value::String(v.clone());
-                                    j += 1;
-                                }
+                                let v = require_next!(rest, j, &rest[j]);
+                                params_obj["paste_mode"] = Value::String(v.clone());
                             }
                             "--active" => params_obj["active"] = Value::Bool(true),
                             "--inactive" => params_obj["active"] = Value::Bool(false),
@@ -2744,46 +2685,32 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
                     while j < rest.len() {
                         match rest[j].as_str() {
                             "--name" => {
-                                if let Some(v) = rest.get(j + 1) {
-                                    name = v.clone();
-                                    j += 1;
-                                }
+                                let v = require_next!(rest, j, &rest[j]);
+                                name = v.clone();
                             }
                             "--action" => {
-                                if let Some(v) = rest.get(j + 1) {
-                                    action = v.clone();
-                                    j += 1;
-                                }
+                                let v = require_next!(rest, j, &rest[j]);
+                                action = v.clone();
                             }
                             "--apps" => {
-                                if let Some(v) = rest.get(j + 1) {
-                                    apps = v.clone();
-                                    j += 1;
-                                }
+                                let v = require_next!(rest, j, &rest[j]);
+                                apps = v.clone();
                             }
                             "--pattern" => {
-                                if let Some(v) = rest.get(j + 1) {
-                                    pattern = v.clone();
-                                    j += 1;
-                                }
+                                let v = require_next!(rest, j, &rest[j]);
+                                pattern = v.clone();
                             }
                             "--value" => {
-                                if let Some(v) = rest.get(j + 1) {
-                                    value = v.clone();
-                                    j += 1;
-                                }
+                                let v = require_next!(rest, j, &rest[j]);
+                                value = v.clone();
                             }
                             "--board" | "--category" => {
-                                if let Some(v) = rest.get(j + 1) {
-                                    board = v.parse().unwrap_or(0);
-                                    j += 1;
-                                }
+                                let v = require_next!(rest, j, &rest[j]);
+                                board = v.parse().unwrap_or(0);
                             }
                             "--kind" => {
-                                if let Some(v) = rest.get(j + 1) {
-                                    kinds.push(v.clone());
-                                    j += 1;
-                                }
+                                let v = require_next!(rest, j, &rest[j]);
+                                kinds.push(v.clone());
                             }
                             arg if name == "CLI Rule" => name = arg.to_string(),
                             _ => {}
@@ -2830,16 +2757,12 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
                     while j < rest.len() {
                         match rest[j].as_str() {
                             "--cmd" | "--command" | "-c" => {
-                                if let Some(v) = rest.get(j + 1) {
-                                    command = v.clone();
-                                    j += 1;
-                                }
+                                let v = require_next!(rest, j, &rest[j]);
+                                command = v.clone();
                             }
                             "--output" | "-o" => {
-                                if let Some(v) = rest.get(j + 1) {
-                                    output = v.clone();
-                                    j += 1;
-                                }
+                                let v = require_next!(rest, j, &rest[j]);
+                                output = v.clone();
                             }
                             arg if name.is_empty() => name = arg.to_string(),
                             _ => {}
@@ -2934,10 +2857,8 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
             while j < rest.len() {
                 match rest[j].as_str() {
                     "--format" | "-f" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            format = v.clone();
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        format = v.clone();
                     }
                     "--settings" => settings_only = true,
                     arg if path.is_empty() => path = arg.to_string(),
@@ -2980,10 +2901,8 @@ pub fn run_cli(raw_args: &[String]) -> i32 {
                     "--include-pinned" | "--pinned" => include_pinned = true,
                     "--all-boards" | "--all" => all_boards = true,
                     "-b" | "--board" | "--pinboard" | "--category" | "-c" => {
-                        if let Some(v) = rest.get(j + 1) {
-                            board = Value::String(v.clone());
-                            j += 1;
-                        }
+                        let v = require_next!(rest, j, &rest[j]);
+                        board = Value::String(v.clone());
                     }
                     _ => {}
                 }
@@ -3062,31 +2981,31 @@ pub fn emit_err(json_out: bool, code: i32, msg: &str, hint: Option<&str>) {
 pub fn render_human_output(op: &str, data: &Value, raw_output_file: Option<&str>) -> i32 {
     match op {
         "get" => {
-            if let Some(formats) = data.get("formats").and_then(|v| v.as_array()) {
+            let output = if let Some(formats) = data.get("formats").and_then(|v| v.as_array()) {
+                let mut s = String::new();
                 for f in formats {
-                    println!(
-                        "{:<28} {:<26} {} B",
+                    s.push_str(&format!(
+                        "{:<28} {:<26} {} B\n",
                         f.get("name").and_then(|v| v.as_str()).unwrap_or(""),
                         f.get("mime").and_then(|v| v.as_str()).unwrap_or(""),
                         f.get("size").and_then(|v| v.as_i64()).unwrap_or(0)
-                    );
+                    ));
                 }
-                return EXIT_OK;
-            }
-            if let Some(item) = data.get("item").filter(|_| data.get("text").is_none()) {
-                println!("{}", serde_json::to_string_pretty(item).unwrap_or_default());
-                return EXIT_OK;
-            }
-            let text = data.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                s
+            } else if let Some(item) = data.get("item").filter(|_| data.get("text").is_none()) {
+                format!("{}\n", serde_json::to_string_pretty(item).unwrap_or_default())
+            } else {
+                data.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string()
+            };
             if let Some(out_path) = raw_output_file {
-                if let Err(e) = db::write_atomic(Path::new(out_path), text.as_bytes()) {
+                if let Err(e) = db::write_atomic(Path::new(out_path), output.as_bytes()) {
                     eprintln!("Error: Cannot write to '{out_path}': {e}");
                     return EXIT_ERROR;
                 }
                 return EXIT_OK;
             }
             let mut stdout = std::io::stdout().lock();
-            let _ = stdout.write_all(text.as_bytes());
+            let _ = stdout.write_all(output.as_bytes());
             let _ = stdout.flush();
             EXIT_OK
         }
@@ -3595,6 +3514,192 @@ mod tests {
             conn.query_row("SELECT tags FROM clips WHERE id=?1", rusqlite::params![id], |r| r.get(0)).unwrap();
         assert!(tags.contains("orig_tag"));
         assert!(!tags.contains("overwritten_tag"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn import_json_bundle_preserves_category_pins_on_bounded_category() {
+        let dir = std::env::temp_dir().join(format!("clipnest_import_pins_{}", db::now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut conn = db::open_with_recovery(&dir).unwrap();
+        let settings = Settings::default();
+
+        let cat_id = db::create_pinboard(&conn, "BoundedCat", "#ff0000").unwrap();
+        db::update_pinboard(&conn, cat_id, "BoundedCat", "#ff0000", 1, "inherit", "inherit").unwrap();
+
+        // Seed 1 clip in this category (unpinned)
+        let c1 = crate::codec::build_text_clip("item 1", None, "App", "app.exe", false);
+        let (id1, _) = db::insert_clip(&mut conn, &c1, &[crate::codec::text_format("item 1")]).unwrap();
+        db::assign_category(&conn, &[id1], Some(cat_id), None, false).unwrap();
+
+        // Import a bundle with a new pinned item targeted at this category
+        let bundle = JsonExportBundle {
+            app: "ClipNest".into(),
+            version: "0.2.0".into(),
+            exported_at: db::now_ms(),
+            pinboards: vec![Pinboard {
+                id: 1234,
+                name: "BoundedCat".into(),
+                color: "#ff0000".into(),
+                max_items: 1,
+                list_style: "inherit".into(),
+                paste_mode: "inherit".into(),
+                count: 1,
+                position: 0,
+            }],
+            items: vec![JsonExportItem {
+                id: 2,
+                kind: "text".into(),
+                plain: "imported pinned item".into(),
+                title: Some("Imported Pinned".into()),
+                tags: String::new(),
+                app_name: "App".into(),
+                app_exe: "app.exe".into(),
+                lang: None,
+                color: None,
+                pinboard_id: Some(1234),
+                pinned: true,
+                sensitive: false,
+                ts: db::now_ms(),
+                created_at: db::now_ms(),
+            }],
+            settings: Settings::default(),
+        };
+
+        let bundle_path = dir.join("bundle.json");
+        std::fs::write(&bundle_path, serde_json::to_string(&bundle).unwrap()).unwrap();
+
+        let added = import_json_bundle(&mut conn, &settings, &bundle_path).unwrap();
+        assert_eq!(added, 1);
+
+        // Check imported clip exists in clips and is pinned in both clips and clip_categories
+        let imported_id: i64 =
+            conn.query_row("SELECT id FROM clips WHERE plain='imported pinned item'", [], |r| r.get(0)).unwrap();
+        let clip_pinned: bool = conn
+            .query_row("SELECT pinned FROM clips WHERE id=?1", rusqlite::params![imported_id], |r| r.get(0))
+            .unwrap();
+        assert!(clip_pinned, "clips.pinned should be true");
+
+        let cat_pinned: i64 = conn
+            .query_row(
+                "SELECT pinned FROM clip_categories WHERE clip_id=?1 AND board_id=?2",
+                rusqlite::params![imported_id, cat_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(cat_pinned, 1, "clip_categories.pinned should be 1");
+
+        // Now category has 1 pinned clip and is at max_items=1. Import a 3rd clip that is also pinned.
+        // It must NOT be deleted from the main clips table on overflow.
+        let bundle2 = JsonExportBundle {
+            app: "ClipNest".into(),
+            version: "0.2.0".into(),
+            exported_at: db::now_ms(),
+            pinboards: vec![Pinboard {
+                id: 1234,
+                name: "BoundedCat".into(),
+                color: "#ff0000".into(),
+                max_items: 1,
+                list_style: "inherit".into(),
+                paste_mode: "inherit".into(),
+                count: 1,
+                position: 0,
+            }],
+            items: vec![JsonExportItem {
+                id: 3,
+                kind: "text".into(),
+                plain: "overflow pinned item".into(),
+                title: Some("Overflow Pinned".into()),
+                tags: String::new(),
+                app_name: "App".into(),
+                app_exe: "app.exe".into(),
+                lang: None,
+                color: None,
+                pinboard_id: Some(1234),
+                pinned: true,
+                sensitive: false,
+                ts: db::now_ms(),
+                created_at: db::now_ms(),
+            }],
+            settings: Settings::default(),
+        };
+        let bundle2_path = dir.join("bundle2.json");
+        std::fs::write(&bundle2_path, serde_json::to_string(&bundle2).unwrap()).unwrap();
+
+        let added2 = import_json_bundle(&mut conn, &settings, &bundle2_path).unwrap();
+        assert_eq!(added2, 1);
+
+        let clip3_exists: bool =
+            conn.query_row("SELECT pinned FROM clips WHERE plain='overflow pinned item'", [], |r| r.get(0)).unwrap();
+        assert!(clip3_exists, "Overflow clip must still exist in clips table with pinned=true");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn run_cli_rejects_dangling_value_flags_without_mutations() {
+        let dir = std::env::temp_dir().join(format!("clipnest_cli_dangling_{}", db::now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+        {
+            let mut conn = db::open_with_recovery(&dir).unwrap();
+            let c = crate::codec::build_text_clip("sample", None, "App", "app.exe", false);
+            db::insert_clip(&mut conn, &c, &[crate::codec::text_format("sample")]).unwrap();
+        }
+
+        let dir_str = dir.to_string_lossy().to_string();
+        let s = |xs: &[&str]| xs.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+
+        // clipnest erase --yes --category (dangling --category)
+        let code1 = run_cli(&s(&["--data-dir", &dir_str, "erase", "--yes", "--category"]));
+        assert_eq!(code1, EXIT_USAGE);
+
+        // clipnest move 1 --to (dangling --to)
+        let code2 = run_cli(&s(&["--data-dir", &dir_str, "move", "1", "--to"]));
+        assert_eq!(code2, EXIT_USAGE);
+
+        // Verify no clips were erased
+        let conn = db::open_with_recovery(&dir).unwrap();
+        let total: i64 = conn.query_row("SELECT COUNT(*) FROM clips", [], |r| r.get(0)).unwrap();
+        assert_eq!(total, 1, "Database should not have been mutated");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn render_human_output_honors_out_file_for_meta_and_formats() {
+        let dir = std::env::temp_dir().join(format!("clipnest_render_out_{}", db::now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let meta_payload = json!({
+            "item": {
+                "id": 12,
+                "kind": "text",
+                "preview": "test",
+                "pinned": false
+            }
+        });
+        let meta_out = dir.join("meta.txt");
+        let meta_out_str = meta_out.to_string_lossy().to_string();
+        let res_meta = render_human_output("get", &meta_payload, Some(&meta_out_str));
+        assert_eq!(res_meta, EXIT_OK);
+        assert!(meta_out.exists());
+        let meta_content = std::fs::read_to_string(&meta_out).unwrap();
+        assert!(meta_content.contains("\"id\": 12"));
+
+        let formats_payload = json!({
+            "formats": [
+                { "name": "CF_TEXT", "mime": "text/plain", "size": 42 }
+            ]
+        });
+        let fmts_out = dir.join("formats.txt");
+        let fmts_out_str = fmts_out.to_string_lossy().to_string();
+        let res_fmts = render_human_output("get", &formats_payload, Some(&fmts_out_str));
+        assert_eq!(res_fmts, EXIT_OK);
+        assert!(fmts_out.exists());
+        let fmts_content = std::fs::read_to_string(&fmts_out).unwrap();
+        assert!(fmts_content.contains("CF_TEXT"));
+        assert!(fmts_content.contains("42 B"));
 
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -68,6 +68,21 @@ const ERROR_TEXT: Record<string, string> = {
     cut_not_removed: 'Copied successfully, but the original could not be removed',
 };
 
+/**
+ * Handles keyboard interaction for expandable folder group headers in basket view.
+ * Ensures Enter/Space activates group expansion, unless the event originated
+ * from a nested interactive element (e.g. action buttons inside the header).
+ */
+export function handleFolderHeaderKeyDown(e: React.KeyboardEvent | KeyboardEvent, toggle: () => void): void {
+    if ((e.target as HTMLElement | null)?.closest('button')) {
+        return;
+    }
+    if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggle();
+    }
+}
+
 export default function QueueView() {
     useLang();
     const [s, save] = useSettings();
@@ -345,12 +360,7 @@ export default function QueueView() {
                     tabIndex={0}
                     aria-expanded={open}
                     onClick={() => toggleGroup(g.key)}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            toggleGroup(g.key);
-                        }
-                    }}
+                    onKeyDown={(e) => handleFolderHeaderKeyDown(e, () => toggleGroup(g.key))}
                 >
                     <span className="bchev">
                         <Icon name={open ? 'chevronDown' : 'chevronRight'} size={14} />

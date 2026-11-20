@@ -13,7 +13,7 @@
         "build:core": "npm run build --workspace @seymi/clipnest-core",
         "build:core:native": "npm run build:native --workspace @seymi/clipnest-core",
         "build:cli": "npm run build --workspace @seymi/clipnest-core && npm run build --workspace @seymi/clipnest-cli",
-        "typecheck": "tsc --noEmit && npm run typecheck --workspace @seymi/clipnest-core && npm run typecheck --workspace @seymi/clipnest-cli",
+        "typecheck": "npm run build:core && tsc --noEmit && npm run typecheck --workspace @seymi/clipnest-core && npm run typecheck --workspace @seymi/clipnest-cli",
         "typecheck:bun": "concurrently -n root,core,cli -c auto \"bun check --skipLibCheck\" \"bun run --cwd packages/core typecheck:bun\" \"bun run --cwd packages/cli typecheck:bun\"",
         "test": "vitest run",
         "test:watch": "vitest",
