@@ -149,6 +149,13 @@ export function ContextMenu({
             menuElRef.current?.focus();
         }
     }, [isPositioned]);
+    const prevOpenSubRef = useRef<number | null>(null);
+    useEffect(() => {
+        if (prevOpenSubRef.current !== null && openSub === null) {
+            menuElRef.current?.focus();
+        }
+        prevOpenSubRef.current = openSub;
+    }, [openSub]);
 
     const handleMenuKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Escape') {

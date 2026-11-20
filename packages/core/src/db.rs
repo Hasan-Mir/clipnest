@@ -604,6 +604,36 @@ pub fn assign_category(
     assign_category_with_pin(conn, ids, board, source_board, copy, false)
 }
 
+fn with_write_tx<T>(conn: &Connection, savepoint: &str, f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    if conn.is_autocommit() {
+        conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| e.to_string())?;
+        match f() {
+            Ok(v) => conn.execute_batch("COMMIT").map(|_| v).map_err(|e| {
+                let _ = conn.execute_batch("ROLLBACK");
+                e.to_string()
+            }),
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                Err(e)
+            }
+        }
+    } else {
+        conn.execute(&format!("SAVEPOINT {savepoint}"), []).map_err(|e| e.to_string())?;
+        match f() {
+            Ok(v) => conn.execute(&format!("RELEASE SAVEPOINT {savepoint}"), []).map(|_| v).map_err(|e| {
+                let _ = conn.execute(&format!("ROLLBACK TO SAVEPOINT {savepoint}"), []);
+                let _ = conn.execute(&format!("RELEASE SAVEPOINT {savepoint}"), []);
+                e.to_string()
+            }),
+            Err(e) => {
+                let _ = conn.execute(&format!("ROLLBACK TO SAVEPOINT {savepoint}"), []);
+                let _ = conn.execute(&format!("RELEASE SAVEPOINT {savepoint}"), []);
+                Err(e)
+            }
+        }
+    }
+}
+
 pub fn assign_category_with_pin(
     conn: &Connection,
     ids: &[i64],
@@ -612,8 +642,7 @@ pub fn assign_category_with_pin(
     copy: bool,
     pinned: bool,
 ) -> Result<(), String> {
-    conn.execute("SAVEPOINT assign_cat", []).map_err(|e| e.to_string())?;
-    let res = (|| -> Result<(), String> {
+    with_write_tx(conn, "assign_cat", || {
         let pval = pinned as i64;
         for id in ids {
             let sort_ts: f64 = conn
@@ -669,19 +698,7 @@ pub fn assign_category_with_pin(
             trim_board(conn, b);
         }
         Ok(())
-    })();
-    match res {
-        Ok(()) => conn.execute("RELEASE SAVEPOINT assign_cat", []).map(|_| ()).map_err(|e| {
-            let _ = conn.execute("ROLLBACK TO SAVEPOINT assign_cat", []);
-            let _ = conn.execute("RELEASE SAVEPOINT assign_cat", []);
-            e.to_string()
-        }),
-        Err(e) => {
-            let _ = conn.execute("ROLLBACK TO SAVEPOINT assign_cat", []);
-            let _ = conn.execute("RELEASE SAVEPOINT assign_cat", []);
-            Err(e)
-        }
-    }
+    })
 }
 
 pub fn set_pinboard(conn: &Connection, ids: &[i64], board: Option<i64>) -> Result<(), String> {
@@ -908,8 +925,7 @@ pub fn erase_history(
             .map_err(|e| e.to_string())
         }
     } else if let Some(board_id) = target_pinboard {
-        conn.execute("SAVEPOINT erase_board", []).map_err(|e| e.to_string())?;
-        let res = (|| -> Result<usize, String> {
+        with_write_tx(conn, "erase_board", || {
             let target_ids: Vec<i64> = {
                 let sql = if include_pinned {
                     "SELECT clip_id FROM clip_categories WHERE board_id=?1"
@@ -944,23 +960,7 @@ pub fn erase_history(
                 count += 1;
             }
             Ok(count)
-        })();
-        match res {
-            Ok(count) => {
-                if let Err(e) = conn.execute("RELEASE SAVEPOINT erase_board", []) {
-                    let _ = conn.execute("ROLLBACK TO SAVEPOINT erase_board", []);
-                    let _ = conn.execute("RELEASE SAVEPOINT erase_board", []);
-                    Err(e.to_string())
-                } else {
-                    Ok(count)
-                }
-            }
-            Err(e) => {
-                let _ = conn.execute("ROLLBACK TO SAVEPOINT erase_board", []);
-                let _ = conn.execute("RELEASE SAVEPOINT erase_board", []);
-                Err(e)
-            }
-        }
+        })
     } else if include_pinned {
         conn.execute(
             "DELETE FROM clips WHERE pinboard_id IS NULL
@@ -1001,8 +1001,7 @@ pub fn move_item(conn: &Connection, id: i64, target: i64, after: bool, scope: Op
     if id == target {
         return Ok(());
     }
-    conn.execute("SAVEPOINT move_item", []).map_err(|e| e.to_string())?;
-    let res = (|| -> Result<(), String> {
+    with_write_tx(conn, "move_item", || {
         let compute = |t_sort: f64, neighbour: Option<f64>| -> Option<f64> {
             let cand = match (after, neighbour) {
                 (true, Some(lo)) => (t_sort + lo) / 2.0,
@@ -1131,19 +1130,7 @@ pub fn move_item(conn: &Connection, id: i64, target: i64, after: bool, scope: Op
         conn.execute("UPDATE clips SET sort_ts=?1, pinned=?2 WHERE id=?3", params![new, t_pinned, id])
             .map_err(|e| e.to_string())?;
         Ok(())
-    })();
-    match res {
-        Ok(()) => conn.execute("RELEASE SAVEPOINT move_item", []).map(|_| ()).map_err(|e| {
-            let _ = conn.execute("ROLLBACK TO SAVEPOINT move_item", []);
-            let _ = conn.execute("RELEASE SAVEPOINT move_item", []);
-            e.to_string()
-        }),
-        Err(e) => {
-            let _ = conn.execute("ROLLBACK TO SAVEPOINT move_item", []);
-            let _ = conn.execute("RELEASE SAVEPOINT move_item", []);
-            Err(e)
-        }
-    }
+    })
 }
 
 // ───────────────────────────── app icons ─────────────────────────────
@@ -1184,7 +1171,7 @@ pub fn merge_from(conn: &Connection, imp: &Path) -> Result<usize, String> {
         if n < 3 {
             return Err("not a ClipNest backup".into());
         }
-        conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
+        conn.execute_batch("BEGIN IMMEDIATE").map_err(|e| e.to_string())?;
         let body = (|| -> Result<usize, String> {
             conn.execute_batch(
                 "CREATE TEMP TABLE IF NOT EXISTS pbmap(old INTEGER PRIMARY KEY, new INTEGER); DELETE FROM pbmap;",
@@ -1855,6 +1842,66 @@ mod tests {
         assert_eq!(tags, "work");
 
         drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn move_item_and_assign_category_concurrent_connections_succeed() {
+        let dir = std::env::temp_dir().join(format!("clipnest_db_move_assign_concur_{}", now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("clipnest.db");
+
+        let mut conn = open_with_recovery(&dir).unwrap();
+        let cat_id = create_pinboard(&conn, "Work", "#112233").unwrap();
+
+        let c1 = build_text_clip("clip 1", None, "App", "app.exe", false);
+        let (id1, _) = insert_clip(&mut conn, &c1, &[text_format("clip 1")]).unwrap();
+        let c2 = build_text_clip("clip 2", None, "App", "app.exe", false);
+        let (id2, _) = insert_clip(&mut conn, &c2, &[text_format("clip 2")]).unwrap();
+        let c3 = build_text_clip("clip 3", None, "App", "app.exe", false);
+        let (id3, _) = insert_clip(&mut conn, &c3, &[text_format("clip 3")]).unwrap();
+
+        assign_category_with_pin(&conn, &[id1, id2, id3], Some(cat_id), None, false, false).unwrap();
+        drop(conn);
+
+        let db_path1 = db_path.clone();
+        let db_path2 = db_path.clone();
+
+        // Thread 1: performs insert_clip in a loop
+        let t1 = std::thread::spawn(move || {
+            let mut conn1 = Connection::open(&db_path1).unwrap();
+            conn1.busy_timeout(std::time::Duration::from_secs(5)).unwrap();
+            for i in 0..20 {
+                let text = format!("concurrent insert {}", i);
+                let c = build_text_clip(&text, None, "App", "app.exe", false);
+                insert_clip(&mut conn1, &c, &[text_format(&text)])?;
+                std::thread::yield_now();
+            }
+            Ok::<(), String>(())
+        });
+
+        // Thread 2: performs move_item and assign_category_with_pin in a loop
+        let t2 = std::thread::spawn(move || {
+            let conn2 = Connection::open(&db_path2).unwrap();
+            conn2.busy_timeout(std::time::Duration::from_secs(5)).unwrap();
+            for i in 0..20 {
+                if i % 2 == 0 {
+                    move_item(&conn2, id1, id2, false, Some(cat_id))?;
+                } else {
+                    move_item(&conn2, id1, id2, true, Some(cat_id))?;
+                }
+                assign_category_with_pin(&conn2, &[id3], Some(cat_id), None, false, i % 2 == 1)?;
+                std::thread::yield_now();
+            }
+            Ok::<(), String>(())
+        });
+
+        let r1 = t1.join().unwrap();
+        let r2 = t2.join().unwrap();
+
+        assert!(r1.is_ok(), "Thread 1 insert_clip failed: {:?}", r1);
+        assert!(r2.is_ok(), "Thread 2 move_item/assign_category failed: {:?}", r2);
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

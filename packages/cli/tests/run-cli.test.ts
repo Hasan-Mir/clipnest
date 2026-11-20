@@ -623,4 +623,30 @@ describe('@seymi/clipnest-cli end-to-end verification', () => {
         assert.equal(parsed.exit_code, EXIT_ERROR);
         assert.match(parsed.error, /Clipboard access denied/);
     });
+
+    it('rejects unknown subcommands with EXIT_USAGE in TS CLI for Rust CLI parity', async () => {
+        const testCases: [string[], string][] = [
+            [['queue', 'bogus'], 'queue'],
+            [['basket', 'bogus'], 'basket'],
+            [['category', 'bogus', '--online-only'], 'category'],
+            [['rule', 'bogus', '--online-only'], 'rule'],
+            [['action', 'bogus', '--online-only'], 'action'],
+            [['config', 'bogus', '--online-only'], 'config'],
+        ];
+
+        for (const [args, cmd] of testCases) {
+            let stderr = '';
+            const code = await runCli(args, {
+                dataDir: tmpDir,
+                stdout: () => {},
+                stderr: (s) => (stderr += s),
+            });
+            assert.equal(code, EXIT_USAGE, `Command '${args.join(' ')}' should exit with EXIT_USAGE (2)`);
+            assert.match(
+                stderr,
+                new RegExp(`Unknown ${cmd} subcommand 'bogus'`),
+                `Expected unknown subcommand error message in stderr for '${args.join(' ')}'`
+            );
+        }
+    });
 });

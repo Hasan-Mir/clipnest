@@ -58,6 +58,13 @@ export function Preview({
             mountedRef.current = false;
         };
     }, []);
+    const wasEditingRef = useRef(false);
+    useEffect(() => {
+        if (wasEditingRef.current && !editing) {
+            root.current?.focus();
+        }
+        wasEditingRef.current = editing;
+    }, [editing]);
     const editable = item.kind !== 'image' && item.kind !== 'file';
     const canStyle = item.has_rich && !richMissing && (item.kind === 'text' || item.kind === 'code');
     const handleRichMissing = useCallback(() => setRichMissing(true), []);

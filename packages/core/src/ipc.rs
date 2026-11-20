@@ -425,6 +425,11 @@ pub fn import_json_bundle(conn: &mut Connection, settings: &Settings, src: &Path
         }
         let mut nc = build_text_clip(&item.plain, item.lang.clone(), &item.app_name, &item.app_exe, false);
         nc.sensitive = item.sensitive;
+        match conn.query_row("SELECT 1 FROM clips WHERE hash=?1", params![nc.hash], |_| Ok(())) {
+            Ok(()) => continue,
+            Err(rusqlite::Error::QueryReturnedNoRows) => {}
+            Err(e) => return Err(e.to_string()),
+        }
         if let Ok((id, is_new)) = db::insert_clip(conn, &nc, &[text_format(&item.plain)]) {
             if is_new {
                 added += 1;
@@ -3463,6 +3468,13 @@ mod tests {
         db::set_pinned(&conn, &[id], true).unwrap();
         db::rename(&conn, id, "Original Title").unwrap();
         db::set_tags(&conn, id, "orig_tag").unwrap();
+        let now = db::now_ms();
+        let expected_exp = now + 300_000;
+        conn.execute(
+            "UPDATE clips SET sensitive=1, expires_at=?1, sort_ts=1000000.0 WHERE id=?2",
+            rusqlite::params![Some(expected_exp), id],
+        )
+        .unwrap();
 
         // Write import bundle with same plain text / hash, but conflicting metadata
         let bundle = JsonExportBundle {
@@ -3505,14 +3517,30 @@ mod tests {
         assert_eq!(added, 0, "No new clip should be added");
 
         // Verify original metadata was preserved
-        let (title, pinned, board_id): (Option<String>, bool, Option<i64>) = conn
-            .query_row("SELECT title, pinned, pinboard_id FROM clips WHERE id=?1", rusqlite::params![id], |r| {
-                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
-            })
+        let (title, pinned, board_id, app_name, app_exe, sensitive, expires_at, sort_ts): (
+            Option<String>,
+            bool,
+            Option<i64>,
+            String,
+            String,
+            bool,
+            Option<i64>,
+            f64,
+        ) = conn
+            .query_row(
+                "SELECT title, pinned, pinboard_id, app_name, app_exe, sensitive, expires_at, sort_ts FROM clips WHERE id=?1",
+                rusqlite::params![id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?)),
+            )
             .unwrap();
         assert_eq!(title.as_deref(), Some("Original Title"));
         assert_eq!(pinned, true);
         assert_eq!(board_id, Some(cat1));
+        assert_eq!(app_name, "OrigApp");
+        assert_eq!(app_exe, "orig.exe");
+        assert_eq!(sensitive, true);
+        assert_eq!(expires_at, Some(expected_exp));
+        assert_eq!(sort_ts, 1_000_000.0);
 
         let tags: String =
             conn.query_row("SELECT tags FROM clips WHERE id=?1", rusqlite::params![id], |r| r.get(0)).unwrap();

@@ -162,6 +162,49 @@ function mergeIntervals(intervals: [number, number][]): [number, number][] {
     return merged;
 }
 
+function isSafeHighlightRegex(pattern: string): boolean {
+    if (pattern.length > 256) {
+        return false;
+    }
+    const groupHasQuantifier: boolean[] = [];
+    let inClass = false;
+    for (let i = 0; i < pattern.length; i++) {
+        const ch = pattern[i];
+        if (ch === '\\') {
+            const next = pattern[i + 1];
+            if (next && next >= '1' && next <= '9' && !inClass) {
+                return false;
+            }
+            i++;
+            continue;
+        }
+        if (inClass) {
+            if (ch === ']') {
+                inClass = false;
+            }
+            continue;
+        }
+        if (ch === '[') {
+            inClass = true;
+        } else if (ch === '(') {
+            groupHasQuantifier.push(false);
+        } else if (ch === ')') {
+            const hadInnerQuant = groupHasQuantifier.pop() ?? false;
+            const next = pattern[i + 1];
+            const isQuantified = next === '+' || next === '*' || next === '{';
+            if (hadInnerQuant && isQuantified) {
+                return false;
+            }
+            if ((hadInnerQuant || isQuantified) && groupHasQuantifier.length > 0) {
+                groupHasQuantifier[groupHasQuantifier.length - 1] = true;
+            }
+        } else if ((ch === '+' || ch === '*' || ch === '{') && groupHasQuantifier.length > 0) {
+            groupHasQuantifier[groupHasQuantifier.length - 1] = true;
+        }
+    }
+    return true;
+}
+
 export function findMatchSpans(text: string, query: string, mode: SearchMode): [number, number][] {
     const q = query.trim();
     if (!text || !q) {
@@ -170,6 +213,9 @@ export function findMatchSpans(text: string, query: string, mode: SearchMode): [
     const rawSpans: [number, number][] = [];
 
     if (mode === 'regex') {
+        if (!isSafeHighlightRegex(q)) {
+            return [];
+        }
         try {
             const re = new RegExp(q, 'gi');
             let m: RegExpExecArray | null;

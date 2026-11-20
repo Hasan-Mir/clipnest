@@ -4,7 +4,9 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, vi } from 'vitest';
+import { api, ClipRow } from '../lib/api';
 import { ContextMenu, MenuEntry } from '../popup/Overlays';
+import { Preview } from '../popup/Preview';
 import { handleFolderHeaderKeyDown } from '../queue/Queue';
 
 describe('UI Accessibility KeyDown handlers', () => {
@@ -210,6 +212,169 @@ describe('UI Accessibility KeyDown handlers', () => {
 
         expect(itemBClick).toHaveBeenCalled();
         expect(itemAClick).not.toHaveBeenCalled();
+        expect(onClose).toHaveBeenCalled();
+
+        await act(async () => {
+            root.unmount();
+        });
+        container.remove();
+    });
+
+    it('Preview restores DOM focus to .preview when exiting inline edit mode', async () => {
+        vi.spyOn(api, 'getText').mockResolvedValue('Editable clip content');
+        vi.spyOn(api, 'getFormats').mockResolvedValue([]);
+        const onClose = vi.fn();
+
+        const item: ClipRow = {
+            id: 42,
+            kind: 'text',
+            preview: 'Editable clip content',
+            title: 'Editable clip',
+            tags: '',
+            app_name: 'Notepad',
+            app_exe: 'notepad.exe',
+            lang: null,
+            img_w: null,
+            img_h: null,
+            color: null,
+            chars: 21,
+            file_count: null,
+            pinboard_id: null,
+            pinned: false,
+            sensitive: false,
+            has_rich: false,
+            ts: Date.now(),
+            created_at: Date.now(),
+            has_thumb: false,
+            cut: false,
+        };
+
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const root = createRoot(container);
+
+        await act(async () => {
+            root.render(
+                <Preview
+                    item={item}
+                    startEdit={true}
+                    startFormats={false}
+                    richDefault={false}
+                    autoSaveEdit={false}
+                    query=""
+                    searchMode="smart"
+                    highlight={false}
+                    onClose={onClose}
+                    onPaste={vi.fn()}
+                    onToast={vi.fn()}
+                />
+            );
+        });
+
+        // Wait for textarea to mount and acquire focus
+        const textarea = container.querySelector<HTMLTextAreaElement>('textarea.editor');
+        expect(textarea).toBeTruthy();
+        expect(document.activeElement).toBe(textarea);
+
+        // Escape out of editing mode
+        await act(async () => {
+            textarea?.dispatchEvent(
+                new KeyboardEvent('keydown', {
+                    key: 'Escape',
+                    bubbles: true,
+                    cancelable: true,
+                })
+            );
+        });
+
+        const previewEl = container.querySelector<HTMLDivElement>('.preview');
+        expect(container.querySelector('textarea.editor')).toBeNull();
+        expect(document.activeElement).toBe(previewEl);
+
+        // Escape on .preview closes the preview
+        await act(async () => {
+            previewEl?.dispatchEvent(
+                new KeyboardEvent('keydown', {
+                    key: 'Escape',
+                    bubbles: true,
+                    cancelable: true,
+                })
+            );
+        });
+
+        expect(onClose).toHaveBeenCalled();
+
+        await act(async () => {
+            root.unmount();
+        });
+        container.remove();
+        vi.restoreAllMocks();
+    });
+
+    it('ContextMenu restores DOM focus to .menu when SubMenu closes via hover', async () => {
+        const siblingClick = vi.fn();
+        const onClose = vi.fn();
+
+        const entries: MenuEntry[] = [
+            {
+                label: 'Transform',
+                submenu: [
+                    { label: 'Upper', onClick: vi.fn() },
+                    { label: 'Lower', onClick: vi.fn() },
+                ],
+            },
+            {
+                label: 'Sibling Item',
+                onClick: siblingClick,
+            },
+        ];
+
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const root = createRoot(container);
+
+        await act(async () => {
+            root.render(<ContextMenu x={100} y={100} entries={entries} onClose={onClose} />);
+        });
+
+        const menuEl = container.querySelector<HTMLDivElement>('.menu');
+        const items = container.querySelectorAll<HTMLDivElement>('.menu-item');
+        expect(items.length).toBe(2);
+
+        const triggerMouseEnter = (el: HTMLElement) => {
+            el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: null }));
+            el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }));
+        };
+
+        // Hover over the first item (has submenu)
+        await act(async () => {
+            triggerMouseEnter(items[0]);
+        });
+
+        const subMenuEl = container.querySelector<HTMLDivElement>('.menu.sub');
+        expect(subMenuEl).toBeTruthy();
+        expect(document.activeElement).toBe(subMenuEl);
+
+        // Hover over sibling item -> submenu closes, menu should regain focus
+        await act(async () => {
+            triggerMouseEnter(items[1]);
+        });
+
+        expect(container.querySelector('.menu.sub')).toBeNull();
+        expect(document.activeElement).toBe(menuEl);
+
+        // Press Enter on menu to activate the sibling item
+        await act(async () => {
+            menuEl?.dispatchEvent(
+                new KeyboardEvent('keydown', {
+                    key: 'Enter',
+                    bubbles: true,
+                    cancelable: true,
+                })
+            );
+        });
+
+        expect(siblingClick).toHaveBeenCalled();
         expect(onClose).toHaveBeenCalled();
 
         await act(async () => {

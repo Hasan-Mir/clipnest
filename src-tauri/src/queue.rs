@@ -23,36 +23,64 @@ fn changed(app: &AppHandle) {
 }
 
 /// Registers/unregisters the global Ctrl+V interception depending on the queue state.
-pub fn sync_intercept(app: &AppHandle) {
-    let st = app.state::<AppState>();
-    if st.queue_pasting.load(Ordering::SeqCst) {
-        return;
-    }
-    let want = {
-        let q = st.queue.lock();
-        q.active && q.mode == "queue" && !q.items.is_empty()
-    } && st.settings.read().queue_intercept;
-    let gs = app.global_shortcut();
-    if want {
-        let need_reg = st.queue_sc.lock().is_none();
+fn sync_intercept_with<T: Clone, FWant, FMake, FReg, FUnreg>(
+    queue_sc: &parking_lot::Mutex<Option<T>>,
+    want_now: FWant,
+    make_shortcut: FMake,
+    register: FReg,
+    unregister: FUnreg,
+) where
+    FWant: Fn() -> bool,
+    FMake: Fn() -> Option<T>,
+    FReg: Fn(T) -> bool,
+    FUnreg: Fn(T),
+{
+    if want_now() {
+        let need_reg = queue_sc.lock().is_none();
         if need_reg {
-            if let Ok(sc) = "Ctrl+V".parse::<Shortcut>() {
-                if gs.register(sc.clone()).is_ok() {
-                    let mut slot = st.queue_sc.lock();
-                    if slot.is_none() {
-                        *slot = Some(sc);
+            if let Some(sc) = make_shortcut() {
+                if register(sc.clone()) {
+                    if want_now() {
+                        // Idempotent: if another thread already recorded Ctrl+V, keep it registered.
+                        *queue_sc.lock() = Some(sc);
                     } else {
-                        let _ = gs.unregister(sc);
+                        // Queue closed, emptied, or paste-suspend began while register() was in flight.
+                        let _ = queue_sc.lock().take();
+                        unregister(sc);
                     }
                 }
             }
         }
     } else {
-        let to_unreg = st.queue_sc.lock().take();
+        let to_unreg = queue_sc.lock().take();
         if let Some(sc) = to_unreg {
-            let _ = gs.unregister(sc);
+            unregister(sc);
         }
     }
+}
+
+/// Registers/unregisters the global Ctrl+V interception depending on the queue state.
+pub fn sync_intercept(app: &AppHandle) {
+    let st = app.state::<AppState>();
+    let gs = app.global_shortcut();
+    sync_intercept_with(
+        &st.queue_sc,
+        || {
+            if st.queue_pasting.load(Ordering::SeqCst) {
+                return false;
+            }
+            let q_want = {
+                let q = st.queue.lock();
+                q.active && q.mode == "queue" && !q.items.is_empty()
+            };
+            q_want && st.settings.read().queue_intercept
+        },
+        || "Ctrl+V".parse::<Shortcut>().ok(),
+        |sc| gs.register(sc).is_ok(),
+        |sc| {
+            let _ = gs.unregister(sc);
+        },
+    );
 }
 
 /// Stable identity of a basket entry: `<clip id>|<path>` (path is empty for images).
@@ -1257,5 +1285,49 @@ mod tests {
         assert_eq!(std::fs::read(dst_dir.join("report.pdf")).unwrap(), b"pdf-data");
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn sync_intercept_never_holds_lock_and_preserves_concurrent_registration() {
+        let queue_sc = parking_lot::Mutex::new(None);
+        let unreg_called = std::sync::atomic::AtomicBool::new(false);
+        sync_intercept_with(
+            &queue_sc,
+            || true,
+            || Some(String::from("Ctrl+V")),
+            |sc| {
+                assert!(queue_sc.try_lock().is_some(), "queue_sc must not be locked during register");
+                *queue_sc.lock() = Some(sc);
+                true
+            },
+            |_| {
+                unreg_called.store(true, Ordering::SeqCst);
+            },
+        );
+        assert!(!unreg_called.load(Ordering::SeqCst));
+        assert_eq!(*queue_sc.lock(), Some(String::from("Ctrl+V")));
+    }
+
+    #[test]
+    fn sync_intercept_unregisters_after_unlock_if_want_flips_false() {
+        let queue_sc = parking_lot::Mutex::new(None);
+        let want = std::sync::atomic::AtomicBool::new(true);
+        let unreg_count = std::sync::atomic::AtomicUsize::new(0);
+        sync_intercept_with(
+            &queue_sc,
+            || want.load(Ordering::SeqCst),
+            || Some(String::from("Ctrl+V")),
+            |_| {
+                assert!(queue_sc.try_lock().is_some(), "queue_sc must not be locked during register");
+                want.store(false, Ordering::SeqCst);
+                true
+            },
+            |_| {
+                assert!(queue_sc.try_lock().is_some(), "queue_sc must not be locked during unregister");
+                unreg_count.fetch_add(1, Ordering::SeqCst);
+            },
+        );
+        assert_eq!(unreg_count.load(Ordering::SeqCst), 1);
+        assert_eq!(*queue_sc.lock(), None);
     }
 }

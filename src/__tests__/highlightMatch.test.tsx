@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { highlightMatch } from '../lib/highlightMatch';
+import { findMatchSpans, highlightMatch } from '../lib/highlightMatch';
 
 describe('highlightMatch search highlighting & FTS5 query cleaning', () => {
     it('returns original text unchanged when query is empty or whitespace', () => {
@@ -46,5 +46,24 @@ describe('highlightMatch search highlighting & FTS5 query cleaning', () => {
         const serialized = JSON.stringify(res);
         expect(serialized).toContain('مدیریت');
         expect(serialized).toContain('کلیپ‌بورد');
+    });
+
+    it('guards findMatchSpans against catastrophic JS RegExp backtracking (ReDoS)', () => {
+        const attackText = 'a'.repeat(32) + '!';
+        const start = Date.now();
+        const spans = findMatchSpans(attackText, '(a+)+b', 'regex');
+        const duration = Date.now() - start;
+
+        expect(spans).toEqual([]);
+        expect(duration).toBeLessThan(100);
+    });
+
+    it('findMatchSpans still highlights normal safe quantified regex patterns', () => {
+        const text = 'foo bar baz';
+        const spans = findMatchSpans(text, '(foo|bar)+', 'regex');
+        expect(spans).toEqual([
+            [0, 3],
+            [4, 7],
+        ]);
     });
 });

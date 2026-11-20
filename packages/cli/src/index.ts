@@ -1299,9 +1299,12 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                 } else if (sub === 'activate' || sub === 'use') {
                     op = 'pinboard';
                     params = { sub: 'activate', board: rest[1] ?? 'none' };
-                } else {
+                } else if (sub === 'list' || sub === 'ls') {
                     op = 'pinboard';
-                    params = { sub: sub === 'ls' ? 'list' : sub };
+                    params = { sub: 'list' };
+                } else {
+                    emitErr(EXIT_USAGE, `Unknown category subcommand '${sub}'`);
+                    return EXIT_USAGE;
                 }
                 break;
             }
@@ -1328,9 +1331,12 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                 } else if (sub === 'paste-to') {
                     op = cmd;
                     params = { sub: 'paste-to', folder: resolveCliPath(rest[1] ?? '') };
-                } else {
+                } else if (['status', 'list', 'ls', 'clear', 'toggle', 'close'].includes(sub)) {
                     op = cmd;
                     params = { sub: sub === 'ls' ? 'list' : sub };
+                } else {
+                    emitErr(EXIT_USAGE, `Unknown ${cmd} subcommand '${sub}'`);
+                    return EXIT_USAGE;
                 }
                 break;
             }
@@ -1375,9 +1381,12 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                     }
                     op = 'rule';
                     params = { sub: 'add', name, action, apps, pattern, value, board, kinds };
-                } else {
+                } else if (sub === 'list' || sub === 'ls') {
                     op = 'rule';
-                    params = { sub: sub === 'ls' ? 'list' : sub };
+                    params = { sub: 'list' };
+                } else {
+                    emitErr(EXIT_USAGE, `Unknown rule subcommand '${sub}'`);
+                    return EXIT_USAGE;
                 }
                 break;
             }
@@ -1411,9 +1420,12 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                 } else if (sub === 'delete' || sub === 'rm') {
                     op = 'action';
                     params = { sub: 'delete', target: rest[1] ?? '' };
-                } else {
+                } else if (sub === 'list' || sub === 'ls') {
                     op = 'action';
-                    params = { sub: sub === 'ls' ? 'list' : sub };
+                    params = { sub: 'list' };
+                } else {
+                    emitErr(EXIT_USAGE, `Unknown action subcommand '${sub}'`);
+                    return EXIT_USAGE;
                 }
                 break;
             }
@@ -1446,9 +1458,12 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                     }
                     op = 'config';
                     params = { sub: 'reset', key: key ?? null };
-                } else {
+                } else if (sub === 'list' || sub === 'ls') {
                     op = 'config';
-                    params = { sub: sub === 'ls' ? 'list' : sub };
+                    params = { sub: 'list' };
+                } else {
+                    emitErr(EXIT_USAGE, `Unknown config subcommand '${sub}'`);
+                    return EXIT_USAGE;
                 }
                 break;
             }
