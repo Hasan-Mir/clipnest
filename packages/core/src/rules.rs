@@ -59,8 +59,13 @@ pub fn apply(rules: &[AutoRule], clip: &mut NewClip, fmts: &mut Vec<StoredFormat
             }
             "to_board" if rule.board > 0 => out.board = Some(rule.board),
             "tag" => {
-                for t in rule.value.split(|c: char| c == ',' || c.is_whitespace()).filter(|t| !t.is_empty()) {
-                    out.tags.push(t.trim_start_matches('#').to_string());
+                for t in rule
+                    .value
+                    .split(|c: char| c == ',' || c.is_whitespace())
+                    .map(|t| t.trim_start_matches('#'))
+                    .filter(|t| !t.is_empty())
+                {
+                    out.tags.push(t.to_string());
                 }
             }
             "plain_only" if textual => {

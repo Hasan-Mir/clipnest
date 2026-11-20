@@ -360,6 +360,10 @@ export function ContextMenu({
                                         parentRect={parentRect ?? subAnchor}
                                         entries={e.submenu}
                                         ctrlHeld={ctrlHeld}
+                                        onClose={() => {
+                                            setOpenSub(null);
+                                            menuElRef.current?.focus();
+                                        }}
                                         onPick={onClose}
                                     />
                                 )}
@@ -413,14 +417,27 @@ function SubMenu({
     parentRect,
     entries,
     ctrlHeld,
+    onClose,
     onPick,
 }: {
     anchor: DOMRect;
     parentRect: DOMRect;
     entries: MenuEntry[];
     ctrlHeld: boolean;
+    onClose: () => void;
     onPick: () => void;
 }) {
+    const subMenuRef = useRef<HTMLDivElement | null>(null);
+    const actionableIndices = useMemo(() => {
+        const out: number[] = [];
+        entries.forEach((e, idx) => {
+            if (!e.sep && !e.header && !e.disabled) {
+                out.push(idx);
+            }
+        });
+        return out;
+    }, [entries]);
+    const [focusIdx, setFocusIdx] = useState<number>(() => actionableIndices[0] ?? -1);
     const spaceRight = window.innerWidth - parentRect.right - 6;
     const spaceLeft = parentRect.left - 6;
     const preferLeft = spaceRight < 185 && spaceLeft > spaceRight;
@@ -475,21 +492,82 @@ function SubMenu({
         });
     }, [parentRect, anchor, refs]);
 
+    useEffect(() => {
+        setFocusIdx(actionableIndices[0] ?? -1);
+    }, [actionableIndices]);
+
+    useEffect(() => {
+        if (isPositioned) {
+            subMenuRef.current?.focus();
+        }
+    }, [isPositioned]);
+
+    const handleSubKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Escape' || e.key === 'ArrowLeft') {
+            e.preventDefault();
+            e.stopPropagation();
+            onClose();
+            return;
+        }
+        if (!actionableIndices.length) {
+            return;
+        }
+        const curPos = actionableIndices.indexOf(focusIdx);
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            e.stopPropagation();
+            setFocusIdx(actionableIndices[(curPos + 1) % actionableIndices.length]);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            e.stopPropagation();
+            setFocusIdx(actionableIndices[(curPos - 1 + actionableIndices.length) % actionableIndices.length]);
+        } else if (e.key === 'Home') {
+            e.preventDefault();
+            e.stopPropagation();
+            setFocusIdx(actionableIndices[0]);
+        } else if (e.key === 'End') {
+            e.preventDefault();
+            e.stopPropagation();
+            setFocusIdx(actionableIndices[actionableIndices.length - 1]);
+        } else if (e.key === 'Enter' || e.key === ' ') {
+            const item = entries[focusIdx];
+            if (!item || item.disabled) {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            item.onClick?.(e.ctrlKey || e.metaKey || ctrlHeld);
+            onPick();
+        }
+    };
+
     return (
         <div
             role="menu"
-            ref={refs.setFloating}
+            tabIndex={-1}
+            ref={(node) => {
+                subMenuRef.current = node;
+                refs.setFloating(node);
+            }}
             className={`menu sub${isPositioned ? ' menu-ready' : ''}`}
             style={{
                 ...floatingStyles,
                 visibility: isPositioned ? 'visible' : 'hidden',
             }}
+            onKeyDown={handleSubKeyDown}
         >
             {entries.map((s, k) => (
                 <div
                     key={k}
                     role="menuitem"
-                    className={`menu-item${s.disabled ? ' disabled' : ''}`}
+                    aria-disabled={s.disabled ? 'true' : undefined}
+                    tabIndex={-1}
+                    className={`menu-item${s.disabled ? ' disabled' : ''}${focusIdx === k ? ' focused' : ''}`}
+                    onMouseEnter={() => {
+                        if (!s.disabled) {
+                            setFocusIdx(k);
+                        }
+                    }}
                     onClick={(ev) => {
                         if (s.disabled) {
                             return;

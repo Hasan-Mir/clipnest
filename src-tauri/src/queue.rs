@@ -33,17 +33,25 @@ pub fn sync_intercept(app: &AppHandle) {
         q.active && q.mode == "queue" && !q.items.is_empty()
     } && st.settings.read().queue_intercept;
     let gs = app.global_shortcut();
-    let mut slot = st.queue_sc.lock();
     if want {
-        if slot.is_none() {
+        let need_reg = st.queue_sc.lock().is_none();
+        if need_reg {
             if let Ok(sc) = "Ctrl+V".parse::<Shortcut>() {
                 if gs.register(sc.clone()).is_ok() {
-                    *slot = Some(sc);
+                    let mut slot = st.queue_sc.lock();
+                    if slot.is_none() {
+                        *slot = Some(sc);
+                    } else {
+                        let _ = gs.unregister(sc);
+                    }
                 }
             }
         }
-    } else if let Some(sc) = slot.take() {
-        let _ = gs.unregister(sc);
+    } else {
+        let to_unreg = st.queue_sc.lock().take();
+        if let Some(sc) = to_unreg {
+            let _ = gs.unregister(sc);
+        }
     }
 }
 
@@ -847,7 +855,7 @@ fn run_transfer_inner(app: &AppHandle, entries: &[BasketEntry], dest_dir: &Path)
 }
 
 /// Runs a transfer and announces the result (`basket-finished`) to the UI.
-pub fn run_transfer(app: &AppHandle, entries: &[BasketEntry], dest_dir: &Path) -> TransferReport {
+fn run_transfer(app: &AppHandle, entries: &[BasketEntry], dest_dir: &Path, guard: &mut BusyGuard) -> TransferReport {
     let report = run_transfer_inner(app, entries, dest_dir);
     {
         let st = app.state::<AppState>();
@@ -855,6 +863,7 @@ pub fn run_transfer(app: &AppHandle, entries: &[BasketEntry], dest_dir: &Path) -
         *st.transfer_report.lock() = Some(report.clone());
         st.transfer_busy.store(false, Ordering::SeqCst);
     }
+    guard.disarm();
     let _ = app.emit("basket-finished", report.clone());
     report
 }
@@ -880,8 +889,8 @@ pub fn transfer_entries_to_dir(app: &AppHandle, entries: &[BasketEntry], dest_di
     if st.transfer_busy.swap(true, Ordering::SeqCst) {
         return Err("A transfer is already running".into());
     }
-    let _guard = BusyGuard(app.clone());
-    let report = run_transfer(app, entries, dest_dir);
+    let mut guard = BusyGuard::new(app.clone());
+    let report = run_transfer(app, entries, dest_dir, &mut guard);
     if report.failed.is_empty() {
         Ok(report.done)
     } else {
@@ -992,13 +1001,27 @@ pub fn collect_file_from_explorer(app: &AppHandle, path_str: &str) -> Result<i64
 }
 
 /// Clears the "transfer running" flag even if the worker thread panics.
-struct BusyGuard(AppHandle);
+struct BusyGuard {
+    app: AppHandle,
+    armed: bool,
+}
+
+impl BusyGuard {
+    fn new(app: AppHandle) -> Self {
+        Self { app, armed: true }
+    }
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
 
 impl Drop for BusyGuard {
     fn drop(&mut self) {
-        let st = self.0.state::<AppState>();
-        *st.transfer_progress.lock() = None;
-        st.transfer_busy.store(false, Ordering::SeqCst);
+        if self.armed {
+            let st = self.app.state::<AppState>();
+            *st.transfer_progress.lock() = None;
+            st.transfer_busy.store(false, Ordering::SeqCst);
+        }
     }
 }
 
@@ -1030,6 +1053,7 @@ pub fn basket_paste_to_folder(app: &AppHandle) -> Result<Option<usize>, String> 
     if st.transfer_busy.swap(true, Ordering::SeqCst) {
         return Err("A transfer is already running".into());
     }
+    let mut guard = BusyGuard::new(app.clone());
     let total = basket.len();
     let first_label = basket
         .first()
@@ -1045,10 +1069,9 @@ pub fn basket_paste_to_folder(app: &AppHandle) -> Result<Option<usize>, String> 
 
     let app2 = app.clone();
     std::thread::spawn(move || {
-        let _guard = BusyGuard(app2.clone());
         // Brief yield so the command response reaches the webview before fast transfers finish.
         std::thread::sleep(Duration::from_millis(35));
-        let _ = run_transfer(&app2, &basket, &dest_dir);
+        let _ = run_transfer(&app2, &basket, &dest_dir, &mut guard);
     });
     Ok(Some(total))
 }
@@ -1085,7 +1108,8 @@ pub fn on_paste_hotkey(app: &AppHandle) {
             return;
         };
         // Release the hotkey so the synthesized Ctrl+V reaches the target app instead of us.
-        if let Some(sc) = st.queue_sc.lock().take() {
+        let sc_opt = st.queue_sc.lock().take();
+        if let Some(sc) = sc_opt {
             let _ = app.global_shortcut().unregister(sc);
         }
         let exe = win::exe_of_hwnd(win::foreground());

@@ -260,19 +260,10 @@ pub fn add_item_shared(
     if pinned {
         db::set_pinned_scoped(conn, &[id], true, None, false)?;
     }
-    let assigned_board = if let Some(b) = explicit_board {
-        db::assign_category(conn, &[id], Some(b), None, false)?;
-        Some(b)
+    if let Some(b) = explicit_board {
+        db::assign_category_with_pin(conn, &[id], Some(b), None, false, pinned)?;
     } else if let Some(b) = outcome.board.or(if is_new { settings.active_pinboard } else { None }) {
-        match db::assign_category(conn, &[id], Some(b), None, false) {
-            Ok(()) => Some(b),
-            Err(_) => None,
-        }
-    } else {
-        None
-    };
-    if pinned && assigned_board.is_some() {
-        db::set_pinned_scoped(conn, &[id], true, assigned_board, false)?;
+        let _ = db::assign_category_with_pin(conn, &[id], Some(b), None, false, pinned);
     }
     if let Some(t) = title {
         if !t.is_empty() {
@@ -281,8 +272,12 @@ pub fn add_item_shared(
     }
     let mut combined_tags = outcome.tags;
     if let Some(t) = tags {
-        for part in t.split(|c: char| c == ',' || c.is_whitespace()).filter(|x| !x.is_empty()) {
-            combined_tags.push(part.trim_start_matches('#').to_string());
+        for part in t
+            .split(|c: char| c == ',' || c.is_whitespace())
+            .map(|x| x.trim_start_matches('#'))
+            .filter(|x| !x.is_empty())
+        {
+            combined_tags.push(part.to_string());
         }
     }
     if !combined_tags.is_empty() {
@@ -436,16 +431,10 @@ pub fn import_json_bundle(conn: &mut Connection, settings: &Settings, src: &Path
                 if item.pinned {
                     let _ = db::set_pinned_scoped(conn, &[id], true, None, false);
                 }
-                let mut assigned_board = None;
                 if let Some(old_bid) = item.pinboard_id {
                     if let Some(&new_bid) = board_map.get(&old_bid) {
-                        if db::assign_category(conn, &[id], Some(new_bid), None, false).is_ok() {
-                            assigned_board = Some(new_bid);
-                        }
+                        let _ = db::assign_category_with_pin(conn, &[id], Some(new_bid), None, false, item.pinned);
                     }
-                }
-                if item.pinned && assigned_board.is_some() {
-                    let _ = db::set_pinned_scoped(conn, &[id], true, assigned_board, false);
                 }
                 if let Some(t) = &item.title {
                     let _ = db::rename(conn, id, t);
@@ -1323,6 +1312,13 @@ pub fn dispatch_offline(data_dir: &Path, op: &str, p: &Value) -> IpcResponse {
             let settings_only = p.get("settings").and_then(|v| v.as_bool()).unwrap_or(false);
             let fmt = p.get("format").and_then(|v| v.as_str()).unwrap_or("");
             if settings_only {
+                if let Some(parent) = dest.parent() {
+                    if !parent.as_os_str().is_empty() {
+                        if let Err(e) = std::fs::create_dir_all(parent) {
+                            return IpcResponse::fail(EXIT_ERROR, e.to_string(), None);
+                        }
+                    }
+                }
                 match serde_json::to_vec_pretty(&settings) {
                     Ok(bytes) => match db::write_atomic(&dest, &bytes) {
                         Ok(()) => IpcResponse::success(json!({ "path": dest.to_string_lossy(), "kind": "settings" })),
@@ -1761,7 +1757,7 @@ pub fn print_help(topic: Option<&str>) {
              Subcommands:\n  \
                list                                          List all categories and item counts\n  \
                create <name> [--color #hex] [--max N] [--active]  Create a new category\n  \
-               update <id|name> [--name N] [--color C] [--max N] [--paste-mode auto|plain|rich]\n  \
+               update <id|name> [--name N] [--color C] [--max N] [--paste-mode inherit|plain|rich]\n  \
                delete <id|name> --yes                        Delete a category and its items\n  \
                activate <id|name|none>                       Route new clipboard copies into this category"
         ),
@@ -3417,6 +3413,14 @@ mod tests {
             .query_row("SELECT 1 FROM clips WHERE id=?1", rusqlite::params![item2.id], |_| Ok(true))
             .unwrap_or(false);
         assert!(exists, "Second clip must exist in clips table");
+        let cat_pinned: i64 = conn
+            .query_row(
+                "SELECT pinned FROM clip_categories WHERE clip_id=?1 AND board_id=?2",
+                rusqlite::params![item2.id, board_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(cat_pinned, 1, "clip_categories must contain item2 with pinned=1");
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -3700,6 +3704,35 @@ mod tests {
         let fmts_content = std::fs::read_to_string(&fmts_out).unwrap();
         assert!(fmts_content.contains("CF_TEXT"));
         assert!(fmts_content.contains("42 B"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn dispatch_offline_export_settings_creates_missing_directories() {
+        let dir = std::env::temp_dir().join(format!("clipnest_export_settings_{}", db::now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+        {
+            let conn = db::open_with_recovery(&dir).unwrap();
+            drop(conn);
+        }
+
+        let nested_dest = dir.join("nested").join("sub").join("settings.json");
+        assert!(!nested_dest.parent().unwrap().exists());
+
+        let resp = dispatch_offline(
+            &dir,
+            "export",
+            &json!({
+                "path": nested_dest.to_string_lossy(),
+                "settings": true,
+            }),
+        );
+
+        assert!(resp.ok, "export with settings:true into nested missing dir must succeed: {:?}", resp.error);
+        assert!(nested_dest.exists(), "Exported settings file must exist");
+        let content = std::fs::read_to_string(&nested_dest).unwrap();
+        assert!(content.contains("max_items"), "Exported settings content must be valid JSON");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

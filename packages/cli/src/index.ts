@@ -800,6 +800,8 @@ export async function runCli(rawArgs: string[], customIo?: Partial<CliIo>): Prom
                 assumeYes = true;
             } else if (a === '--online-only' || a === '--require-running') {
                 onlineOnly = true;
+            } else if (a === '-q' || a === '--quiet' || a === '--no-color') {
+                // Accepted for parity with the native Rust CLI
             } else if (a === '--timeout') {
                 timeoutMs = Number(requireNext(rawArgs, i++, a)) || 5000;
             } else if (a.startsWith('--timeout=')) {
@@ -1731,16 +1733,9 @@ async function executeOfflineFallback(
             };
         }
         if (typeof params.text === 'string' && !params.save) {
+            let out: string;
             try {
-                const out = applyCoreTransform(trId, params.text);
-                if (params.copy) {
-                    await io.writeClipboard!(out);
-                }
-                return {
-                    ok: true,
-                    exit_code: EXIT_OK,
-                    data: { transform: trId, text: out, saved_id: null, copied: Boolean(params.copy) },
-                };
+                out = applyCoreTransform(trId, params.text);
             } catch (e) {
                 return {
                     ok: false,
@@ -1749,6 +1744,23 @@ async function executeOfflineFallback(
                     error: e instanceof Error ? e.message : String(e),
                 };
             }
+            if (params.copy) {
+                try {
+                    await io.writeClipboard!(out);
+                } catch (e) {
+                    return {
+                        ok: false,
+                        exit_code: EXIT_ERROR,
+                        data: null,
+                        error: e instanceof Error ? e.message : String(e),
+                    };
+                }
+            }
+            return {
+                ok: true,
+                exit_code: EXIT_OK,
+                data: { transform: trId, text: out, saved_id: null, copied: Boolean(params.copy) },
+            };
         }
     }
 
@@ -1853,6 +1865,19 @@ function renderHuman(io: CliIo, op: string, data: Record<string, unknown>, outFi
         return EXIT_OK;
     }
 
+    if (op === 'formats') {
+        const fmts = (data.formats as { name?: string; mime?: string; size?: number }[]) ?? [];
+        if (fmts.length === 0) {
+            io.stdout('No stored formats.\n');
+            return EXIT_OK;
+        }
+        io.stdout(`${'FORMAT'.padEnd(28)} ${'MIME'.padEnd(28)} BYTES\n`);
+        for (const f of fmts) {
+            io.stdout(`${String(f.name ?? '').padEnd(28)} ${String(f.mime ?? '').padEnd(28)} ${Number(f.size ?? 0)}\n`);
+        }
+        return EXIT_OK;
+    }
+
     if (op === 'status') {
         io.stdout(`ClipNest v${CLI_VERSION}\n`);
         io.stdout(`  Daemon:        ${data.running ? 'running' : 'offline (direct DB mode)'}\n`);
@@ -1866,6 +1891,34 @@ function renderHuman(io: CliIo, op: string, data: Record<string, unknown>, outFi
         );
         io.stdout(`  Data folder:   ${data.data_dir ?? ''}\n`);
         return EXIT_OK;
+    }
+
+    if (op === 'pinboard' || op === 'category') {
+        if (Array.isArray(data.pinboards)) {
+            const boards = data.pinboards as {
+                id?: number;
+                name?: string;
+                count?: number;
+                color?: string;
+                paste_mode?: string;
+            }[];
+            const active = typeof data.active_pinboard === 'number' ? data.active_pinboard : null;
+            if (boards.length === 0) {
+                io.stdout('No categories created.\n');
+                return EXIT_OK;
+            }
+            io.stdout(
+                `${'ID'.padEnd(5)} ${'ACTIVE'.padEnd(8)} ${'NAME'.padEnd(18)} ${'ITEMS'.padEnd(8)} ${'COLOR'.padEnd(10)} PASTE\n`
+            );
+            for (const b of boards) {
+                const id = Number(b.id ?? 0);
+                const isAct = active === id ? '●' : '';
+                io.stdout(
+                    `${String(id).padEnd(5)} ${isAct.padEnd(8)} ${String(b.name ?? '').padEnd(18)} ${String(b.count ?? 0).padEnd(8)} ${String(b.color ?? '').padEnd(10)} ${String(b.paste_mode ?? 'inherit')}\n`
+                );
+            }
+            return EXIT_OK;
+        }
     }
 
     io.stdout(JSON.stringify(data, null, 2) + '\n');

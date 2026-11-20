@@ -153,7 +153,8 @@ pub fn send_to_target(app: AppHandle, keys: String) {
         if focused {
             let needs_suspend = keys.eq_ignore_ascii_case("ctrl+v");
             let _guard = if needs_suspend && !st.queue_pasting.swap(true, Ordering::SeqCst) {
-                if let Some(sc) = st.queue_sc.lock().take() {
+                let sc_opt = st.queue_sc.lock().take();
+                if let Some(sc) = sc_opt {
                     let _ = app.global_shortcut().unregister(sc);
                 }
                 Some(InterceptSuspendGuard { app: app.clone(), acquired: true })

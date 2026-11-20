@@ -115,4 +115,106 @@ describe('UI Accessibility KeyDown handlers', () => {
 
         headerDiv.remove();
     });
+
+    it('ContextMenu submenu supports keyboard focus navigation and activation', async () => {
+        const itemAClick = vi.fn();
+        const itemBClick = vi.fn();
+        const onClose = vi.fn();
+
+        const entries: MenuEntry[] = [
+            {
+                label: 'Parent With Submenu',
+                submenu: [
+                    { label: 'Item A', onClick: itemAClick },
+                    { label: 'Item B', onClick: itemBClick },
+                ],
+            },
+        ];
+
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const root = createRoot(container);
+
+        await act(async () => {
+            root.render(<ContextMenu x={100} y={100} entries={entries} onClose={onClose} />);
+        });
+
+        const menuEl = container.querySelector<HTMLDivElement>('.menu');
+        expect(menuEl).toBeTruthy();
+
+        // 1. Open submenu using ArrowRight on the parent item
+        await act(async () => {
+            menuEl?.dispatchEvent(
+                new KeyboardEvent('keydown', {
+                    key: 'ArrowRight',
+                    bubbles: true,
+                    cancelable: true,
+                })
+            );
+        });
+
+        const subMenuEl = container.querySelector<HTMLDivElement>('.menu.sub');
+        expect(subMenuEl).toBeTruthy();
+
+        // 2. Test closing via ArrowLeft closes only the submenu
+        await act(async () => {
+            subMenuEl?.dispatchEvent(
+                new KeyboardEvent('keydown', {
+                    key: 'ArrowLeft',
+                    bubbles: true,
+                    cancelable: true,
+                })
+            );
+        });
+
+        expect(container.querySelector('.menu.sub')).toBeNull();
+        expect(container.querySelector('.menu')).toBeTruthy();
+        expect(onClose).not.toHaveBeenCalled();
+
+        // 3. Re-open submenu
+        await act(async () => {
+            menuEl?.dispatchEvent(
+                new KeyboardEvent('keydown', {
+                    key: 'ArrowRight',
+                    bubbles: true,
+                    cancelable: true,
+                })
+            );
+        });
+
+        const subMenuEl2 = container.querySelector<HTMLDivElement>('.menu.sub');
+        expect(subMenuEl2).toBeTruthy();
+
+        // Submenu initially has focusIdx at 0 (Item A).
+        // Press ArrowDown to navigate to Item B (index 1).
+        await act(async () => {
+            subMenuEl2?.dispatchEvent(
+                new KeyboardEvent('keydown', {
+                    key: 'ArrowDown',
+                    bubbles: true,
+                    cancelable: true,
+                })
+            );
+        });
+
+        // Press Enter to activate Item B
+        await act(async () => {
+            subMenuEl2?.dispatchEvent(
+                new KeyboardEvent('keydown', {
+                    key: 'Enter',
+                    bubbles: true,
+                    cancelable: true,
+                })
+            );
+        });
+
+        expect(itemBClick).toHaveBeenCalled();
+        expect(itemAClick).not.toHaveBeenCalled();
+        expect(onClose).toHaveBeenCalled();
+
+        await act(async () => {
+            root.unmount();
+        });
+        container.remove();
+    });
 });

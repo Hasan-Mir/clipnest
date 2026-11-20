@@ -369,27 +369,39 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// The DB lock is held only for the snapshot itself, never during compression.
 /// Keeps the newest `keep` files.
 pub fn backup(db: &parking_lot::Mutex<Connection>, data_dir: &Path, keep: u32) -> Result<PathBuf, String> {
+    static BACKUP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let dir = backup_dir(data_dir);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let name = format!("clipnest-{}.db", today_string());
-    let tmp = dir.join(format!("{name}.tmp"));
+    let today = today_string();
+    let seq = BACKUP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let pid = std::process::id();
+    let name = format!("clipnest-{today}.db");
+    let tmp = dir.join(format!("{name}.{pid}.{seq}.tmp"));
     let _ = std::fs::remove_file(&tmp);
     {
         let conn = db.lock();
         conn.execute("VACUUM INTO ?1", params![tmp.to_string_lossy().to_string()]).map_err(|e| e.to_string())?;
     }
     let out = dir.join(format!("{name}.gz"));
-    let part = dir.join(format!("{name}.gz.part"));
-    {
+    let part = dir.join(format!("{name}.{pid}.{seq}.gz.part"));
+    let compress_res = (|| -> Result<(), String> {
         let mut src = std::fs::File::open(&tmp).map_err(|e| e.to_string())?;
         let dst = std::fs::File::create(&part).map_err(|e| e.to_string())?;
         let mut enc = flate2::write::GzEncoder::new(dst, flate2::Compression::fast());
         std::io::copy(&mut src, &mut enc).map_err(|e| e.to_string())?;
         let dst = enc.finish().map_err(|e| e.to_string())?;
         dst.sync_all().map_err(|e| e.to_string())?;
-    }
-    std::fs::rename(&part, &out).map_err(|e| e.to_string())?;
+        Ok(())
+    })();
     let _ = std::fs::remove_file(&tmp);
+    if let Err(e) = compress_res {
+        let _ = std::fs::remove_file(&part);
+        return Err(e);
+    }
+    if let Err(e) = std::fs::rename(&part, &out) {
+        let _ = std::fs::remove_file(&part);
+        return Err(e.to_string());
+    }
     let all = list_backups(data_dir);
     let keep = keep.max(1) as usize;
     if all.len() > keep {
@@ -399,7 +411,7 @@ pub fn backup(db: &parking_lot::Mutex<Connection>, data_dir: &Path, keep: u32) -
     }
     let _ = db.lock().execute(
         "INSERT INTO meta(key,value) VALUES('last_backup',?1) ON CONFLICT(key) DO UPDATE SET value=?1",
-        params![today_string()],
+        params![today],
     );
     Ok(out)
 }
@@ -423,19 +435,19 @@ fn restore_latest_backup(data_dir: &Path, target: &Path) -> Result<(), String> {
 
 pub fn insert_clip(conn: &mut Connection, c: &NewClip, fmts: &[StoredFormat]) -> Result<(i64, bool), String> {
     let now = now_ms();
-    let existing: Option<i64> = conn
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate).map_err(|e| e.to_string())?;
+    let existing: Option<i64> = tx
         .query_row("SELECT id FROM clips WHERE hash=?1", params![c.hash], |r| r.get(0))
         .optional()
         .map_err(|e| e.to_string())?;
     if let Some(id) = existing {
-        conn.execute(
+        tx.execute(
             "UPDATE clips SET ts=?1, sort_ts=?1, app_name=?2, app_exe=?3, sensitive=?4, expires_at=?5, thumb=COALESCE(?6, thumb) WHERE id=?7",
             params![now, c.app_name, c.app_exe, c.sensitive as i64, c.expires_at, c.thumb, id],
         )
         .map_err(|e| e.to_string())?;
         // Same text copied again, now WITH styling (HTML/RTF/VS Code): upgrade the stored formats.
         if c.has_rich && !fmts.is_empty() {
-            let tx = conn.transaction().map_err(|e| e.to_string())?;
             tx.execute("DELETE FROM clip_formats WHERE clip_id=?1", params![id]).map_err(|e| e.to_string())?;
             for f in fmts {
                 tx.execute(
@@ -449,11 +461,10 @@ pub fn insert_clip(conn: &mut Connection, c: &NewClip, fmts: &[StoredFormat]) ->
                 params![c.lang, c.kind, id],
             )
             .map_err(|e| e.to_string())?;
-            tx.commit().map_err(|e| e.to_string())?;
         }
+        tx.commit().map_err(|e| e.to_string())?;
         return Ok((id, false));
     }
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
     tx.execute(
         "INSERT INTO clips(hash,kind,plain,preview,search,app_name,app_exe,lang,img_w,img_h,color,chars,file_count,sensitive,has_rich,expires_at,thumb,created_at,ts,sort_ts)
          VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?18,?18)",
@@ -569,8 +580,9 @@ pub fn rename(conn: &Connection, id: i64, title: &str) -> Result<(), String> {
 pub fn set_tags(conn: &Connection, id: i64, tags: &str) -> Result<(), String> {
     let norm: Vec<String> = tags
         .split(|c: char| c == ',' || c.is_whitespace())
+        .map(|t| t.trim_start_matches('#'))
         .filter(|t| !t.is_empty())
-        .map(|t| t.trim_start_matches('#').to_string())
+        .map(String::from)
         .collect();
     conn.execute("UPDATE clips SET tags=?1 WHERE id=?2", params![norm.join(" "), id])
         .map(|_| ())
@@ -589,8 +601,20 @@ pub fn assign_category(
     source_board: Option<i64>,
     copy: bool,
 ) -> Result<(), String> {
+    assign_category_with_pin(conn, ids, board, source_board, copy, false)
+}
+
+pub fn assign_category_with_pin(
+    conn: &Connection,
+    ids: &[i64],
+    board: Option<i64>,
+    source_board: Option<i64>,
+    copy: bool,
+    pinned: bool,
+) -> Result<(), String> {
     conn.execute("SAVEPOINT assign_cat", []).map_err(|e| e.to_string())?;
     let res = (|| -> Result<(), String> {
+        let pval = pinned as i64;
         for id in ids {
             let sort_ts: f64 = conn
                 .query_row("SELECT sort_ts FROM clips WHERE id=?1", params![id], |r| r.get(0))
@@ -612,9 +636,11 @@ pub fn assign_category(
                         }
                     }
                     conn.execute(
-                        "INSERT INTO clip_categories(clip_id, board_id, pinned, sort_ts) VALUES(?1, ?2, 0, ?3)
-                         ON CONFLICT(clip_id, board_id) DO UPDATE SET sort_ts=excluded.sort_ts",
-                        params![id, bid, sort_ts],
+                        "INSERT INTO clip_categories(clip_id, board_id, pinned, sort_ts) VALUES(?1, ?2, ?3, ?4)
+                         ON CONFLICT(clip_id, board_id) DO UPDATE SET
+                           sort_ts=excluded.sort_ts,
+                           pinned=CASE WHEN excluded.pinned<>0 THEN 1 ELSE clip_categories.pinned END",
+                        params![id, bid, pval, sort_ts],
                     )
                     .map_err(|e| e.to_string())?;
                     conn.execute("UPDATE clips SET pinboard_id=?1 WHERE id=?2", params![Some(bid), id])
@@ -769,7 +795,7 @@ pub fn trim_board(conn: &Connection, board: i64) {
     if max > 0 {
         let overflow_ids: Vec<i64> = conn
             .prepare(
-                "SELECT clip_id FROM clip_categories WHERE board_id=?1 ORDER BY pinned DESC, sort_ts DESC LIMIT -1 OFFSET ?2",
+                "SELECT clip_id FROM clip_categories WHERE board_id=?1 ORDER BY pinned DESC, sort_ts DESC, clip_id DESC LIMIT -1 OFFSET ?2",
             )
             .and_then(|mut st| {
                 let rows = st.query_map(params![board, max], |r| r.get::<_, i64>(0))?;
@@ -851,7 +877,7 @@ pub fn apply_limits(conn: &Connection, s: &Settings) -> Result<(), String> {
             "DELETE FROM clips WHERE id IN (
                SELECT id FROM clips WHERE pinned=0 AND pinboard_id IS NULL
                AND NOT EXISTS (SELECT 1 FROM clip_categories cc WHERE cc.clip_id=clips.id)
-               ORDER BY sort_ts DESC LIMIT -1 OFFSET ?1)",
+               ORDER BY sort_ts DESC, id DESC LIMIT -1 OFFSET ?1)",
             params![s.max_items as i64],
         )
         .map_err(|e| e.to_string())?;
@@ -1678,5 +1704,157 @@ mod tests {
         drop(conn_dst);
         let _ = std::fs::remove_dir_all(&dir_src);
         let _ = std::fs::remove_dir_all(&dir_dst);
+    }
+
+    #[test]
+    fn trim_board_same_timestamp_evicts_older_id() {
+        let dir = std::env::temp_dir().join(format!("clipnest_db_trim_tie_{}", now_ms()));
+        let mut conn = open_with_recovery(&dir).unwrap();
+
+        let board_id = create_pinboard(&conn, "BoundedCat", "#ffaa00").unwrap();
+        update_pinboard(&conn, board_id, "BoundedCat", "#ffaa00", 1, "inherit", "inherit").unwrap();
+
+        let c1 = build_text_clip("clip 1", None, "App", "app.exe", false);
+        let (id1, _) = insert_clip(&mut conn, &c1, &[text_format("clip 1")]).unwrap();
+        assign_category(&conn, &[id1], Some(board_id), None, false).unwrap();
+
+        let c2 = build_text_clip("clip 2", None, "App", "app.exe", false);
+        let (id2, _) = insert_clip(&mut conn, &c2, &[text_format("clip 2")]).unwrap();
+        assign_category(&conn, &[id2], Some(board_id), None, false).unwrap();
+
+        // Force identical sort_ts on clips and clip_categories
+        conn.execute("UPDATE clips SET sort_ts=1000.0 WHERE id IN (?1, ?2)", params![id1, id2]).unwrap();
+        conn.execute("UPDATE clip_categories SET sort_ts=1000.0 WHERE clip_id IN (?1, ?2)", params![id1, id2]).unwrap();
+
+        trim_board(&conn, board_id);
+
+        let surviving: Vec<i64> = conn
+            .prepare("SELECT clip_id FROM clip_categories WHERE board_id=?1")
+            .unwrap()
+            .query_map(params![board_id], |r| r.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+
+        assert_eq!(surviving, vec![id2], "id2 (newer id) must survive while id1 is evicted on tie sort_ts");
+
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn apply_limits_same_timestamp_evicts_older_id() {
+        let dir = std::env::temp_dir().join(format!("clipnest_db_limits_tie_{}", now_ms()));
+        let mut conn = open_with_recovery(&dir).unwrap();
+
+        let c1 = build_text_clip("clip 1", None, "App", "app.exe", false);
+        let (id1, _) = insert_clip(&mut conn, &c1, &[text_format("clip 1")]).unwrap();
+
+        let c2 = build_text_clip("clip 2", None, "App", "app.exe", false);
+        let (id2, _) = insert_clip(&mut conn, &c2, &[text_format("clip 2")]).unwrap();
+
+        conn.execute("UPDATE clips SET sort_ts=1000.0 WHERE id IN (?1, ?2)", params![id1, id2]).unwrap();
+
+        let mut s = Settings::default();
+        s.max_items = 1;
+        apply_limits(&conn, &s).unwrap();
+
+        assert!(get_row(&conn, id2).is_some(), "id2 (newer id) must survive");
+        assert!(get_row(&conn, id1).is_none(), "id1 (older id) must be evicted");
+
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn backup_concurrent_calls_succeed_without_leftover_temps() {
+        let dir = std::env::temp_dir().join(format!("clipnest_db_backup_concur_{}", now_ms()));
+        let conn = open_with_recovery(&dir).unwrap();
+        let db = std::sync::Arc::new(parking_lot::Mutex::new(conn));
+
+        let db1 = db.clone();
+        let dir1 = dir.clone();
+        let t1 = std::thread::spawn(move || backup(&db1, &dir1, 5));
+
+        let db2 = db.clone();
+        let dir2 = dir.clone();
+        let t2 = std::thread::spawn(move || backup(&db2, &dir2, 5));
+
+        let res1 = t1.join().unwrap();
+        let res2 = t2.join().unwrap();
+        assert!(res1.is_ok(), "Thread 1 backup succeeded: {:?}", res1);
+        assert!(res2.is_ok(), "Thread 2 backup succeeded: {:?}", res2);
+
+        let bdir = backup_dir(&dir);
+        if let Ok(entries) = std::fs::read_dir(&bdir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                assert!(!name.ends_with(".tmp"), "Found leftover tmp file: {name}");
+                assert!(!name.ends_with(".gz.part"), "Found leftover part file: {name}");
+            }
+        }
+
+        drop(db);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn insert_clip_concurrent_connections_deduplicate_cleanly() {
+        let dir = std::env::temp_dir().join(format!("clipnest_db_insert_concur_{}", now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("clipnest.db");
+
+        // Initialize schema
+        {
+            let conn = open_with_recovery(&dir).unwrap();
+            drop(conn);
+        }
+
+        let db_path1 = db_path.clone();
+        let db_path2 = db_path.clone();
+
+        let t1 = std::thread::spawn(move || {
+            let mut conn1 = Connection::open(&db_path1).unwrap();
+            conn1.busy_timeout(std::time::Duration::from_secs(5)).unwrap();
+            let c1 = build_text_clip("concurrent text", None, "App", "app.exe", false);
+            insert_clip(&mut conn1, &c1, &[text_format("concurrent text")])
+        });
+
+        let t2 = std::thread::spawn(move || {
+            let mut conn2 = Connection::open(&db_path2).unwrap();
+            conn2.busy_timeout(std::time::Duration::from_secs(5)).unwrap();
+            let c2 = build_text_clip("concurrent text", None, "App", "app.exe", false);
+            insert_clip(&mut conn2, &c2, &[text_format("concurrent text")])
+        });
+
+        let res1 = t1.join().unwrap().unwrap();
+        let res2 = t2.join().unwrap().unwrap();
+
+        assert_eq!(res1.0, res2.0, "Both calls must resolve to the exact same clip ID");
+        assert!(
+            (res1.1 && !res2.1) || (!res1.1 && res2.1),
+            "Exactly one call must report is_new == true (got res1.1={}, res2.1={})",
+            res1.1,
+            res2.1
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn set_tags_ignores_hash_only_tokens() {
+        let dir = std::env::temp_dir().join(format!("clipnest_db_tags_{}", now_ms()));
+        let mut conn = open_with_recovery(&dir).unwrap();
+
+        let c = build_text_clip("tagged item", None, "App", "app.exe", false);
+        let (id, _) = insert_clip(&mut conn, &c, &[text_format("tagged item")]).unwrap();
+
+        set_tags(&conn, id, "#work, #, ###").unwrap();
+
+        let tags: String = conn.query_row("SELECT tags FROM clips WHERE id=?1", params![id], |r| r.get(0)).unwrap();
+        assert_eq!(tags, "work");
+
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

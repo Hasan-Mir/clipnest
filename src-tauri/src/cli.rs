@@ -925,32 +925,34 @@ fn dispatch_online(app: &AppHandle, op: &str, p: &Value) -> IpcResponse {
                     if inputs.is_empty() {
                         return IpcResponse::fail(EXIT_USAGE, "Provide at least one item ID or file path", None);
                     }
-                    let mut added_ids = Vec::new();
+                    enum ResolvedAdd {
+                        ExplorerFile(String),
+                        BasketClip(i64, Vec<Option<String>>),
+                        QueueClip(i64),
+                    }
+                    let mut planned = Vec::with_capacity(inputs.len());
                     for val in &inputs {
                         if let Some(s) = val.as_str() {
                             if is_basket && Path::new(s).exists() {
-                                match crate::queue::collect_file_from_explorer(app, s) {
-                                    Ok(id) => {
-                                        added_ids.push(id);
-                                        continue;
-                                    }
-                                    Err(e) => return IpcResponse::fail(EXIT_ERROR, e, None),
-                                }
+                                planned.push(ResolvedAdd::ExplorerFile(s.to_string()));
+                                continue;
                             }
                         }
-                        let id = {
+                        let (id, row, plain_opt) = {
                             let conn = state.db.lock();
-                            match resolve_item_id(&conn, val) {
+                            let id = match resolve_item_id(&conn, val) {
                                 Ok(i) => i,
                                 Err(e) => return IpcResponse::fail(EXIT_NOT_FOUND, e, None),
-                            }
-                        };
-                        let row = {
-                            let conn = state.db.lock();
-                            db::get_row(&conn, id)
-                        };
-                        let Some(row) = row else {
-                            return IpcResponse::fail(EXIT_NOT_FOUND, format!("Item #{id} not found"), None);
+                            };
+                            let Some(row) = db::get_row(&conn, id) else {
+                                return IpcResponse::fail(EXIT_NOT_FOUND, format!("Item #{id} not found"), None);
+                            };
+                            let plain_opt = if is_basket && row.kind == "file" {
+                                db::get_plain(&conn, id).map(|(_, p)| p)
+                            } else {
+                                None
+                            };
+                            (id, row, plain_opt)
                         };
                         if is_basket {
                             if row.kind != "file" && row.kind != "image" {
@@ -964,7 +966,7 @@ fn dispatch_online(app: &AppHandle, op: &str, p: &Value) -> IpcResponse {
                                 );
                             }
                             let paths: Vec<Option<String>> = if row.kind == "file" {
-                                let plain = { db::get_plain(&state.db.lock(), id).map(|(_, p)| p).unwrap_or_default() };
+                                let plain = plain_opt.unwrap_or_default();
                                 plain
                                     .lines()
                                     .map(|l| l.trim())
@@ -974,17 +976,40 @@ fn dispatch_online(app: &AppHandle, op: &str, p: &Value) -> IpcResponse {
                             } else {
                                 vec![None]
                             };
-                            let mut q = state.queue.lock();
-                            q.active = true;
-                            q.mode = "basket".into();
-                            crate::queue::push_basket_paths(&mut q.basket, id, paths, false, false);
+                            planned.push(ResolvedAdd::BasketClip(id, paths));
                         } else {
-                            let mut q = state.queue.lock();
-                            q.active = true;
-                            q.mode = "queue".into();
-                            q.items.push(id);
+                            planned.push(ResolvedAdd::QueueClip(id));
                         }
-                        added_ids.push(id);
+                    }
+                    let mut added_ids = Vec::with_capacity(planned.len());
+                    for item in planned {
+                        match item {
+                            ResolvedAdd::ExplorerFile(s) => match crate::queue::collect_file_from_explorer(app, &s) {
+                                Ok(id) => added_ids.push(id),
+                                Err(e) => {
+                                    if !added_ids.is_empty() {
+                                        crate::windowing::show_queue(app);
+                                        crate::queue::sync_intercept(app);
+                                        emit_status();
+                                    }
+                                    return IpcResponse::fail(EXIT_ERROR, e, None);
+                                }
+                            },
+                            ResolvedAdd::BasketClip(id, paths) => {
+                                let mut q = state.queue.lock();
+                                q.active = true;
+                                q.mode = "basket".into();
+                                crate::queue::push_basket_paths(&mut q.basket, id, paths, false, false);
+                                added_ids.push(id);
+                            }
+                            ResolvedAdd::QueueClip(id) => {
+                                let mut q = state.queue.lock();
+                                q.active = true;
+                                q.mode = "queue".into();
+                                q.items.push(id);
+                                added_ids.push(id);
+                            }
+                        }
                     }
                     if !added_ids.is_empty() {
                         crate::windowing::show_queue(app);
@@ -1320,6 +1345,13 @@ fn dispatch_online(app: &AppHandle, op: &str, p: &Value) -> IpcResponse {
             let fmt = p.get("format").and_then(|v| v.as_str()).unwrap_or("");
             let s = state.settings.read().clone();
             if settings_only {
+                if let Some(parent) = dest.parent() {
+                    if !parent.as_os_str().is_empty() {
+                        if let Err(e) = std::fs::create_dir_all(parent) {
+                            return IpcResponse::fail(EXIT_ERROR, e.to_string(), None);
+                        }
+                    }
+                }
                 match serde_json::to_vec_pretty(&s) {
                     Ok(bytes) => match db::write_atomic(&dest, &bytes) {
                         Ok(()) => IpcResponse::success(json!({ "path": dest.to_string_lossy(), "kind": "settings" })),

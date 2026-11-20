@@ -46,12 +46,16 @@ jobs:
         run: npm test
 
       - name: Build & test CLI workspace
+        shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           npm run build:cli
           npm test --workspace @seymi/clipnest-cli
 
       - name: Check Rust formatting (rustfmt)
+        shell: pwsh
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
           cargo fmt --manifest-path packages/core/Cargo.toml --all -- --check
 

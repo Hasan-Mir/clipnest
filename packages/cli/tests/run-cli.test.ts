@@ -466,4 +466,161 @@ describe('@seymi/clipnest-cli end-to-end verification', () => {
             }
         }
     });
+
+    it('accepts -q, --quiet, and --no-color global flags for parity with native Rust CLI', async () => {
+        let out = '';
+        const code1 = await runCli(['--quiet', '--version'], {
+            stdout: (s) => (out += s),
+            stderr: () => {},
+        });
+        assert.equal(code1, EXIT_OK);
+        assert.match(out, new RegExp(CLI_VERSION));
+
+        out = '';
+        const code2 = await runCli(['--no-color', '-q', '-V'], {
+            stdout: (s) => (out += s),
+            stderr: () => {},
+        });
+        assert.equal(code2, EXIT_OK);
+        assert.match(out, new RegExp(CLI_VERSION));
+
+        const received: Array<{ op: string; [key: string]: unknown }> = [];
+        await startMockIpcServer((op, params) => {
+            received.push({ op, ...params });
+            return {
+                ok: true,
+                exit_code: EXIT_OK,
+                data: { id: 1, is_new: true, row: { id: 1, preview: 'hello' } },
+            };
+        });
+
+        const code3 = await runCli(['add', 'hello', '--quiet'], {
+            dataDir: tmpDir,
+            stdout: () => {},
+            stderr: () => {},
+        });
+        assert.equal(code3, EXIT_OK);
+        assert.equal(received.length, 1);
+        assert.equal(received[0].op, 'add');
+        assert.equal(received[0].text, 'hello');
+    });
+
+    it('renders human-mode aligned tables for formats and categories (populated and empty)', async () => {
+        // 1. formats populated
+        await startMockIpcServer((op) => {
+            if (op === 'formats') {
+                return {
+                    ok: true,
+                    exit_code: EXIT_OK,
+                    data: {
+                        formats: [
+                            { name: 'CF_TEXT', mime: 'text/plain', size: 100 },
+                            { name: 'CF_HTML', mime: 'text/html', size: 250 },
+                        ],
+                    },
+                };
+            }
+            return { ok: false, exit_code: EXIT_ERROR, data: null, error: 'unknown' };
+        });
+
+        let out = '';
+        const codeFmt1 = await runCli(['formats', '12'], {
+            dataDir: tmpDir,
+            stdout: (s) => (out += s),
+            stderr: () => {},
+        });
+        assert.equal(codeFmt1, EXIT_OK);
+        assert.match(out, /FORMAT\s+MIME\s+BYTES/);
+        assert.match(out, /CF_TEXT\s+text\/plain\s+100/);
+        assert.match(out, /CF_HTML\s+text\/html\s+250/);
+
+        // 2. formats empty
+        await startMockIpcServer((op) => {
+            if (op === 'formats') {
+                return {
+                    ok: true,
+                    exit_code: EXIT_OK,
+                    data: { formats: [] },
+                };
+            }
+            return { ok: false, exit_code: EXIT_ERROR, data: null, error: 'unknown' };
+        });
+
+        out = '';
+        const codeFmt2 = await runCli(['formats', '12'], {
+            dataDir: tmpDir,
+            stdout: (s) => (out += s),
+            stderr: () => {},
+        });
+        assert.equal(codeFmt2, EXIT_OK);
+        assert.match(out, /No stored formats\./);
+
+        // 3. category list populated
+        await startMockIpcServer((op) => {
+            if (op === 'pinboard' || op === 'category') {
+                return {
+                    ok: true,
+                    exit_code: EXIT_OK,
+                    data: {
+                        active_pinboard: 1,
+                        pinboards: [
+                            { id: 1, name: 'Work', count: 5, color: '#ff0000', paste_mode: 'inherit' },
+                            { id: 2, name: 'Personal', count: 12, color: '#00ff00', paste_mode: 'plain' },
+                        ],
+                    },
+                };
+            }
+            return { ok: false, exit_code: EXIT_ERROR, data: null, error: 'unknown' };
+        });
+
+        out = '';
+        const codeCat1 = await runCli(['category', 'list'], {
+            dataDir: tmpDir,
+            stdout: (s) => (out += s),
+            stderr: () => {},
+        });
+        assert.equal(codeCat1, EXIT_OK);
+        assert.match(out, /ID\s+ACTIVE\s+NAME\s+ITEMS\s+COLOR\s+PASTE/);
+        assert.match(out, /1\s+●\s+Work\s+5\s+#ff0000\s+inherit/);
+        assert.match(out, /2\s+Personal\s+12\s+#00ff00\s+plain/);
+
+        // 4. category list empty
+        await startMockIpcServer((op) => {
+            if (op === 'pinboard' || op === 'category') {
+                return {
+                    ok: true,
+                    exit_code: EXIT_OK,
+                    data: { active_pinboard: null, pinboards: [] },
+                };
+            }
+            return { ok: false, exit_code: EXIT_ERROR, data: null, error: 'unknown' };
+        });
+
+        out = '';
+        const codeCat2 = await runCli(['category', 'list'], {
+            dataDir: tmpDir,
+            stdout: (s) => (out += s),
+            stderr: () => {},
+        });
+        assert.equal(codeCat2, EXIT_OK);
+        assert.match(out, /No categories created\./);
+    });
+
+    it('returns EXIT_ERROR when offline transform --copy clipboard write fails', async () => {
+        let err = '';
+        const code = await runCli(['transform', 'upper', '-', '--copy', '--json'], {
+            dataDir: tmpDir,
+            stdin: 'hello world',
+            writeClipboard: async () => {
+                throw new Error('Clipboard access denied');
+            },
+            stdout: () => {},
+            stderr: (s) => (err += s),
+        });
+        assert.equal(code, EXIT_ERROR);
+        const parsed = JSON.parse(err.trim());
+        assert.equal(parsed.ok, false);
+        assert.equal(parsed.exit_code, EXIT_ERROR);
+        assert.match(parsed.error, /Clipboard access denied/);
+    });
 });

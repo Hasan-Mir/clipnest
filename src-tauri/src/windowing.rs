@@ -370,10 +370,24 @@ pub fn show_tray(app: &AppHandle) {
     let _ = app.emit("tray-shown", ());
 }
 
+fn clamp_tray_pos(pos: (i32, i32), size: (i32, i32), work_area: (i32, i32, i32, i32)) -> (i32, i32) {
+    let (l, t, r, b) = work_area;
+    let nx = pos.0.min(r - size.0 - 8).max(l + 8);
+    let ny = pos.1.min(b - size.1 - 8).max(t + 8);
+    (nx, ny)
+}
+
 pub fn resize_tray(app: &AppHandle, height: u32) {
     let Some(w) = app.get_webview_window("tray") else { return };
     let clamped = height.clamp(170, 460) as f64;
     let _ = w.set_size(LogicalSize::new(246.0, clamped));
+    if let (Ok(pos), Ok(size)) = (w.outer_position(), w.outer_size()) {
+        let work_area = win::work_area_at(pos.x, pos.y);
+        let (nx, ny) = clamp_tray_pos((pos.x, pos.y), (size.width as i32, size.height as i32), work_area);
+        if nx != pos.x || ny != pos.y {
+            let _ = w.set_position(PhysicalPosition::new(nx, ny));
+        }
+    }
     if let Some(h) = hwnd_of(&w) {
         win::round_window_corners(h);
     }
@@ -393,5 +407,19 @@ pub fn hide_tray(app: &AppHandle) {
             win::hide_window(h);
         }
         let _ = w.hide();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_clamp_tray_pos() {
+        // Standard primary monitor (1920x1080 with 40px taskbar at bottom -> work_area bottom is 1040)
+        assert_eq!(clamp_tray_pos((1660, 764), (246, 310), (0, 0, 1920, 1040)), (1660, 722));
+
+        // Multi-monitor with secondary monitor positioned to the left (-1920 to 0)
+        assert_eq!(clamp_tray_pos((-250, 764), (246, 310), (-1920, 0, 0, 1040)), (-254, 722));
     }
 }

@@ -17,6 +17,18 @@ The human user will NOT be manually implementing your review or writing code fix
 Instead, your review will be handed off to an autonomous AI Coding Agent (Antigravity) who will inspect, assess, and apply the code modifications directly to the repository.
 
 --------------------------------------------------------------------------------
+1.5. MANDATORY FIRST STEP: READ REVIEW HISTORY (`docs/reviews/`)
+--------------------------------------------------------------------------------
+Before inspecting source code or reporting findings, read:
+1. `docs/reviews/INDEX.md` (summary of prior review rounds and intentional design decisions).
+2. The most recent `docs/reviews/round-*.md` report (exact patches applied in the previous round).
+
+Use this history to:
+- **Avoid re-opening settled items**: Do NOT re-report items listed under "Intentional Decisions / Do-Not-Reopen" unless you can prove a concrete new failure mode that invalidates the documented rationale.
+- **Audit recent fixes for side effects**: Pay special attention to subtle regressions, lock/guard interactions, or edge cases introduced or exposed by the most recent round's patches.
+- **Focus on genuine remaining risk**: Prioritize previously under-examined paths and real data-integrity, concurrency, security, or cross-module bugs over minor style nits.
+
+--------------------------------------------------------------------------------
 2. CRITICAL CONSTRAINT: DO NOT DELEGATE FIXES
 --------------------------------------------------------------------------------
 ⛔ STRICT PROHIBITION ON DELEGATION:
@@ -44,6 +56,7 @@ The report MUST begin with this exact directive banner addressed to the implemen
 > 2. **CHECK FOR REGRESSIONS**: Verify that proposed changes respect the monorepo architecture, type invariants, existing test suites, and cross-platform behavior (Windows / Tauri / Rust / React).
 > 3. **FALSE POSITIVE FILTER**: If a suggestion is based on incomplete context, conflicts with higher-level requirements, or represents an anti-pattern for this project, document your reasoning, reject or adjust the change, and notify the user.
 > 4. **TYPECHECK & TEST**: Always run `bun run typecheck:bun` (runs `bun check --skipLibCheck` across all workspaces in ~200ms) instead of standard `npm run typecheck`. Run test suites (`cargo test`, `vitest`) before and after applying changes to ensure zero regressions.
+> 5. **PERSIST REVIEW HISTORY**: After applying changes and verifying all tests pass, create `docs/reviews/round-XX-YYYY-MM-DD.md` (following `docs/reviews/TEMPLATE.md`) and update `docs/reviews/INDEX.md`.
 
 --------------------------------------------------------------------------------
 4. STRUCTURE OF EACH FINDING
