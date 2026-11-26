@@ -185,6 +185,7 @@ export interface Settings {
     accent: string;
     density: 'compact' | 'comfortable';
     font_size: number;
+    ui_font: 'google-sans' | 'inter' | 'plus-jakarta-sans' | 'dm-sans' | 'roboto';
     font_family: string;
     card_lines: number;
     card_max_height: number;
@@ -199,7 +200,7 @@ export interface Settings {
     delete_animation: boolean;
     show_thumbnails: boolean;
     thumbnail_size: 'small' | 'medium' | 'large';
-    virtual_scroll: boolean;
+    page_size: number;
     highlight_matches: boolean;
     highlight_color: string;
     highlight_bg: string;
@@ -287,6 +288,10 @@ export const api = {
     resizeTray: (height: number) => invoke<void>('resize_tray', { height }),
     requestEraseFromTray: () => invoke<void>('request_erase_from_tray'),
     openSettings: () => invoke<void>('open_settings'),
+    settingsMinimize: () => invoke<void>('settings_minimize'),
+    settingsToggleMaximize: () => invoke<boolean>('settings_toggle_maximize'),
+    settingsIsMaximized: () => invoke<boolean>('settings_is_maximized'),
+    settingsClose: () => invoke<void>('settings_close'),
     eraseHistory: (includePinned = false, pinboard: number | null = null, allPinboards = false) =>
         invoke<number>('erase_history', { includePinned, pinboard, allPinboards }),
     backupNow: () => invoke<string>('backup_now'),

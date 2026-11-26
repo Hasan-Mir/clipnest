@@ -2,6 +2,7 @@ import React, { memo, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { parseCssColor } from '../lib/format';
 import { highlightDomElement, SearchMode } from '../lib/highlightMatch';
+import { useViewportVisible } from '../lib/useViewportVisible';
 
 // ───────────── HTML cache ─────────────
 const cache = new Map<string, string | null>();
@@ -257,6 +258,9 @@ export const RichView = memo(function RichView({
     onMissing,
 }: Props) {
     const host = useRef<HTMLDivElement>(null);
+    // Defer HTML IPC + Shadow DOM attachment for off-screen cards in the paginated DOM list
+    // until they enter within 300px of the viewport (full preview always loads eagerly).
+    const nearViewport = useViewportVisible(host, full);
     const onMissingRef = useRef(onMissing);
     onMissingRef.current = onMissing;
     const key = cacheKey(id, ts);
@@ -275,6 +279,9 @@ export const RichView = memo(function RichView({
     const [overflowing, setOverflowing] = useState(false);
 
     useEffect(() => {
+        if (!nearViewport && !cache.has(key)) {
+            return;
+        }
         let alive = true;
         loadHtml(id, ts).then((html) => {
             if (!alive) {
@@ -303,7 +310,7 @@ export const RichView = memo(function RichView({
         return () => {
             alive = false;
         };
-    }, [id, ts, key, full, query, searchMode, highlight]);
+    }, [id, ts, key, full, nearViewport, query, searchMode, highlight]);
 
     if (state === 'none') {
         return null;

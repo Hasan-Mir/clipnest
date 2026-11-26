@@ -48,7 +48,10 @@
 :root {
     --accent: #4f8cff;
     --accent-fg: #ffffff;
-    --fs: 13px;
+    --fs: 14px;
+    --ui-font:
+        'Google Sans Flex', 'Google Sans', 'Vazirmatn', system-ui, -apple-system, 'Segoe UI Variable Text', 'Segoe UI',
+        Tahoma, sans-serif;
     --card-font: 'Vazirmatn', system-ui, -apple-system, 'Segoe UI Variable Text', 'Segoe UI', Tahoma, sans-serif;
     --card-max-h: 160px;
     --thumb-max-h: 110px;
@@ -64,6 +67,16 @@
     --danger: #ff5c57;
     --warn: #ffb02e;
     --code-bg: #1f2024;
+    --surface-raised: #25262c;
+    --border-strong: rgba(255, 255, 255, 0.12);
+    --nav-active: #272b35;
+    --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+    --accent-border: color-mix(in srgb, var(--accent) 34%, transparent);
+    --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.24);
+    --press-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.28);
+    --switch-knob: #f8fafc;
+    --win-ctl-hover: rgba(255, 255, 255, 0.08);
+    --win-ctl-active: rgba(255, 255, 255, 0.14);
     --shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
     --radius: 10px;
     color-scheme: dark;
@@ -76,6 +89,13 @@
     --card-hover: #1b1b1e;
     --border: #26262a;
     --code-bg: #0a0a0c;
+    --surface-raised: #16171b;
+    --border-strong: rgba(255, 255, 255, 0.14);
+    --nav-active: #1a1d24;
+    --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    --press-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.45);
+    --win-ctl-hover: rgba(255, 255, 255, 0.1);
+    --win-ctl-active: rgba(255, 255, 255, 0.16);
 }
 
 :root[data-theme='light'] {
@@ -87,6 +107,16 @@
     --text: #1c1d22;
     --muted: #707380;
     --code-bg: #f3f4f8;
+    --surface-raised: #ffffff;
+    --border-strong: rgba(15, 23, 42, 0.14);
+    --nav-active: #ffffff;
+    --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+    --accent-border: color-mix(in srgb, var(--accent) 30%, transparent);
+    --card-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+    --press-shadow: inset 0 2px 4px rgba(15, 23, 42, 0.14);
+    --switch-knob: #ffffff;
+    --win-ctl-hover: rgba(15, 23, 42, 0.06);
+    --win-ctl-active: rgba(15, 23, 42, 0.11);
     --shadow: 0 8px 28px rgba(0, 0, 0, 0.15);
     color-scheme: light;
 }
@@ -149,6 +179,18 @@
     transition: none !important;
 }
 
+:root[data-animations='off'] button:active {
+    transform: none !important;
+}
+
+:root[data-animations='off'] .overlay,
+:root[data-animations='off'] .dialog,
+:root[data-animations='off'] .menu,
+:root[data-animations='off'] .cselect-menu {
+    opacity: 1 !important;
+    transform: none !important;
+}
+
 * {
     box-sizing: border-box;
 }
@@ -173,7 +215,7 @@ body,
     border: 0;
 }
 
-/* Prioritize embedded Vazirmatn first so both Persian and Latin glyphs render with Vazirmatn by default */
+/* Use the selected Latin UI font first, with embedded Vazirmatn locked in immediately after for Persian/Arabic glyphs */
 body {
     background: var(--bg);
     color: var(--text);
@@ -182,14 +224,7 @@ body {
     -webkit-user-select: none;
     font-size: var(--fs);
     line-height: 1.35;
-    font-family:
-        'Vazirmatn',
-        system-ui,
-        -apple-system,
-        'Segoe UI Variable Text',
-        'Segoe UI',
-        Tahoma,
-        sans-serif;
+    font-family: var(--ui-font);
 }
 
 button,
@@ -206,6 +241,31 @@ button {
     background: none;
     line-height: 1;
     vertical-align: middle;
+}
+
+/* Tactile physical press-in feedback across all interactive buttons, switches, and window controls.
+ * Tuned to 175ms so clicks feel calm and deliberate rather than snappy/abrupt. */
+button:where(:not(:disabled):not(.no-press)) {
+    transition:
+        transform 175ms cubic-bezier(0.22, 1, 0.36, 1),
+        box-shadow 175ms ease,
+        background-color 175ms ease,
+        border-color 175ms ease,
+        color 175ms ease,
+        opacity 175ms ease;
+    will-change: transform;
+}
+
+button:where(:not(:disabled):not(.no-press)):active {
+    transform: translateY(1px) scale(0.968);
+    box-shadow: var(--press-shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    button:where(:not(:disabled):not(.no-press)):active,
+    .switch:active {
+        transform: none !important;
+    }
 }
 
 button:focus-visible,
@@ -438,29 +498,67 @@ mark.shl {
     width: 28px;
     height: 28px;
     padding: 0;
-    border-radius: 6px;
+    border-radius: 7px;
+    border: 1px solid transparent;
     color: var(--muted);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     flex: none;
     line-height: 1;
-    transition:
-        border-color 0.16s ease,
-        box-shadow 0.16s ease,
-        background-color 0.14s ease,
-        color 0.14s ease,
-        transform 0.14s ease;
 }
 
 .iconbtn:hover {
-    background: var(--bg2);
+    background: var(--surface-raised);
+    border-color: var(--border);
     color: var(--text);
 }
 
 .iconbtn.on {
     color: var(--accent-fg);
     background: var(--accent);
+}
+
+/* Floating popup Pin button: smooth tilt + accent fill instead of a solid square badge */
+.iconbtn.pin-toggle .icon {
+    transition:
+        transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+        fill 180ms ease,
+        color 180ms ease;
+}
+
+.iconbtn.pin-toggle.pinned {
+    color: var(--accent);
+    background: transparent;
+}
+
+.iconbtn.pin-toggle.pinned:hover {
+    background: var(--surface-raised);
+    border-color: var(--border);
+    color: var(--accent);
+}
+
+.iconbtn.pin-toggle.pinned .icon {
+    fill: currentColor;
+    transform: rotate(-45deg);
+}
+
+/* Side toolbar toggle button: accent SVG stroke instead of solid background fill */
+.iconbtn.toolbar-toggle .icon {
+    transition:
+        color 180ms ease,
+        fill 180ms ease;
+}
+
+.iconbtn.toolbar-toggle.active {
+    color: var(--accent);
+    background: transparent;
+}
+
+.iconbtn.toolbar-toggle.active:hover {
+    background: var(--surface-raised);
+    border-color: var(--border);
+    color: var(--accent);
 }
 
 .chipbtn {
@@ -745,30 +843,66 @@ input.search-bare::placeholder,
     display: flex;
 }
 
+/* Paginated native DOM list: `scrollbar-gutter: stable` prevents horizontal layout shift when
+ * filtering causes the vertical scrollbar to appear or disappear. Vertical card spacing lives on
+ * `.card-slot` (rather than flex `gap`) so collapsing a deleted card to 0px leaves zero residual gap. */
 .list {
     flex: 1;
+    min-width: 0;
+    overflow-x: hidden;
     overflow-y: auto;
+    scrollbar-gutter: stable;
     padding: 0 8px 8px;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 0;
 }
 
-.list.vlist-host {
+/* `grid-template-columns: minmax(0, 1fr)` + `min-width: 0` is mandatory on CSS Grid wrappers:
+ * without it, the implicit `auto` track expands to the `min-content` width of wide `<pre>`/`RichView`
+ * lines inside a card, causing horizontal overflow and a bottom scrollbar in `.list`. */
+.card-slot {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 1fr;
+    min-width: 0;
+    width: 100%;
+    margin-bottom: 6px;
+    flex: none;
+    transition:
+        grid-template-rows 235ms cubic-bezier(0.22, 1, 0.36, 1),
+        opacity 190ms ease,
+        margin-bottom 235ms cubic-bezier(0.22, 1, 0.36, 1),
+        transform 210ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.card-slot-inner {
+    min-width: 0;
+    min-height: 0;
+    width: 100%;
+    overflow: visible;
+}
+
+.card-slot.removing {
+    grid-template-rows: 0fr;
+    opacity: 0;
+    margin-bottom: 0;
+    transform: scale(0.97);
+    pointer-events: none;
+}
+
+.card-slot.removing .card-slot-inner {
     overflow: hidden;
-    padding: 0;
-    display: flex;
 }
 
-.vlist {
-    flex: 1;
-    height: 100%;
-    padding: 0 8px 8px;
-    overflow-y: auto;
+.card-slot.removing .card,
+.list.is-dragging-card .card {
+    content-visibility: visible;
 }
 
-.vlist-item {
-    padding-bottom: 6px;
+.list-sentinel {
+    height: 1px;
+    flex: none;
 }
 
 .empty {
@@ -828,9 +962,13 @@ input.search-bare::placeholder,
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 7px 10px 8px;
+    min-width: 0;
+    width: 100%;
     flex: none;
     cursor: default;
     position: relative;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 76px;
     transition:
         border-color 0.16s ease,
         box-shadow 0.16s ease,
@@ -1249,22 +1387,18 @@ input.search-bare::placeholder,
     justify-content: space-between;
     gap: 8px;
     padding: 2px 10px;
-    border-radius: 7px;
-    background: var(--bg2);
+    border-radius: 8px;
+    background: var(--surface-raised);
     border: 1px solid var(--border);
+    box-shadow: var(--card-shadow);
     color: var(--text);
     text-align: start;
     line-height: 1.5;
-    transition:
-        border-color 0.16s ease,
-        box-shadow 0.16s ease,
-        background-color 0.14s ease,
-        color 0.14s ease;
 }
 
 .cselect-btn:hover {
     background: var(--card-hover);
-    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+    border-color: var(--border-strong);
 }
 
 .cselect.open .cselect-btn,
@@ -1291,8 +1425,18 @@ input.search-bare::placeholder,
     align-items: center;
     justify-content: center;
     flex: none;
+    transition:
+        transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
+        color 140ms ease;
 }
 
+.cselect.open .cselect-chev {
+    transform: rotate(180deg);
+    color: var(--accent);
+}
+
+/* Notion-calm dropdown entrance: starts hidden/offset on frame 0 and transitions on `.entered`
+ * (set via double-rAF in `useEntered`) so WebView2 never skips the opening animation on mount. */
 .cselect-menu {
     z-index: 150;
     background: var(--card);
@@ -1303,10 +1447,17 @@ input.search-bare::placeholder,
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    transform-origin: top center;
+    opacity: 0;
+    transform: translateY(-6px) scale(0.955);
+    transition:
+        opacity 210ms cubic-bezier(0.16, 1, 0.3, 1),
+        transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.cselect-menu.cselect-menu-ready {
-    animation: menuIn 130ms cubic-bezier(0.16, 1, 0.3, 1);
+.cselect-menu.entered {
+    opacity: 1;
+    transform: translateY(0) scale(1);
 }
 
 .cselect-search {
@@ -1331,6 +1482,7 @@ input.search-bare::placeholder,
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
+    scrollbar-gutter: stable;
 }
 
 .cselect-empty {
@@ -1429,10 +1581,17 @@ input.search-bare::placeholder,
     box-shadow: var(--shadow);
     font-size: 0.93em;
     outline: 0;
+    transform-origin: top left;
+    opacity: 0;
+    transform: translateY(-6px) scale(0.955);
+    transition:
+        opacity 210ms cubic-bezier(0.16, 1, 0.3, 1),
+        transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.menu.menu-ready {
-    animation: menuIn 130ms cubic-bezier(0.16, 1, 0.3, 1);
+.menu.entered {
+    opacity: 1;
+    transform: translateY(0) scale(1);
 }
 
 .menu.sub {
@@ -1579,7 +1738,12 @@ input.search-bare::placeholder,
     align-items: center;
     justify-content: center;
     padding: 20px;
-    animation: backdropIn 140ms ease;
+    opacity: 0;
+    transition: opacity 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.overlay.entered {
+    opacity: 1;
 }
 
 .dialog {
@@ -1591,7 +1755,16 @@ input.search-bare::placeholder,
     padding: 15px;
     box-shadow: var(--shadow);
     outline: 0;
-    animation: modalIn 160ms cubic-bezier(0.16, 1, 0.3, 1);
+    opacity: 0;
+    transform: translateY(8px) scale(0.955);
+    transition:
+        opacity 230ms cubic-bezier(0.16, 1, 0.3, 1),
+        transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dialog.entered {
+    opacity: 1;
+    transform: translateY(0) scale(1);
 }
 
 .dialog-title {
@@ -1658,63 +1831,70 @@ textarea.editor:focus {
 }
 
 .btn {
-    min-height: 31px;
-    padding: 0 12px;
-    border-radius: 7px;
-    background: var(--bg2);
+    min-height: 32px;
+    padding: 0 13px;
+    border-radius: 8px;
+    background: var(--surface-raised);
     border: 1px solid var(--border);
+    box-shadow: var(--card-shadow);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
+    font-weight: 500;
     line-height: 1.15;
     white-space: nowrap;
-    transition:
-        border-color 0.16s ease,
-        box-shadow 0.16s ease,
-        background-color 0.14s ease,
-        color 0.14s ease,
-        transform 0.14s ease;
 }
 
 .btn:hover:not(:disabled) {
-    border-color: var(--accent);
+    border-color: var(--border-strong);
     background: var(--card-hover);
 }
 
 .btn:disabled {
     opacity: 0.45;
     cursor: default;
+    box-shadow: none;
 }
 
 .btn.primary {
     background: var(--accent);
-    border-color: var(--accent);
+    border-color: transparent;
     color: var(--accent-fg);
     font-weight: 600;
+    box-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.14);
 }
 
 .btn.primary:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--accent) 88%, #fff);
+    background: color-mix(in srgb, var(--accent) 90%, #fff);
+    border-color: transparent;
 }
 
 .btn.danger {
     color: var(--danger);
+    border-color: color-mix(in srgb, var(--danger) 30%, var(--border));
 }
 
 .btn.danger:hover:not(:disabled) {
-    border-color: var(--danger);
+    border-color: color-mix(in srgb, var(--danger) 60%, var(--border));
+    background: color-mix(in srgb, var(--danger) 11%, var(--surface-raised));
 }
 
 .btn.danger-solid {
     background: var(--danger);
-    border-color: var(--danger);
+    border-color: transparent;
     color: #fff;
     font-weight: 600;
+    box-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.14);
 }
 
 .btn.danger-solid:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--danger) 88%, #fff);
+    background: color-mix(in srgb, var(--danger) 90%, #fff);
+    border-color: transparent;
 }
 
 /* ───────── preview & inline editor ───────── */
@@ -1976,6 +2156,7 @@ textarea.editor {
 }
 
 .qlist {
+    scrollbar-gutter: stable;
     flex: 1 1 0%;
     min-height: 0;
     overflow-y: auto;
@@ -2464,13 +2645,125 @@ textarea.editor {
 /* ───────── settings window ───────── */
 .settings {
     display: flex;
+    flex-direction: column;
+    width: 100%;
     height: 100vh;
     min-width: 740px;
     min-height: 520px;
     background: var(--bg);
+    border: 1px solid var(--border);
+    overflow: hidden;
     user-select: none;
     -webkit-user-select: none;
     position: relative;
+}
+
+.settings.is-maximized {
+    border: 0;
+}
+
+.stitlebar {
+    height: 38px;
+    flex: none;
+    display: flex;
+    align-items: center;
+    padding: 0 6px 0 12px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    direction: ltr;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.stitlebar-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+}
+
+.stitlebar-logo {
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    object-fit: contain;
+    pointer-events: none;
+    flex: none;
+    display: block;
+}
+
+.stitlebar-title {
+    font-weight: 700;
+    font-size: 0.94em;
+    letter-spacing: -0.01em;
+    color: var(--text);
+    line-height: 1;
+}
+
+.stitlebar-pill {
+    font-size: 0.72em;
+    font-weight: 600;
+    line-height: 1;
+    padding: 3px 7px;
+    border-radius: 99px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 1px solid var(--accent-border);
+}
+
+.stitlebar-spacer {
+    flex: 1;
+    height: 100%;
+}
+
+.stitlebar-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex: none;
+}
+
+.win-ctl {
+    width: 32px;
+    height: 26px;
+    padding: 0;
+    border-radius: 7px;
+    color: var(--muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    transition:
+        transform 175ms cubic-bezier(0.22, 1, 0.36, 1),
+        box-shadow 175ms ease,
+        background-color 160ms ease,
+        color 160ms ease;
+}
+
+.win-ctl:hover {
+    background: var(--win-ctl-hover);
+    color: var(--text);
+}
+
+.win-ctl:active {
+    background: var(--win-ctl-active);
+}
+
+.win-ctl-close:hover {
+    background: var(--danger);
+    color: #ffffff;
+}
+
+.win-ctl-close:active {
+    background: color-mix(in srgb, var(--danger) 82%, #000);
+    color: #ffffff;
+}
+
+.settings-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    overflow: hidden;
 }
 
 .settings .slabel > .muted.small,
@@ -2544,33 +2837,46 @@ textarea.editor {
 }
 
 .snav > button {
+    position: relative;
     display: flex;
     align-items: center;
     min-height: 34px;
     text-align: start;
-    padding: 2px 11px;
+    padding: 2px 12px;
     border-radius: 8px;
+    border: 1px solid transparent;
     color: var(--muted);
     line-height: 1.45;
-    transition:
-        background-color 0.14s ease,
-        color 0.14s ease;
 }
 
 .snav > button:hover {
-    background: var(--card);
+    background: color-mix(in srgb, var(--card) 72%, transparent);
     color: var(--text);
 }
 
 .snav > button.active {
-    background: var(--accent);
-    color: var(--accent-fg);
+    background: var(--nav-active);
+    border-color: var(--border-strong);
+    color: var(--text);
     font-weight: 600;
+    box-shadow: var(--card-shadow);
+}
+
+.snav > button.active::before {
+    content: '';
+    position: absolute;
+    inset-inline-start: 4px;
+    top: 7px;
+    bottom: 7px;
+    width: 3px;
+    border-radius: 99px;
+    background: var(--accent);
 }
 
 .spane {
     flex: 1;
     overflow-y: auto;
+    scrollbar-gutter: stable;
     padding: 18px 26px 60px;
 }
 
@@ -2618,13 +2924,38 @@ textarea.editor {
     justify-content: space-between;
     gap: 20px;
     padding: 10px 0;
+    padding-inline-start: 0;
     border-bottom: 1px solid var(--border);
     position: relative;
+    transition: padding-inline-start 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Smooth GPU-animated modified-setting accent bar (replaces abrupt border-inline-start snap). */
+.srow::before {
+    content: '';
+    position: absolute;
+    inset-inline-start: 0;
+    top: 8px;
+    bottom: 8px;
+    width: 3px;
+    border-radius: 99px;
+    background: var(--accent);
+    opacity: 0;
+    transform: scaleY(0.2);
+    transform-origin: center;
+    pointer-events: none;
+    transition:
+        opacity 220ms cubic-bezier(0.22, 1, 0.36, 1),
+        transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .srow.modified {
-    border-inline-start: 3px solid var(--accent);
-    padding-inline-start: 10px;
+    padding-inline-start: 11px;
+}
+
+.srow.modified::before {
+    opacity: 1;
+    transform: scaleY(1);
 }
 
 .slabel {
@@ -2702,8 +3033,16 @@ textarea.editor {
     border-radius: 99px;
     background: var(--border);
     position: relative;
-    transition: background 0.15s;
+    transition:
+        background-color 180ms ease,
+        transform 175ms cubic-bezier(0.22, 1, 0.36, 1),
+        box-shadow 175ms ease;
     flex: none;
+}
+
+.switch:active {
+    transform: translateY(1px) scale(0.95);
+    box-shadow: var(--press-shadow);
 }
 
 .switch span {
@@ -2713,8 +3052,11 @@ textarea.editor {
     width: 18px;
     height: 18px;
     border-radius: 50%;
-    background: #fff;
-    transition: transform 0.15s;
+    background: var(--switch-knob);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.24);
+    transition:
+        transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+        background-color 150ms ease;
 }
 
 .switch.on {
@@ -2723,6 +3065,7 @@ textarea.editor {
 
 .switch.on span {
     transform: translateX(18px);
+    background: var(--accent-fg);
 }
 
 .shortcut-wrap {
@@ -3101,6 +3444,10 @@ body.dragging-card * {
 }
 
 /* right-to-left (Persian / Arabic UI) */
+:root[dir='rtl'] * {
+    letter-spacing: normal;
+}
+
 :root[dir='rtl'] kbd {
     margin: 0 8px 0 2px;
 }

@@ -39,6 +39,9 @@
                 "center": true,
                 "backgroundColor": "#1d1e21",
                 "visible": false,
+                "decorations": false,
+                "resizable": true,
+                "shadow": true,
                 "focus": false,
                 "dragDropEnabled": false
             },

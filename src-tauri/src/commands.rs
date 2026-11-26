@@ -618,6 +618,37 @@ pub async fn open_settings(app: AppHandle) -> Res<()> {
 }
 
 #[tauri::command]
+pub async fn settings_minimize(app: AppHandle) -> Res<()> {
+    let w = app.get_webview_window("settings").ok_or("Settings window not found")?;
+    w.minimize().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn settings_toggle_maximize(app: AppHandle) -> Res<bool> {
+    let w = app.get_webview_window("settings").ok_or("Settings window not found")?;
+    let currently_max = w.is_maximized().map_err(|e| e.to_string())?;
+    if currently_max {
+        w.unmaximize().map_err(|e| e.to_string())?;
+        Ok(false)
+    } else {
+        w.maximize().map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+}
+
+#[tauri::command]
+pub async fn settings_is_maximized(app: AppHandle) -> Res<bool> {
+    let w = app.get_webview_window("settings").ok_or("Settings window not found")?;
+    w.is_maximized().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn settings_close(app: AppHandle) -> Res<()> {
+    let w = app.get_webview_window("settings").ok_or("Settings window not found")?;
+    w.hide().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn erase_history(
     app: AppHandle,
     state: State<'_, AppState>,

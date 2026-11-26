@@ -593,18 +593,34 @@ pub fn round_window_corners(hwnd: isize) {
     }
 }
 
-/// Marks a frameless Tauri window as non-activating (`WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW`)
-/// without stripping `WS_THICKFRAME` from `GWL_STYLE` (preserving Tauri's `WM_NCCALCSIZE` client rect
-/// so no unpainted white Win32 border appears around the WebView).
+/// Marks a frameless Tauri window as non-activating (`WS_EX_NOACTIVATE`) without adding
+/// `WS_EX_TOOLWINDOW` or stripping `WS_THICKFRAME` from `GWL_STYLE`.
+///
+/// Why `WS_EX_TOOLWINDOW` is deliberately omitted:
+/// Tauri/tao keeps `WS_CAPTION | WS_THICKFRAME` on frameless resizable windows (`decorations(false)`)
+/// and suppresses the standard title bar inside `WM_NCCALCSIZE`. Mutating `GWL_EXSTYLE` to add
+/// `WS_EX_TOOLWINDOW` after window creation causes Windows DWM to paint a native black ToolWindow
+/// caption bar ("Paste Queue" with a small red `X` button) above the WebView. Taskbar hiding is
+/// already handled by `.skip_taskbar(true)` in `windowing.rs`, so only `WS_EX_NOACTIVATE` (plus
+/// clearing `WS_EX_APPWINDOW` and notifying Win32 with `SWP_FRAMECHANGED`) is required.
 pub fn make_no_activate(hwnd: isize) {
     unsafe {
         if hwnd == 0 || IsWindow(hwnd) == 0 {
             return;
         }
         let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-        let target_ex = (ex & !(WS_EX_APPWINDOW as isize)) | (WS_EX_NOACTIVATE as isize) | (WS_EX_TOOLWINDOW as isize);
+        let target_ex = (ex & !((WS_EX_APPWINDOW | WS_EX_TOOLWINDOW) as isize)) | (WS_EX_NOACTIVATE as isize);
         if ex != target_ex {
             SetWindowLongPtrW(hwnd, GWL_EXSTYLE, target_ex);
+            let _ = SetWindowPos(
+                hwnd,
+                0,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+            );
         }
     }
 }

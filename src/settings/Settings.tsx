@@ -15,6 +15,7 @@ import { CustomSelect } from '../lib/CustomSelect';
 import { isRtl, LOCALES, t, useLang } from '../lib/i18n';
 import { Icon } from '../lib/icons';
 import { eventToShortcut, formatHeldModifiers } from '../lib/shortcut';
+import { preloadAllUiFonts, UI_FONT_SIZES, UI_FONTS, UiFontId } from '../lib/uiFonts';
 import { DEFAULT_SETTINGS, useSettings } from '../lib/useSettings';
 import { ContextMenu, MenuEntry, Prompt, PromptState } from '../popup/Overlays';
 
@@ -66,13 +67,14 @@ const TABS: { id: TabId; label: string; keys: (keyof Settings)[] }[] = [
             'animations',
             'delete_animation',
             'density',
+            'ui_font',
             'font_size',
             'font_family',
             'card_lines',
             'card_max_height',
             'show_thumbnails',
             'thumbnail_size',
-            'virtual_scroll',
+            'page_size',
             'highlight_matches',
             'highlight_color',
             'highlight_bg',
@@ -522,6 +524,109 @@ const ACTIONS: [AutoRule['action'], string][] = [
 ];
 
 // ───────────── main ─────────────
+function SettingsTitleBar({
+    maximized,
+    onMinimize,
+    onToggleMaximize,
+    onClose,
+}: {
+    maximized: boolean;
+    onMinimize: () => void;
+    onToggleMaximize: () => void;
+    onClose: () => void;
+}) {
+    return (
+        <header className="stitlebar" dir="ltr" data-tauri-drag-region>
+            <div className="stitlebar-brand" data-tauri-drag-region>
+                <img className="stitlebar-logo" src="/icon.png" alt="ClipNest" draggable={false} />
+                <span className="stitlebar-title" data-tauri-drag-region>
+                    ClipNest
+                </span>
+                <span className="stitlebar-pill" data-tauri-drag-region>
+                    Settings
+                </span>
+            </div>
+            <div className="stitlebar-spacer" data-tauri-drag-region />
+            <div className="stitlebar-controls">
+                <button
+                    type="button"
+                    className="win-ctl"
+                    aria-label={t('Minimize')}
+                    data-tip={t('Minimize')}
+                    onClick={onMinimize}
+                >
+                    <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true">
+                        <line
+                            x1="2"
+                            y1="6"
+                            x2="10"
+                            y2="6"
+                            stroke="currentColor"
+                            strokeWidth="1.4"
+                            strokeLinecap="round"
+                        />
+                    </svg>
+                </button>
+                <button
+                    type="button"
+                    className="win-ctl"
+                    aria-label={maximized ? t('Restore') : t('Maximize')}
+                    data-tip={maximized ? t('Restore') : t('Maximize')}
+                    onClick={onToggleMaximize}
+                >
+                    {maximized ? (
+                        <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                            <rect
+                                x="2"
+                                y="3.75"
+                                width="6.25"
+                                height="6.25"
+                                rx="1"
+                                stroke="currentColor"
+                                strokeWidth="1.25"
+                            />
+                            <path
+                                d="M4.25 3.75V2.75C4.25 2.2 4.7 1.75 5.25 1.75H9.25C9.8 1.75 10.25 2.2 10.25 2.75V6.75C10.25 7.3 9.8 7.75 9.25 7.75H8.25"
+                                stroke="currentColor"
+                                strokeWidth="1.25"
+                                strokeLinecap="round"
+                            />
+                        </svg>
+                    ) : (
+                        <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                            <rect
+                                x="2.25"
+                                y="2.25"
+                                width="7.5"
+                                height="7.5"
+                                rx="1.2"
+                                stroke="currentColor"
+                                strokeWidth="1.25"
+                            />
+                        </svg>
+                    )}
+                </button>
+                <button
+                    type="button"
+                    className="win-ctl win-ctl-close"
+                    aria-label={t('Close')}
+                    data-tip={t('Close')}
+                    onClick={onClose}
+                >
+                    <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true">
+                        <path
+                            d="M2.6 2.6L9.4 9.4M9.4 2.6L2.6 9.4"
+                            stroke="currentColor"
+                            strokeWidth="1.4"
+                            strokeLinecap="round"
+                        />
+                    </svg>
+                </button>
+            </div>
+        </header>
+    );
+}
+
 export default function SettingsView() {
     useLang();
     const [s, save] = useSettings();
@@ -531,6 +636,7 @@ export default function SettingsView() {
     const [boards, setBoards] = useState<Pinboard[]>([]);
     const [systemFonts, setSystemFonts] = useState<string[]>([]);
     const [msg, setMsg] = useState('');
+    const [maximized, setMaximized] = useState(false);
     const [menu, setMenu] = useState<{ x: number; y: number; entries: MenuEntry[] } | null>(null);
     const [prompt, setPrompt] = useState<PromptState | null>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
@@ -552,6 +658,12 @@ export default function SettingsView() {
     }, []);
 
     useEffect(() => {
+        if (tab === 'appearance' || searchQuery.trim().length > 0) {
+            preloadAllUiFonts();
+        }
+    }, [tab, searchQuery]);
+
+    useEffect(() => {
         const onFocusSearch = () => {
             searchInputRef.current?.focus();
             searchInputRef.current?.select();
@@ -563,22 +675,90 @@ export default function SettingsView() {
         };
     }, []);
 
+    useEffect(() => {
+        let alive = true;
+        let raf = 0;
+        const syncMaximized = () => {
+            api.settingsIsMaximized()
+                .then((next) => {
+                    if (alive) {
+                        setMaximized(next);
+                    }
+                })
+                .catch((e) => {
+                    console.error('clipnest: settings_is_maximized failed', e);
+                });
+        };
+        const onResize = () => {
+            if (raf) {
+                return;
+            }
+            raf = window.requestAnimationFrame(() => {
+                raf = 0;
+                syncMaximized();
+            });
+        };
+        syncMaximized();
+        window.addEventListener('resize', onResize);
+        window.addEventListener('focus', syncMaximized);
+        return () => {
+            alive = false;
+            if (raf) {
+                window.cancelAnimationFrame(raf);
+            }
+            window.removeEventListener('resize', onResize);
+            window.removeEventListener('focus', syncMaximized);
+        };
+    }, []);
+
+    const flash = (x: string) => {
+        setMsg(x);
+        window.clearTimeout(toastTimer.current);
+        toastTimer.current = window.setTimeout(() => setMsg(''), 4000);
+    };
+
+    const handleMinimize = () => {
+        api.settingsMinimize().catch((e) => {
+            console.error('clipnest: settings_minimize failed', e);
+            flash(errText(e));
+        });
+    };
+
+    const handleToggleMaximize = () => {
+        api.settingsToggleMaximize()
+            .then((next) => setMaximized(next))
+            .catch((e) => {
+                console.error('clipnest: settings_toggle_maximize failed', e);
+                flash(errText(e));
+            });
+    };
+
+    const handleCloseWindow = () => {
+        api.settingsClose().catch((e) => {
+            console.error('clipnest: settings_close failed', e);
+            flash(errText(e));
+        });
+    };
+
     if (!s) {
         return (
-            <div className="settings">
-                <div className="muted" style={{ padding: 24 }}>
-                    …
+            <div className={`settings${maximized ? ' is-maximized' : ''}`}>
+                <SettingsTitleBar
+                    maximized={maximized}
+                    onMinimize={handleMinimize}
+                    onToggleMaximize={handleToggleMaximize}
+                    onClose={handleCloseWindow}
+                />
+                <div className="settings-body">
+                    <div className="muted" style={{ padding: 24 }}>
+                        …
+                    </div>
                 </div>
             </div>
         );
     }
 
     const set = <K extends keyof Settings>(k: K, v: Settings[K]) => save({ ...s, [k]: v });
-    const flash = (x: string) => {
-        setMsg(x);
-        window.clearTimeout(toastTimer.current);
-        toastTimer.current = window.setTimeout(() => setMsg(''), 4000);
-    };
     const run = async (f: () => Promise<string | null | undefined>) => {
         try {
             const r = await f();
@@ -806,9 +986,12 @@ export default function SettingsView() {
         'density',
         'Card density',
         'Choose how much vertical padding each card uses in the popup list.',
+        'ui_font',
+        'UI font family',
+        'Choose the modern Latin font for the application interface (Persian and Arabic UI text always uses embedded Vazirmatn).',
         'font_size',
         'Font size (px)',
-        'Base font size in pixels across the popup, queue, and settings windows.',
+        'Base font size in pixels across the popup, queue, and settings windows (10 to 20 px, default 14 px).',
         'font_family',
         'Clip items font family',
         'Choose any installed system font on your computer for rendering clipboard cards and previews.',
@@ -824,9 +1007,9 @@ export default function SettingsView() {
         'thumbnail_size',
         'Thumbnail size',
         'Maximum height of image and media thumbnails inside cards.',
-        'virtual_scroll',
-        'Virtual list rendering',
-        'Off renders the entire list into the DOM normally; On renders only visible items for peak performance',
+        'page_size',
+        'Items per page',
+        'How many clipboard items are loaded per scroll page in the popup list (20 to 500, default 100).',
         'highlight_matches',
         'Highlight search matches',
         'Highlights matched characters and words inside cards and previews while searching.',
@@ -963,6 +1146,18 @@ export default function SettingsView() {
         label: l.name,
         subLabel: l.englishName,
     }));
+    const uiFontOptions = UI_FONTS.map((f) => ({
+        value: f.id,
+        label: f.label,
+        fontFamily: f.cssFamily,
+    }));
+    const fontSizeValues = UI_FONT_SIZES.includes(s.font_size as (typeof UI_FONT_SIZES)[number])
+        ? [...UI_FONT_SIZES]
+        : [...UI_FONT_SIZES, s.font_size].sort((a, b) => a - b);
+    const fontSizeOptions = fontSizeValues.map((px) => ({
+        value: px,
+        label: `${px} px`,
+    }));
     const fontOptions = [
         { value: '', label: t('Default (Vazirmatn / System)') },
         ...systemFonts.map((f) => ({ value: f, label: f, fontFamily: f })),
@@ -975,1649 +1170,1699 @@ export default function SettingsView() {
               : s.accent;
 
     return (
-        <div className="settings">
-            <nav className="snav" role="tablist" aria-label={t('Settings (Ctrl+,)')}>
-                <div className="sbrand">
-                    <img className="logo-img" src="/icon.png" alt="ClipNest" draggable={false} />
-                    <span>ClipNest</span>
-                </div>
-                <div className="snav-search">
-                    <Icon name="search" size={13} />
-                    <input
-                        ref={searchInputRef}
-                        role="searchbox"
-                        aria-label={t('Search settings…')}
-                        className="search-bare"
-                        value={searchQuery}
-                        dir={searchQuery ? 'auto' : isRtl() ? 'rtl' : 'ltr'}
-                        placeholder={t('Search settings…')}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Escape' && searchQuery) {
-                                e.preventDefault();
-                                setSearchQuery('');
-                            }
-                        }}
-                    />
-                    {searchQuery && (
+        <div className={`settings${maximized ? ' is-maximized' : ''}`}>
+            <SettingsTitleBar
+                maximized={maximized}
+                onMinimize={handleMinimize}
+                onToggleMaximize={handleToggleMaximize}
+                onClose={handleCloseWindow}
+            />
+            <div className="settings-body">
+                <nav className="snav" role="tablist" aria-label={t('Settings (Ctrl+,)')}>
+                    <div className="snav-search">
+                        <Icon name="search" size={13} />
+                        <input
+                            ref={searchInputRef}
+                            role="searchbox"
+                            aria-label={t('Search settings…')}
+                            className="search-bare"
+                            value={searchQuery}
+                            dir={searchQuery ? 'auto' : isRtl() ? 'rtl' : 'ltr'}
+                            placeholder={t('Search settings…')}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Escape' && searchQuery) {
+                                    e.preventDefault();
+                                    setSearchQuery('');
+                                }
+                            }}
+                        />
+                        {searchQuery && (
+                            <button
+                                type="button"
+                                className="iconbtn"
+                                aria-label={t('Clear')}
+                                data-tip={t('Clear')}
+                                onClick={() => setSearchQuery('')}
+                            >
+                                <Icon name="close" size={11} />
+                            </button>
+                        )}
+                    </div>
+                    {TABS.map((x) => (
                         <button
+                            key={x.id}
                             type="button"
-                            className="iconbtn"
-                            aria-label={t('Clear')}
-                            data-tip={t('Clear')}
-                            onClick={() => setSearchQuery('')}
+                            role="tab"
+                            aria-selected={!isSearching && tab === x.id}
+                            className={!isSearching && tab === x.id ? 'active' : ''}
+                            onClick={() => {
+                                setSearchQuery('');
+                                setTab(x.id);
+                            }}
                         >
-                            <Icon name="close" size={11} />
+                            <span>{t(x.label)}</span>
                         </button>
-                    )}
-                </div>
-                {TABS.map((x) => (
-                    <button
-                        key={x.id}
-                        type="button"
-                        role="tab"
-                        aria-selected={!isSearching && tab === x.id}
-                        className={!isSearching && tab === x.id ? 'active' : ''}
-                        onClick={() => {
-                            setSearchQuery('');
-                            setTab(x.id);
-                        }}
-                    >
-                        <span>{t(x.label)}</span>
-                    </button>
-                ))}
-            </nav>
-            <main className="spane">
-                {showGeneral && (
-                    <section className="ssection">
-                        {renderSectionHeader('general', 'General')}
-                        <Row
-                            k="language"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Language"
-                            hint="Choose the UI language and text direction (LTR / RTL)."
-                        >
-                            <CustomSelect
-                                value={s.language}
-                                onChange={(v) => set('language', v)}
-                                options={localeOptions}
-                                searchable
-                            />
-                        </Row>
-                        <Row
-                            k="autostart"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Start with Windows"
-                            hint="Launch ClipNest automatically in the system tray when you sign in to Windows."
-                        >
-                            <Toggle v={s.autostart} on={(b) => set('autostart', b)} label="Start with Windows" />
-                        </Row>
-                        <Row
-                            k="explorer_context_menu"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Windows File Explorer context menu"
-                            hint="Adds ClipNest to the right-click context menu of folders and files in Windows Explorer to view and paste copied files or collect files into the Drop Basket."
-                        >
-                            <Toggle
-                                v={s.explorer_context_menu}
-                                on={(b) => set('explorer_context_menu', b)}
+                    ))}
+                </nav>
+                <main className="spane">
+                    {showGeneral && (
+                        <section className="ssection">
+                            {renderSectionHeader('general', 'General')}
+                            <Row
+                                k="language"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Language"
+                                hint="Choose the UI language and text direction (LTR / RTL)."
+                            >
+                                <CustomSelect
+                                    value={s.language}
+                                    onChange={(v) => set('language', v)}
+                                    options={localeOptions}
+                                    searchable
+                                />
+                            </Row>
+                            <Row
+                                k="autostart"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Start with Windows"
+                                hint="Launch ClipNest automatically in the system tray when you sign in to Windows."
+                            >
+                                <Toggle v={s.autostart} on={(b) => set('autostart', b)} label="Start with Windows" />
+                            </Row>
+                            <Row
+                                k="explorer_context_menu"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
                                 label="Windows File Explorer context menu"
-                            />
-                        </Row>
-                        <Row
-                            k="max_items"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Maximum history items"
-                            hint="0 = unlimited. Pinned and category items are never removed."
-                        >
-                            <Num v={s.max_items} on={(n) => set('max_items', n)} step={100} />
-                        </Row>
-                        <Row
-                            k="retention_days"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Keep history for (days)"
-                            hint="0 = forever."
-                        >
-                            <Num v={s.retention_days} on={(n) => set('retention_days', n)} />
-                        </Row>
-                        <Row
-                            k="max_image_mb"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Largest image to store (MB)"
-                            hint="Images above this size in megabytes are skipped to keep the database fast."
-                        >
-                            <Num v={s.max_image_mb} on={(n) => set('max_image_mb', n)} min={1} max={200} />
-                        </Row>
-                        <Row
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Erase history"
-                            hint="Removes unpinned history, with an option in the confirmation dialog to also delete pinned items and categories."
-                        >
-                            <button type="button" className="btn danger" onClick={askEraseHistory}>
-                                <span>{t('Erase history…')}</span>
-                            </button>
-                        </Row>
-                        <Row
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Reset all settings…"
-                            hint="Restores all preferences, shortcuts, and appearance options to factory defaults without deleting your clips."
-                        >
-                            <button type="button" className="btn" onClick={askResetAll}>
-                                <span>{t('Reset all settings…')}</span>
-                            </button>
-                        </Row>
-                    </section>
-                )}
+                                hint="Adds ClipNest to the right-click context menu of folders and files in Windows Explorer to view and paste copied files or collect files into the Drop Basket."
+                            >
+                                <Toggle
+                                    v={s.explorer_context_menu}
+                                    on={(b) => set('explorer_context_menu', b)}
+                                    label="Windows File Explorer context menu"
+                                />
+                            </Row>
+                            <Row
+                                k="max_items"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Maximum history items"
+                                hint="0 = unlimited. Pinned and category items are never removed."
+                            >
+                                <Num v={s.max_items} on={(n) => set('max_items', n)} step={100} />
+                            </Row>
+                            <Row
+                                k="retention_days"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Keep history for (days)"
+                                hint="0 = forever."
+                            >
+                                <Num v={s.retention_days} on={(n) => set('retention_days', n)} />
+                            </Row>
+                            <Row
+                                k="max_image_mb"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Largest image to store (MB)"
+                                hint="Images above this size in megabytes are skipped to keep the database fast."
+                            >
+                                <Num v={s.max_image_mb} on={(n) => set('max_image_mb', n)} min={1} max={200} />
+                            </Row>
+                            <Row
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Erase history"
+                                hint="Removes unpinned history, with an option in the confirmation dialog to also delete pinned items and categories."
+                            >
+                                <button type="button" className="btn danger" onClick={askEraseHistory}>
+                                    <span>{t('Erase history…')}</span>
+                                </button>
+                            </Row>
+                            <Row
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Reset all settings…"
+                                hint="Restores all preferences, shortcuts, and appearance options to factory defaults without deleting your clips."
+                            >
+                                <button type="button" className="btn" onClick={askResetAll}>
+                                    <span>{t('Reset all settings…')}</span>
+                                </button>
+                            </Row>
+                        </section>
+                    )}
 
-                {showClipboard && (
-                    <section className="ssection">
-                        {renderSectionHeader('clipboard', 'Copy & Paste')}
-                        <Row
-                            k="store_rich"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Keep text styling (HTML / RTF)"
-                            hint="On: colours, fonts and backgrounds are stored and can be pasted back. Off: only plain text is stored (smaller database)."
-                        >
-                            <Toggle
-                                v={s.store_rich}
-                                on={(b) => set('store_rich', b)}
+                    {showClipboard && (
+                        <section className="ssection">
+                            {renderSectionHeader('clipboard', 'Copy & Paste')}
+                            <Row
+                                k="store_rich"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
                                 label="Keep text styling (HTML / RTF)"
-                            />
-                        </Row>
-                        <Row
-                            k="list_style"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="List display"
-                            hint="“Original style” draws each card exactly as it was copied (VS Code colours, backgrounds, fonts). “Plain text” shows only the text."
-                        >
-                            <Select
-                                v={s.list_style}
-                                on={(v) => set('list_style', v)}
-                                opts={[
-                                    ['rich', 'Original style'],
-                                    ['plain', 'Plain text'],
-                                ]}
-                            />
-                        </Row>
-                        <Row
-                            k="default_mode"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Default paste (Enter)"
-                            hint="“Keep formatting” restores every stored format. “Plain text” pastes only the text."
-                        >
-                            <Select
-                                v={s.default_mode}
-                                on={(v) => set('default_mode', v)}
-                                opts={[
-                                    ['rich', 'Keep formatting'],
-                                    ['plain', 'Plain text only'],
-                                ]}
-                            />
-                        </Row>
-                        <Row
-                            k="direct_paste"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Paste directly into the app"
-                            hint="Off = the item is only copied; you press Ctrl+V yourself."
-                        >
-                            <Toggle
-                                v={s.direct_paste}
-                                on={(b) => set('direct_paste', b)}
+                                hint="On: colours, fonts and backgrounds are stored and can be pasted back. Off: only plain text is stored (smaller database)."
+                            >
+                                <Toggle
+                                    v={s.store_rich}
+                                    on={(b) => set('store_rich', b)}
+                                    label="Keep text styling (HTML / RTF)"
+                                />
+                            </Row>
+                            <Row
+                                k="list_style"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="List display"
+                                hint="“Original style” draws each card exactly as it was copied (VS Code colours, backgrounds, fonts). “Plain text” shows only the text."
+                            >
+                                <Select
+                                    v={s.list_style}
+                                    on={(v) => set('list_style', v)}
+                                    opts={[
+                                        ['rich', 'Original style'],
+                                        ['plain', 'Plain text'],
+                                    ]}
+                                />
+                            </Row>
+                            <Row
+                                k="default_mode"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Default paste (Enter)"
+                                hint="“Keep formatting” restores every stored format. “Plain text” pastes only the text."
+                            >
+                                <Select
+                                    v={s.default_mode}
+                                    on={(v) => set('default_mode', v)}
+                                    opts={[
+                                        ['rich', 'Keep formatting'],
+                                        ['plain', 'Plain text only'],
+                                    ]}
+                                />
+                            </Row>
+                            <Row
+                                k="direct_paste"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
                                 label="Paste directly into the app"
-                            />
-                        </Row>
-                        <Row
-                            k="move_to_top"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Move used item to the top"
-                            hint="Moves a card to the top of the history list whenever you paste or copy it."
-                        >
-                            <Toggle
-                                v={s.move_to_top}
-                                on={(b) => set('move_to_top', b)}
+                                hint="Off = the item is only copied; you press Ctrl+V yourself."
+                            >
+                                <Toggle
+                                    v={s.direct_paste}
+                                    on={(b) => set('direct_paste', b)}
+                                    label="Paste directly into the app"
+                                />
+                            </Row>
+                            <Row
+                                k="move_to_top"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
                                 label="Move used item to the top"
-                            />
-                        </Row>
-                        <Row
-                            k="independent_pinning"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Independent pinning per category"
-                            hint="When enabled (default), pinning an item inside a category only pins it in that category, without pinning it in the main Clipboard tab."
-                        >
-                            <Toggle
-                                v={s.independent_pinning ?? true}
-                                on={(b) => set('independent_pinning', b)}
+                                hint="Moves a card to the top of the history list whenever you paste or copy it."
+                            >
+                                <Toggle
+                                    v={s.move_to_top}
+                                    on={(b) => set('move_to_top', b)}
+                                    label="Move used item to the top"
+                                />
+                            </Row>
+                            <Row
+                                k="independent_pinning"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
                                 label="Independent pinning per category"
-                            />
-                        </Row>
-                        <Row
-                            k="card_paste_click"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Paste card with mouse"
-                            hint="Choose whether a single click or a double-click pastes a card (single-click always selects)."
-                        >
-                            <Select
-                                v={s.card_paste_click}
-                                on={(v) => set('card_paste_click', v)}
-                                opts={[
-                                    ['double', 'Double-click (single-click selects)'],
-                                    ['single', 'Single-click'],
-                                ]}
-                            />
-                        </Row>
-                        <Row
-                            k="ctrl_click_action"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Ctrl + Click on card"
-                            hint="What happens when you hold Ctrl and click a card."
-                        >
-                            <Select
-                                v={s.ctrl_click_action}
-                                on={(v) => set('ctrl_click_action', v)}
-                                opts={[
-                                    ['multi_select', 'Toggle multi-selection'],
-                                    ['paste', 'Paste'],
-                                    ['paste_plain', 'Paste as plain text'],
-                                    ['copy_only', 'Copy only'],
-                                ]}
-                            />
-                        </Row>
-                        <Row
-                            k="ctrl_shift_click_action"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Ctrl + Shift + Click on card"
-                            hint="What happens when you hold Ctrl + Shift and click a card."
-                        >
-                            <Select
-                                v={s.ctrl_shift_click_action}
-                                on={(v) => set('ctrl_shift_click_action', v)}
-                                opts={[
-                                    ['paste_plain', 'Paste as plain text'],
-                                    ['paste', 'Paste with formatting'],
-                                    ['copy_only', 'Copy only'],
-                                ]}
-                            />
-                        </Row>
-                        <Row
-                            k="auto_save_edit"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Auto-save edits in preview"
-                            hint="Automatically saves text changes in the inline preview editor after a short pause without requiring Ctrl+S."
-                        >
-                            <Toggle
-                                v={s.auto_save_edit}
-                                on={(b) => set('auto_save_edit', b)}
+                                hint="When enabled (default), pinning an item inside a category only pins it in that category, without pinning it in the main Clipboard tab."
+                            >
+                                <Toggle
+                                    v={s.independent_pinning ?? true}
+                                    on={(b) => set('independent_pinning', b)}
+                                    label="Independent pinning per category"
+                                />
+                            </Row>
+                            <Row
+                                k="card_paste_click"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Paste card with mouse"
+                                hint="Choose whether a single click or a double-click pastes a card (single-click always selects)."
+                            >
+                                <Select
+                                    v={s.card_paste_click}
+                                    on={(v) => set('card_paste_click', v)}
+                                    opts={[
+                                        ['double', 'Double-click (single-click selects)'],
+                                        ['single', 'Single-click'],
+                                    ]}
+                                />
+                            </Row>
+                            <Row
+                                k="ctrl_click_action"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Ctrl + Click on card"
+                                hint="What happens when you hold Ctrl and click a card."
+                            >
+                                <Select
+                                    v={s.ctrl_click_action}
+                                    on={(v) => set('ctrl_click_action', v)}
+                                    opts={[
+                                        ['multi_select', 'Toggle multi-selection'],
+                                        ['paste', 'Paste'],
+                                        ['paste_plain', 'Paste as plain text'],
+                                        ['copy_only', 'Copy only'],
+                                    ]}
+                                />
+                            </Row>
+                            <Row
+                                k="ctrl_shift_click_action"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Ctrl + Shift + Click on card"
+                                hint="What happens when you hold Ctrl + Shift and click a card."
+                            >
+                                <Select
+                                    v={s.ctrl_shift_click_action}
+                                    on={(v) => set('ctrl_shift_click_action', v)}
+                                    opts={[
+                                        ['paste_plain', 'Paste as plain text'],
+                                        ['paste', 'Paste with formatting'],
+                                        ['copy_only', 'Copy only'],
+                                    ]}
+                                />
+                            </Row>
+                            <Row
+                                k="auto_save_edit"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
                                 label="Auto-save edits in preview"
-                            />
-                        </Row>
-                        <Row
-                            k="queue_fifo"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Paste queue: order"
-                            hint="Whether the Paste Queue outputs items in FIFO (first copied first) or LIFO (last copied first) order."
-                        >
-                            <Select
-                                v={s.queue_fifo ? 'fifo' : 'lifo'}
-                                on={(v) => set('queue_fifo', v === 'fifo')}
-                                opts={[
-                                    ['fifo', 'First copied → first pasted'],
-                                    ['lifo', 'Last copied → first pasted'],
-                                ]}
-                            />
-                        </Row>
-                        <Row
-                            k="queue_intercept"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Paste queue: take over Ctrl+V"
-                            hint="While the queue has items, Ctrl+V pastes the next one."
-                        >
-                            <Toggle
-                                v={s.queue_intercept}
-                                on={(b) => set('queue_intercept', b)}
+                                hint="Automatically saves text changes in the inline preview editor after a short pause without requiring Ctrl+S."
+                            >
+                                <Toggle
+                                    v={s.auto_save_edit}
+                                    on={(b) => set('auto_save_edit', b)}
+                                    label="Auto-save edits in preview"
+                                />
+                            </Row>
+                            <Row
+                                k="queue_fifo"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Paste queue: order"
+                                hint="Whether the Paste Queue outputs items in FIFO (first copied first) or LIFO (last copied first) order."
+                            >
+                                <Select
+                                    v={s.queue_fifo ? 'fifo' : 'lifo'}
+                                    on={(v) => set('queue_fifo', v === 'fifo')}
+                                    opts={[
+                                        ['fifo', 'First copied → first pasted'],
+                                        ['lifo', 'Last copied → first pasted'],
+                                    ]}
+                                />
+                            </Row>
+                            <Row
+                                k="queue_intercept"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
                                 label="Paste queue: take over Ctrl+V"
-                            />
-                        </Row>
-                        <Row
-                            k="basket_group_by_folder"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Drop Basket: group files by folder"
-                            hint="When enabled, files that live in the same folder are shown as one expandable group. When disabled, every file is listed separately."
-                        >
-                            <Toggle
-                                v={s.basket_group_by_folder ?? true}
-                                on={(b) => set('basket_group_by_folder', b)}
+                                hint="While the queue has items, Ctrl+V pastes the next one."
+                            >
+                                <Toggle
+                                    v={s.queue_intercept}
+                                    on={(b) => set('queue_intercept', b)}
+                                    label="Paste queue: take over Ctrl+V"
+                                />
+                            </Row>
+                            <Row
+                                k="basket_group_by_folder"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
                                 label="Drop Basket: group files by folder"
-                            />
-                        </Row>
-                        <Row
-                            k="basket_allow_cut"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Drop Basket: allow Cut (move files after verified copy)"
-                            hint="When enabled, files cut with Ctrl+X are moved only after destination copy and exact byte size are verified on disk."
-                        >
-                            <Toggle
-                                v={s.basket_allow_cut}
-                                on={(b) => set('basket_allow_cut', b)}
+                                hint="When enabled, files that live in the same folder are shown as one expandable group. When disabled, every file is listed separately."
+                            >
+                                <Toggle
+                                    v={s.basket_group_by_folder ?? true}
+                                    on={(b) => set('basket_group_by_folder', b)}
+                                    label="Drop Basket: group files by folder"
+                                />
+                            </Row>
+                            <Row
+                                k="basket_allow_cut"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
                                 label="Drop Basket: allow Cut (move files after verified copy)"
-                            />
-                        </Row>
+                                hint="When enabled, files cut with Ctrl+X are moved only after destination copy and exact byte size are verified on disk."
+                            >
+                                <Toggle
+                                    v={s.basket_allow_cut}
+                                    on={(b) => set('basket_allow_cut', b)}
+                                    label="Drop Basket: allow Cut (move files after verified copy)"
+                                />
+                            </Row>
 
-                        {matchesSearch(q, 'Per-application rules', 'Executable', 'Paste as', 'Keystroke') && (
-                            <>
-                                <h3>{t('Per-application rules')}</h3>
-                                <p className="muted small">
-                                    {t(
-                                        'Overrides the default for a specific target app (executable name). Example: Word keeps formatting, terminals get plain text.'
-                                    )}
-                                </p>
-                                <table className="rules">
-                                    <thead>
-                                        <tr>
-                                            <th>{t('Executable')}</th>
-                                            <th>{t('Paste as')}</th>
-                                            <th>{t('Keystroke')}</th>
-                                            <th />
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {s.app_rules.map((r, i) => (
-                                            <tr key={i}>
-                                                <td>
-                                                    <input
-                                                        dir="ltr"
-                                                        value={r.exe}
-                                                        onChange={(e) =>
-                                                            updRule(i, { exe: e.target.value.toLowerCase() })
-                                                        }
-                                                    />
-                                                </td>
-                                                <td>
-                                                    <Select
-                                                        v={r.mode}
-                                                        on={(v) => updRule(i, { mode: v })}
-                                                        opts={[
-                                                            ['default', 'Default'],
-                                                            ['rich', 'Keep formatting'],
-                                                            ['plain', 'Plain text'],
-                                                        ]}
-                                                    />
-                                                </td>
-                                                <td>
-                                                    <Select
-                                                        v={r.keys}
-                                                        on={(v) => updRule(i, { keys: v })}
-                                                        opts={[
-                                                            ['ctrl+v', 'Ctrl+V'],
-                                                            ['shift+insert', 'Shift+Insert'],
-                                                            ['ctrl+shift+v', 'Ctrl+Shift+V'],
-                                                        ]}
-                                                    />
-                                                </td>
-                                                <td>
-                                                    <button
-                                                        type="button"
-                                                        className="btn"
-                                                        onClick={() =>
-                                                            set(
-                                                                'app_rules',
-                                                                s.app_rules.filter((_, j) => j !== i)
-                                                            )
-                                                        }
-                                                    >
-                                                        <span>{t('Remove')}</span>
-                                                    </button>
-                                                </td>
+                            {matchesSearch(q, 'Per-application rules', 'Executable', 'Paste as', 'Keystroke') && (
+                                <>
+                                    <h3>{t('Per-application rules')}</h3>
+                                    <p className="muted small">
+                                        {t(
+                                            'Overrides the default for a specific target app (executable name). Example: Word keeps formatting, terminals get plain text.'
+                                        )}
+                                    </p>
+                                    <table className="rules">
+                                        <thead>
+                                            <tr>
+                                                <th>{t('Executable')}</th>
+                                                <th>{t('Paste as')}</th>
+                                                <th>{t('Keystroke')}</th>
+                                                <th />
                                             </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                                <button
-                                    type="button"
-                                    className="btn"
-                                    onClick={() =>
-                                        set('app_rules', [
-                                            ...s.app_rules,
-                                            { exe: 'winword.exe', mode: 'rich', keys: 'ctrl+v' },
-                                        ])
-                                    }
-                                >
-                                    <span>{t('+ Add rule')}</span>
-                                </button>
-                            </>
-                        )}
-                    </section>
-                )}
-
-                {showAppearance && (
-                    <section className="ssection">
-                        {renderSectionHeader('appearance', 'Appearance')}
-                        <Row
-                            k="theme"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Theme"
-                            hint="Choose the colour scheme for the popup, queue, and settings windows (System follows Windows Dark/Light mode automatically)."
-                        >
-                            <Select
-                                v={s.theme}
-                                on={(v) => set('theme', v)}
-                                opts={[
-                                    ['system', 'System (Auto)'],
-                                    ['dark', 'Dark'],
-                                    ['oled', 'OLED black'],
-                                    ['light', 'Light'],
-                                ]}
-                            />
-                        </Row>
-                        <Row
-                            k="accent"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Accent colour"
-                            hint="Choose the primary highlight colour for borders, badges, active controls, and default search highlights."
-                        >
-                            <input
-                                type="color"
-                                value={s.accent}
-                                onChange={(e) => {
-                                    const nextAccent = e.target.value;
-                                    const syncHl =
-                                        !s.highlight_color ||
-                                        s.highlight_color === 'accent' ||
-                                        s.highlight_color.toLowerCase() === s.accent.toLowerCase();
-                                    save({
-                                        ...s,
-                                        accent: nextAccent,
-                                        highlight_color: syncHl ? 'accent' : s.highlight_color,
-                                    });
-                                }}
-                            />
-                        </Row>
-                        <Row
-                            k="animations"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Smooth animations"
-                            hint="Enable subtle Notion-style transitions for menus, dialogs, and hover states."
-                        >
-                            <Toggle v={s.animations} on={(b) => set('animations', b)} label="Smooth animations" />
-                        </Row>
-                        <Row
-                            k="delete_animation"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Animate card removal"
-                            hint="Smoothly collapses deleted cards so the items below glide up to fill their space (requires Smooth animations)."
-                        >
-                            <Toggle
-                                v={s.animations && (s.delete_animation ?? true)}
-                                on={(b) => save({ ...s, animations: b ? true : s.animations, delete_animation: b })}
-                                label="Animate card removal"
-                            />
-                        </Row>
-                        <Row
-                            k="density"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Card density"
-                            hint="Choose how much vertical padding each card uses in the popup list."
-                        >
-                            <Select
-                                v={s.density}
-                                on={(v) => set('density', v)}
-                                opts={[
-                                    ['compact', 'Compact'],
-                                    ['comfortable', 'Comfortable'],
-                                ]}
-                            />
-                        </Row>
-                        <Row
-                            k="font_size"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Font size (px)"
-                            hint="Base font size in pixels across the popup, queue, and settings windows."
-                        >
-                            <Num v={s.font_size} on={(n) => set('font_size', n)} min={10} max={20} />
-                        </Row>
-                        <Row
-                            k="font_family"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Clip items font family"
-                            hint="Choose any installed system font on your computer for rendering clipboard cards and previews."
-                        >
-                            <CustomSelect
-                                value={s.font_family}
-                                onChange={(v) => set('font_family', String(v))}
-                                options={fontOptions}
-                                searchable
-                            />
-                        </Row>
-                        <Row
-                            k="card_lines"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Text lines per card"
-                            hint="How many lines of text are previewed on each card before truncating."
-                        >
-                            <Num v={s.card_lines} on={(n) => set('card_lines', n)} min={1} max={12} />
-                        </Row>
-                        <Row
-                            k="card_max_height"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Maximum card height (px)"
-                            hint="Maximum vertical height of each card body in the list (60 to 600 px)."
-                        >
-                            <Num
-                                v={s.card_max_height}
-                                on={(n) => set('card_max_height', n)}
-                                min={60}
-                                max={600}
-                                step={10}
-                            />
-                        </Row>
-                        <Row
-                            k="show_thumbnails"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Show image and media thumbnails in cards"
-                            hint="Renders inline image and video/media previews inside cards in the popup list."
-                        >
-                            <Toggle
-                                v={s.show_thumbnails}
-                                on={(b) => set('show_thumbnails', b)}
-                                label="Show image and media thumbnails in cards"
-                            />
-                        </Row>
-                        <Row
-                            k="thumbnail_size"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Thumbnail size"
-                            hint="Maximum height of image and media thumbnails inside cards."
-                        >
-                            <Select
-                                v={s.thumbnail_size}
-                                on={(v) => set('thumbnail_size', v)}
-                                opts={[
-                                    ['small', 'Small (52px)'],
-                                    ['medium', 'Medium (110px)'],
-                                    ['large', 'Large (170px)'],
-                                ]}
-                            />
-                        </Row>
-                        <Row
-                            k="virtual_scroll"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Virtual list rendering"
-                            hint="Off renders the entire list into the DOM normally; On renders only visible items for peak performance"
-                        >
-                            <Toggle
-                                v={s.virtual_scroll}
-                                on={(b) => set('virtual_scroll', b)}
-                                label="Virtual list rendering"
-                            />
-                        </Row>
-                        <Row
-                            k="highlight_matches"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Highlight search matches"
-                            hint="Highlights matched characters and words inside cards and previews while searching."
-                        >
-                            <Toggle
-                                v={s.highlight_matches}
-                                on={(b) => set('highlight_matches', b)}
-                                label="Highlight search matches"
-                            />
-                        </Row>
-                        <Row
-                            k="highlight_color"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Highlight text color (transparent = keep text color)"
-                            hint="Use “accent” to automatically follow your Accent colour, or pick any custom colour."
-                        >
-                            <div className="color-input-group">
-                                <input
-                                    dir="ltr"
-                                    value={s.highlight_color}
-                                    placeholder="accent"
-                                    onChange={(e) => set('highlight_color', e.target.value)}
-                                />
-                                <input
-                                    type="color"
-                                    value={resolvedHlHex}
-                                    onChange={(e) => set('highlight_color', e.target.value)}
-                                />
-                            </div>
-                        </Row>
-                        <Row
-                            k="highlight_bg"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Highlight background color (e.g. #ffe043 for yellow marker)"
-                            hint="Background colour behind matched characters (use transparent for text-only highlight)."
-                        >
-                            <div className="color-input-group">
-                                <input
-                                    dir="ltr"
-                                    value={s.highlight_bg}
-                                    placeholder="transparent"
-                                    onChange={(e) => set('highlight_bg', e.target.value)}
-                                />
-                                <input
-                                    type="color"
-                                    value={/^#[0-9a-fA-F]{6}$/.test(s.highlight_bg) ? s.highlight_bg : '#ffe043'}
-                                    onChange={(e) => set('highlight_bg', e.target.value)}
-                                />
-                            </div>
-                        </Row>
-                        <Row
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Highlight presets"
-                            hint="Quickly switch between Accent color match, VS Code blue, yellow marker background, or high contrast."
-                        >
-                            <div className="presets">
-                                <button
-                                    type="button"
-                                    className="chip"
-                                    onClick={() =>
-                                        save({
-                                            ...s,
-                                            highlight_matches: true,
-                                            highlight_color: 'accent',
-                                            highlight_bg: 'transparent',
-                                        })
-                                    }
-                                >
-                                    <span>{t('Match Accent')}</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    className="chip"
-                                    onClick={() =>
-                                        save({
-                                            ...s,
-                                            highlight_matches: true,
-                                            highlight_color: '#2ea8ff',
-                                            highlight_bg: 'transparent',
-                                        })
-                                    }
-                                >
-                                    <span>{t('VS Code Blue')}</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    className="chip"
-                                    onClick={() =>
-                                        save({
-                                            ...s,
-                                            highlight_matches: true,
-                                            highlight_color: 'inherit',
-                                            highlight_bg: '#f5d90a55',
-                                        })
-                                    }
-                                >
-                                    <span>{t('Yellow Marker')}</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    className="chip"
-                                    onClick={() =>
-                                        save({
-                                            ...s,
-                                            highlight_matches: true,
-                                            highlight_color: '#000000',
-                                            highlight_bg: '#ffe043',
-                                        })
-                                    }
-                                >
-                                    <span>{t('High Contrast')}</span>
-                                </button>
-                            </div>
-                        </Row>
-                        <Row
-                            k="popup_position"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Popup opens at"
-                            hint="Choose where the popup appears on screen when opened with the global shortcut."
-                        >
-                            <Select
-                                v={s.popup_position}
-                                on={(v) => set('popup_position', v)}
-                                opts={[
-                                    ['caret', 'Text cursor (falls back to mouse)'],
-                                    ['mouse', 'Mouse pointer'],
-                                    ['center', 'Screen centre'],
-                                    ['last', 'Last position'],
-                                ]}
-                            />
-                        </Row>
-                        <Row
-                            k="popup_width"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Popup width (px)"
-                            hint="Default width of the popup window in logical pixels (minimum 260 px)."
-                        >
-                            <Num v={s.popup_width} on={(n) => set('popup_width', n)} min={260} max={1400} step={10} />
-                        </Row>
-                        <Row
-                            k="popup_height"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Popup height (px)"
-                            hint="Default height of the popup window in logical pixels (minimum 320 px)."
-                        >
-                            <Num v={s.popup_height} on={(n) => set('popup_height', n)} min={320} max={1400} step={10} />
-                        </Row>
-                        <Row
-                            k="remember_popup_size"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Preserve popup size when resized with mouse"
-                            hint="Automatically saves the new width and height when you drag the edges of the popup window."
-                        >
-                            <Toggle
-                                v={s.remember_popup_size}
-                                on={(b) => set('remember_popup_size', b)}
-                                label="Preserve popup size when resized with mouse"
-                            />
-                        </Row>
-                        <Row
-                            k="show_toolbar"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Side toolbar (CopyQ style)"
-                            hint="Quick buttons next to the list: preview, pin, tags, copy, formats, edit, merge, actions, delete (can also be toggled from the popup header)."
-                        >
-                            <Toggle
-                                v={s.show_toolbar}
-                                on={(b) => set('show_toolbar', b)}
-                                label="Side toolbar (CopyQ style)"
-                            />
-                        </Row>
-                        <Row
-                            k="show_pinboard_counts"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Show item count on category tabs"
-                            hint="Displays a small badge with the number of items next to each category tab in the popup."
-                        >
-                            <Toggle
-                                v={s.show_pinboard_counts}
-                                on={(b) => set('show_pinboard_counts', b)}
-                                label="Show item count on category tabs"
-                            />
-                        </Row>
-                        <Row
-                            k="wrap_categories"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Wrap category tabs onto multiple lines"
-                            hint="On: wraps category tabs into multiple rows (like VS Code wrapTabs). Off: scrolls category tabs horizontally with mouse wheel or click-and-drag."
-                        >
-                            <Toggle
-                                v={s.wrap_categories ?? false}
-                                on={(b) => set('wrap_categories', b)}
-                                label="Wrap category tabs onto multiple lines"
-                            />
-                        </Row>
-                    </section>
-                )}
-
-                {showPrivacy && (
-                    <section className="ssection">
-                        {renderSectionHeader('privacy', 'Privacy & Screen capture')}
-                        <Row
-                            k="capture_protection"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Screen-capture protection"
-                            hint="Applied instantly to the popup, queue and settings windows. Needs Windows 10 2004+ for “Invisible”. Does not work inside Remote Desktop sessions."
-                        >
-                            <Select
-                                v={s.capture_protection}
-                                on={(v) => set('capture_protection', v)}
-                                opts={[
-                                    ['black', 'Black rectangle (CopyQ style)'],
-                                    ['hidden', 'Invisible in captures'],
-                                    ['off', 'Off'],
-                                ]}
-                            />
-                        </Row>
-                        <Row
-                            k="ignore_confidential"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Respect “do not record” flags"
-                            hint="Password managers mark their clipboard data; ClipNest then never stores it."
-                        >
-                            <Toggle
-                                v={s.ignore_confidential}
-                                on={(b) => set('ignore_confidential', b)}
-                                label="Respect “do not record” flags"
-                            />
-                        </Row>
-                        <Row
-                            k="detect_sensitive"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Detect sensitive data"
-                            hint="Card numbers (Luhn), API keys (sk-…, ghp_…, AKIA…), private keys, JWTs."
-                        >
-                            <Toggle
-                                v={s.detect_sensitive}
-                                on={(b) => set('detect_sensitive', b)}
-                                label="Detect sensitive data"
-                            />
-                        </Row>
-                        {s.detect_sensitive && (
-                            <>
-                                <Row
-                                    k="sensitive_action"
-                                    s={s}
-                                    searchQuery={q}
-                                    onGearMenu={openGearMenu}
-                                    label="When detected"
-                                    hint="How Sensitive clips are handled when detected."
-                                >
-                                    <Select
-                                        v={s.sensitive_action}
-                                        on={(v) => set('sensitive_action', v)}
-                                        opts={[
-                                            ['mask', 'Store, blur in the list'],
-                                            ['mask_delete', 'Store, blur, then auto-delete'],
-                                            ['skip', 'Do not store'],
-                                        ]}
-                                    />
-                                </Row>
-                                {s.sensitive_action === 'mask_delete' && (
-                                    <Row
-                                        k="sensitive_ttl_min"
-                                        s={s}
-                                        searchQuery={q}
-                                        onGearMenu={openGearMenu}
-                                        label="Auto-delete after (minutes)"
-                                        hint="How many minutes before a masked sensitive clip is permanently deleted."
+                                        </thead>
+                                        <tbody>
+                                            {s.app_rules.map((r, i) => (
+                                                <tr key={i}>
+                                                    <td>
+                                                        <input
+                                                            dir="ltr"
+                                                            value={r.exe}
+                                                            onChange={(e) =>
+                                                                updRule(i, { exe: e.target.value.toLowerCase() })
+                                                            }
+                                                        />
+                                                    </td>
+                                                    <td>
+                                                        <Select
+                                                            v={r.mode}
+                                                            on={(v) => updRule(i, { mode: v })}
+                                                            opts={[
+                                                                ['default', 'Default'],
+                                                                ['rich', 'Keep formatting'],
+                                                                ['plain', 'Plain text'],
+                                                            ]}
+                                                        />
+                                                    </td>
+                                                    <td>
+                                                        <Select
+                                                            v={r.keys}
+                                                            on={(v) => updRule(i, { keys: v })}
+                                                            opts={[
+                                                                ['ctrl+v', 'Ctrl+V'],
+                                                                ['shift+insert', 'Shift+Insert'],
+                                                                ['ctrl+shift+v', 'Ctrl+Shift+V'],
+                                                            ]}
+                                                        />
+                                                    </td>
+                                                    <td>
+                                                        <button
+                                                            type="button"
+                                                            className="btn"
+                                                            onClick={() =>
+                                                                set(
+                                                                    'app_rules',
+                                                                    s.app_rules.filter((_, j) => j !== i)
+                                                                )
+                                                            }
+                                                        >
+                                                            <span>{t('Remove')}</span>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                    <button
+                                        type="button"
+                                        className="btn"
+                                        onClick={() =>
+                                            set('app_rules', [
+                                                ...s.app_rules,
+                                                { exe: 'winword.exe', mode: 'rich', keys: 'ctrl+v' },
+                                            ])
+                                        }
                                     >
-                                        <Num
-                                            v={s.sensitive_ttl_min}
-                                            on={(n) => set('sensitive_ttl_min', n)}
-                                            min={1}
-                                            max={1440}
-                                        />
-                                    </Row>
-                                )}
-                            </>
-                        )}
-                        {matchesSearch(
-                            q,
-                            'Ignored applications',
-                            'Nothing copied from these executables is stored.'
-                        ) && (
-                            <>
-                                <h3>{t('Ignored applications')}</h3>
-                                <p className="muted small">{t('Nothing copied from these executables is stored.')}</p>
-                                <TagList
-                                    items={s.ignore_apps}
-                                    onChange={(l) => set('ignore_apps', l)}
-                                    suggestions={apps}
-                                    placeholder="keepass.exe"
-                                />
-                                <div className="cap-note muted small">
-                                    {t('Database encryption and per-tab locking are not part of this version.')}
-                                </div>
-                            </>
-                        )}
-                    </section>
-                )}
-
-                {showShortcuts && (
-                    <section className="ssection">
-                        {renderSectionHeader('shortcuts', 'Global shortcuts')}
-                        <p className="muted small">
-                            {t(
-                                'Shortcuts that include the Windows key (for example Win+V) are handled by a keyboard hook. Windows keeps Win+V for its own clipboard history: if it still opens, turn that off in Windows Settings → System → Clipboard.'
+                                        <span>{t('+ Add rule')}</span>
+                                    </button>
+                                </>
                             )}
-                        </p>
-                        <Row
-                            k="shortcut_open"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Open ClipNest"
-                            hint="Global hotkey to show or hide the main ClipNest popup."
-                        >
-                            <div className="stack">
-                                <ShortcutInput role="open" v={s.shortcut_open} on={(v) => set('shortcut_open', v)} />
+                        </section>
+                    )}
+
+                    {showAppearance && (
+                        <section className="ssection">
+                            {renderSectionHeader('appearance', 'Appearance')}
+                            <Row
+                                k="theme"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Theme"
+                                hint="Choose the colour scheme for the popup, queue, and settings windows (System follows Windows Dark/Light mode automatically)."
+                            >
+                                <Select
+                                    v={s.theme}
+                                    on={(v) => set('theme', v)}
+                                    opts={[
+                                        ['system', 'System (Auto)'],
+                                        ['dark', 'Dark'],
+                                        ['oled', 'OLED black'],
+                                        ['light', 'Light'],
+                                    ]}
+                                />
+                            </Row>
+                            <Row
+                                k="accent"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Accent colour"
+                                hint="Choose the primary highlight colour for borders, badges, active controls, and default search highlights."
+                            >
+                                <input
+                                    type="color"
+                                    value={s.accent}
+                                    onChange={(e) => {
+                                        const nextAccent = e.target.value;
+                                        const syncHl =
+                                            !s.highlight_color ||
+                                            s.highlight_color === 'accent' ||
+                                            s.highlight_color.toLowerCase() === s.accent.toLowerCase();
+                                        save({
+                                            ...s,
+                                            accent: nextAccent,
+                                            highlight_color: syncHl ? 'accent' : s.highlight_color,
+                                        });
+                                    }}
+                                />
+                            </Row>
+                            <Row
+                                k="animations"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Smooth animations"
+                                hint="Enable subtle Notion-style transitions for menus, dialogs, and hover states."
+                            >
+                                <Toggle v={s.animations} on={(b) => set('animations', b)} label="Smooth animations" />
+                            </Row>
+                            <Row
+                                k="delete_animation"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Animate card removal"
+                                hint="Smoothly collapses deleted cards so the items below glide up to fill their space (requires Smooth animations)."
+                            >
+                                <Toggle
+                                    v={s.animations && (s.delete_animation ?? true)}
+                                    on={(b) => save({ ...s, animations: b ? true : s.animations, delete_animation: b })}
+                                    label="Animate card removal"
+                                />
+                            </Row>
+                            <Row
+                                k="density"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Card density"
+                                hint="Choose how much vertical padding each card uses in the popup list."
+                            >
+                                <Select
+                                    v={s.density}
+                                    on={(v) => set('density', v)}
+                                    opts={[
+                                        ['compact', 'Compact'],
+                                        ['comfortable', 'Comfortable'],
+                                    ]}
+                                />
+                            </Row>
+                            <Row
+                                k="ui_font"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="UI font family"
+                                hint="Choose the modern Latin font for the application interface (Persian and Arabic UI text always uses embedded Vazirmatn)."
+                            >
+                                <CustomSelect
+                                    value={(s.ui_font || 'google-sans') as UiFontId}
+                                    onChange={(v) => set('ui_font', v)}
+                                    options={uiFontOptions}
+                                />
+                            </Row>
+                            <Row
+                                k="font_size"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Font size (px)"
+                                hint="Base font size in pixels across the popup, queue, and settings windows (10 to 20 px, default 14 px)."
+                            >
+                                <CustomSelect
+                                    value={s.font_size}
+                                    onChange={(v) => set('font_size', Number(v))}
+                                    options={fontSizeOptions}
+                                />
+                            </Row>
+                            <Row
+                                k="font_family"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Clip items font family"
+                                hint="Choose any installed system font on your computer for rendering clipboard cards and previews."
+                            >
+                                <CustomSelect
+                                    value={s.font_family}
+                                    onChange={(v) => set('font_family', String(v))}
+                                    options={fontOptions}
+                                    searchable
+                                />
+                            </Row>
+                            <Row
+                                k="card_lines"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Text lines per card"
+                                hint="How many lines of text are previewed on each card before truncating."
+                            >
+                                <Num v={s.card_lines} on={(n) => set('card_lines', n)} min={1} max={12} />
+                            </Row>
+                            <Row
+                                k="card_max_height"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Maximum card height (px)"
+                                hint="Maximum vertical height of each card body in the list (60 to 600 px)."
+                            >
+                                <Num
+                                    v={s.card_max_height}
+                                    on={(n) => set('card_max_height', n)}
+                                    min={60}
+                                    max={600}
+                                    step={10}
+                                />
+                            </Row>
+                            <Row
+                                k="show_thumbnails"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Show image and media thumbnails in cards"
+                                hint="Renders inline image and video/media previews inside cards in the popup list."
+                            >
+                                <Toggle
+                                    v={s.show_thumbnails}
+                                    on={(b) => set('show_thumbnails', b)}
+                                    label="Show image and media thumbnails in cards"
+                                />
+                            </Row>
+                            <Row
+                                k="thumbnail_size"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Thumbnail size"
+                                hint="Maximum height of image and media thumbnails inside cards."
+                            >
+                                <Select
+                                    v={s.thumbnail_size}
+                                    on={(v) => set('thumbnail_size', v)}
+                                    opts={[
+                                        ['small', 'Small (52px)'],
+                                        ['medium', 'Medium (110px)'],
+                                        ['large', 'Large (170px)'],
+                                    ]}
+                                />
+                            </Row>
+                            <Row
+                                k="page_size"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Items per page"
+                                hint="How many clipboard items are loaded per scroll page in the popup list (20 to 500, default 100)."
+                            >
+                                <Num
+                                    v={s.page_size ?? 100}
+                                    on={(n) => set('page_size', n)}
+                                    min={20}
+                                    max={500}
+                                    step={10}
+                                />
+                            </Row>
+                            <Row
+                                k="highlight_matches"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Highlight search matches"
+                                hint="Highlights matched characters and words inside cards and previews while searching."
+                            >
+                                <Toggle
+                                    v={s.highlight_matches}
+                                    on={(b) => set('highlight_matches', b)}
+                                    label="Highlight search matches"
+                                />
+                            </Row>
+                            <Row
+                                k="highlight_color"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Highlight text color (transparent = keep text color)"
+                                hint="Use “accent” to automatically follow your Accent colour, or pick any custom colour."
+                            >
+                                <div className="color-input-group">
+                                    <input
+                                        dir="ltr"
+                                        value={s.highlight_color}
+                                        placeholder="accent"
+                                        onChange={(e) => set('highlight_color', e.target.value)}
+                                    />
+                                    <input
+                                        type="color"
+                                        value={resolvedHlHex}
+                                        onChange={(e) => set('highlight_color', e.target.value)}
+                                    />
+                                </div>
+                            </Row>
+                            <Row
+                                k="highlight_bg"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Highlight background color (e.g. #ffe043 for yellow marker)"
+                                hint="Background colour behind matched characters (use transparent for text-only highlight)."
+                            >
+                                <div className="color-input-group">
+                                    <input
+                                        dir="ltr"
+                                        value={s.highlight_bg}
+                                        placeholder="transparent"
+                                        onChange={(e) => set('highlight_bg', e.target.value)}
+                                    />
+                                    <input
+                                        type="color"
+                                        value={/^#[0-9a-fA-F]{6}$/.test(s.highlight_bg) ? s.highlight_bg : '#ffe043'}
+                                        onChange={(e) => set('highlight_bg', e.target.value)}
+                                    />
+                                </div>
+                            </Row>
+                            <Row
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Highlight presets"
+                                hint="Quickly switch between Accent color match, VS Code blue, yellow marker background, or high contrast."
+                            >
                                 <div className="presets">
                                     <button
                                         type="button"
                                         className="chip"
-                                        onClick={() => set('shortcut_open', 'Super+V')}
+                                        onClick={() =>
+                                            save({
+                                                ...s,
+                                                highlight_matches: true,
+                                                highlight_color: 'accent',
+                                                highlight_bg: 'transparent',
+                                            })
+                                        }
                                     >
-                                        <span>{t('Use Win+V')}</span>
+                                        <span>{t('Match Accent')}</span>
                                     </button>
                                     <button
                                         type="button"
                                         className="chip"
-                                        onClick={() => set('shortcut_open', 'Alt+V')}
+                                        onClick={() =>
+                                            save({
+                                                ...s,
+                                                highlight_matches: true,
+                                                highlight_color: '#2ea8ff',
+                                                highlight_bg: 'transparent',
+                                            })
+                                        }
                                     >
-                                        <span>Alt+V</span>
+                                        <span>{t('VS Code Blue')}</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="chip"
+                                        onClick={() =>
+                                            save({
+                                                ...s,
+                                                highlight_matches: true,
+                                                highlight_color: 'inherit',
+                                                highlight_bg: '#f5d90a55',
+                                            })
+                                        }
+                                    >
+                                        <span>{t('Yellow Marker')}</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="chip"
+                                        onClick={() =>
+                                            save({
+                                                ...s,
+                                                highlight_matches: true,
+                                                highlight_color: '#000000',
+                                                highlight_bg: '#ffe043',
+                                            })
+                                        }
+                                    >
+                                        <span>{t('High Contrast')}</span>
                                     </button>
                                 </div>
-                            </div>
-                        </Row>
-                        <Row
-                            k="shortcut_queue"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Paste queue on/off"
-                            hint="Global hotkey to open or close the Paste Queue / Drop Basket window."
-                        >
-                            <ShortcutInput role="queue" v={s.shortcut_queue} on={(v) => set('shortcut_queue', v)} />
-                        </Row>
-                        <Row
-                            k="shortcut_plain_toggle"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Toggle plain-text mode"
-                            hint="Global hotkey to toggle between rich formatting and plain-text paste mode."
-                        >
-                            <ShortcutInput
-                                role="plain"
-                                v={s.shortcut_plain_toggle}
-                                on={(v) => set('shortcut_plain_toggle', v)}
-                            />
-                        </Row>
-                        <Row
-                            k="shortcut_pause"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Pause / resume capture"
-                            hint="Global hotkey to pause or resume clipboard capturing."
-                        >
-                            <ShortcutInput role="pause" v={s.shortcut_pause} on={(v) => set('shortcut_pause', v)} />
-                        </Row>
-                        {!isSearching && (
-                            <>
-                                <h3>{t('Inside the popup')}</h3>
-                                <table className="keys" dir="ltr">
-                                    <tbody>
-                                        {[
-                                            [
-                                                '↑ ↓ · Shift+↑↓ · PgUp/PgDn · Ctrl+↑↓',
-                                                'Select / extend selection / jump',
-                                            ],
-                                            ['← → · Tab · Ctrl+[ ]', 'Switch Clipboard ↔ categories'],
-                                            [
-                                                'Enter · Shift+Enter · Ctrl+Enter',
-                                                'Paste · plain text · keep formatting',
-                                            ],
-                                            ['Ctrl+1 … Ctrl+9', 'Quick-paste a visible card'],
-                                            ['Alt+↑ / Alt+↓ (or drag a card)', 'Move the card up / down'],
-                                            ['Space (or F3)', 'Preview (empty search)'],
-                                            ['Ctrl+C', 'Copy only'],
-                                            ['Delete / Ctrl+Delete', 'Delete (or remove inside a category)'],
-                                            ['F2 · Ctrl+T · Ctrl+P', 'Rename · tags · pin on top'],
-                                            ['Ctrl+E · Ctrl+I · Ctrl+M', 'Edit · formats inspector · merge selected'],
-                                            ['Ctrl+O · Ctrl+N · Ctrl+,', 'Open link/file · new category · settings'],
-                                            ['Esc', 'Clear search, then close'],
-                                        ].map(([k, d]) => (
-                                            <tr key={k}>
-                                                <td>
-                                                    <kbd>{k}</kbd>
-                                                </td>
-                                                <td className="muted" dir="auto">
-                                                    {t(d)}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </>
-                        )}
-                    </section>
-                )}
+                            </Row>
+                            <Row
+                                k="popup_position"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Popup opens at"
+                                hint="Choose where the popup appears on screen when opened with the global shortcut."
+                            >
+                                <Select
+                                    v={s.popup_position}
+                                    on={(v) => set('popup_position', v)}
+                                    opts={[
+                                        ['caret', 'Text cursor (falls back to mouse)'],
+                                        ['mouse', 'Mouse pointer'],
+                                        ['center', 'Screen centre'],
+                                        ['last', 'Last position'],
+                                    ]}
+                                />
+                            </Row>
+                            <Row
+                                k="popup_width"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Popup width (px)"
+                                hint="Default width of the popup window in logical pixels (minimum 260 px)."
+                            >
+                                <Num
+                                    v={s.popup_width}
+                                    on={(n) => set('popup_width', n)}
+                                    min={260}
+                                    max={1400}
+                                    step={10}
+                                />
+                            </Row>
+                            <Row
+                                k="popup_height"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Popup height (px)"
+                                hint="Default height of the popup window in logical pixels (minimum 320 px)."
+                            >
+                                <Num
+                                    v={s.popup_height}
+                                    on={(n) => set('popup_height', n)}
+                                    min={320}
+                                    max={1400}
+                                    step={10}
+                                />
+                            </Row>
+                            <Row
+                                k="remember_popup_size"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Preserve popup size when resized with mouse"
+                                hint="Automatically saves the new width and height when you drag the edges of the popup window."
+                            >
+                                <Toggle
+                                    v={s.remember_popup_size}
+                                    on={(b) => set('remember_popup_size', b)}
+                                    label="Preserve popup size when resized with mouse"
+                                />
+                            </Row>
+                            <Row
+                                k="show_toolbar"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Side toolbar (CopyQ style)"
+                                hint="Quick buttons next to the list: preview, pin, tags, copy, formats, edit, merge, actions, delete (can also be toggled from the popup header)."
+                            >
+                                <Toggle
+                                    v={s.show_toolbar}
+                                    on={(b) => set('show_toolbar', b)}
+                                    label="Side toolbar (CopyQ style)"
+                                />
+                            </Row>
+                            <Row
+                                k="show_pinboard_counts"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Show item count on category tabs"
+                                hint="Displays a small badge with the number of items next to each category tab in the popup."
+                            >
+                                <Toggle
+                                    v={s.show_pinboard_counts}
+                                    on={(b) => set('show_pinboard_counts', b)}
+                                    label="Show item count on category tabs"
+                                />
+                            </Row>
+                            <Row
+                                k="wrap_categories"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Wrap category tabs onto multiple lines"
+                                hint="On: wraps category tabs into multiple rows (like VS Code wrapTabs). Off: scrolls category tabs horizontally with mouse wheel or click-and-drag."
+                            >
+                                <Toggle
+                                    v={s.wrap_categories ?? false}
+                                    on={(b) => set('wrap_categories', b)}
+                                    label="Wrap category tabs onto multiple lines"
+                                />
+                            </Row>
+                        </section>
+                    )}
 
-                {showRules && (
-                    <section className="ssection">
-                        {renderSectionHeader('rules', 'Automatic rules')}
-                        <p className="muted small">
-                            {t(
-                                'Run on every new copy, in order. A rule applies when ALL of its filled-in conditions match. Example: app “keepass”, action “Do not store”; or pattern “^https?://”, action “Move to category”.'
+                    {showPrivacy && (
+                        <section className="ssection">
+                            {renderSectionHeader('privacy', 'Privacy & Screen capture')}
+                            <Row
+                                k="capture_protection"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Screen-capture protection"
+                                hint="Applied instantly to the popup, queue and settings windows. Needs Windows 10 2004+ for “Invisible”. Does not work inside Remote Desktop sessions."
+                            >
+                                <Select
+                                    v={s.capture_protection}
+                                    on={(v) => set('capture_protection', v)}
+                                    opts={[
+                                        ['black', 'Black rectangle (CopyQ style)'],
+                                        ['hidden', 'Invisible in captures'],
+                                        ['off', 'Off'],
+                                    ]}
+                                />
+                            </Row>
+                            <Row
+                                k="ignore_confidential"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Respect “do not record” flags"
+                                hint="Password managers mark their clipboard data; ClipNest then never stores it."
+                            >
+                                <Toggle
+                                    v={s.ignore_confidential}
+                                    on={(b) => set('ignore_confidential', b)}
+                                    label="Respect “do not record” flags"
+                                />
+                            </Row>
+                            <Row
+                                k="detect_sensitive"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Detect sensitive data"
+                                hint="Card numbers (Luhn), API keys (sk-…, ghp_…, AKIA…), private keys, JWTs."
+                            >
+                                <Toggle
+                                    v={s.detect_sensitive}
+                                    on={(b) => set('detect_sensitive', b)}
+                                    label="Detect sensitive data"
+                                />
+                            </Row>
+                            {s.detect_sensitive && (
+                                <>
+                                    <Row
+                                        k="sensitive_action"
+                                        s={s}
+                                        searchQuery={q}
+                                        onGearMenu={openGearMenu}
+                                        label="When detected"
+                                        hint="How Sensitive clips are handled when detected."
+                                    >
+                                        <Select
+                                            v={s.sensitive_action}
+                                            on={(v) => set('sensitive_action', v)}
+                                            opts={[
+                                                ['mask', 'Store, blur in the list'],
+                                                ['mask_delete', 'Store, blur, then auto-delete'],
+                                                ['skip', 'Do not store'],
+                                            ]}
+                                        />
+                                    </Row>
+                                    {s.sensitive_action === 'mask_delete' && (
+                                        <Row
+                                            k="sensitive_ttl_min"
+                                            s={s}
+                                            searchQuery={q}
+                                            onGearMenu={openGearMenu}
+                                            label="Auto-delete after (minutes)"
+                                            hint="How many minutes before a masked sensitive clip is permanently deleted."
+                                        >
+                                            <Num
+                                                v={s.sensitive_ttl_min}
+                                                on={(n) => set('sensitive_ttl_min', n)}
+                                                min={1}
+                                                max={1440}
+                                            />
+                                        </Row>
+                                    )}
+                                </>
                             )}
-                        </p>
-                        {s.rules.map((r, i) => (
-                            <div key={r.id} className="rulecard">
-                                <div className="rulehead">
-                                    <Toggle
-                                        v={r.enabled}
-                                        on={(b) => updAuto(i, { enabled: b })}
-                                        label={r.name || t('Rule name')}
+                            {matchesSearch(
+                                q,
+                                'Ignored applications',
+                                'Nothing copied from these executables is stored.'
+                            ) && (
+                                <>
+                                    <h3>{t('Ignored applications')}</h3>
+                                    <p className="muted small">
+                                        {t('Nothing copied from these executables is stored.')}
+                                    </p>
+                                    <TagList
+                                        items={s.ignore_apps}
+                                        onChange={(l) => set('ignore_apps', l)}
+                                        suggestions={apps}
+                                        placeholder="keepass.exe"
+                                    />
+                                    <div className="cap-note muted small">
+                                        {t('Database encryption and per-tab locking are not part of this version.')}
+                                    </div>
+                                </>
+                            )}
+                        </section>
+                    )}
+
+                    {showShortcuts && (
+                        <section className="ssection">
+                            {renderSectionHeader('shortcuts', 'Global shortcuts')}
+                            <p className="muted small">
+                                {t(
+                                    'Shortcuts that include the Windows key (for example Win+V) are handled by a keyboard hook. Windows keeps Win+V for its own clipboard history: if it still opens, turn that off in Windows Settings → System → Clipboard.'
+                                )}
+                            </p>
+                            <Row
+                                k="shortcut_open"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Open ClipNest"
+                                hint="Global hotkey to show or hide the main ClipNest popup."
+                            >
+                                <div className="stack">
+                                    <ShortcutInput
+                                        role="open"
+                                        v={s.shortcut_open}
+                                        on={(v) => set('shortcut_open', v)}
+                                    />
+                                    <div className="presets">
+                                        <button
+                                            type="button"
+                                            className="chip"
+                                            onClick={() => set('shortcut_open', 'Super+V')}
+                                        >
+                                            <span>{t('Use Win+V')}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="chip"
+                                            onClick={() => set('shortcut_open', 'Alt+V')}
+                                        >
+                                            <span>Alt+V</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </Row>
+                            <Row
+                                k="shortcut_queue"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Paste queue on/off"
+                                hint="Global hotkey to open or close the Paste Queue / Drop Basket window."
+                            >
+                                <ShortcutInput role="queue" v={s.shortcut_queue} on={(v) => set('shortcut_queue', v)} />
+                            </Row>
+                            <Row
+                                k="shortcut_plain_toggle"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Toggle plain-text mode"
+                                hint="Global hotkey to toggle between rich formatting and plain-text paste mode."
+                            >
+                                <ShortcutInput
+                                    role="plain"
+                                    v={s.shortcut_plain_toggle}
+                                    on={(v) => set('shortcut_plain_toggle', v)}
+                                />
+                            </Row>
+                            <Row
+                                k="shortcut_pause"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Pause / resume capture"
+                                hint="Global hotkey to pause or resume clipboard capturing."
+                            >
+                                <ShortcutInput role="pause" v={s.shortcut_pause} on={(v) => set('shortcut_pause', v)} />
+                            </Row>
+                            {!isSearching && (
+                                <>
+                                    <h3>{t('Inside the popup')}</h3>
+                                    <table className="keys" dir="ltr">
+                                        <tbody>
+                                            {[
+                                                [
+                                                    '↑ ↓ · Shift+↑↓ · PgUp/PgDn · Ctrl+↑↓',
+                                                    'Select / extend selection / jump',
+                                                ],
+                                                ['← → · Tab · Ctrl+[ ]', 'Switch Clipboard ↔ categories'],
+                                                [
+                                                    'Enter · Shift+Enter · Ctrl+Enter',
+                                                    'Paste · plain text · keep formatting',
+                                                ],
+                                                ['Ctrl+1 … Ctrl+9', 'Quick-paste a visible card'],
+                                                ['Alt+↑ / Alt+↓ (or drag a card)', 'Move the card up / down'],
+                                                ['Space (or F3)', 'Preview (empty search)'],
+                                                ['Ctrl+C', 'Copy only'],
+                                                ['Delete / Ctrl+Delete', 'Delete (or remove inside a category)'],
+                                                ['F2 · Ctrl+T · Ctrl+P', 'Rename · tags · pin on top'],
+                                                [
+                                                    'Ctrl+E · Ctrl+I · Ctrl+M',
+                                                    'Edit · formats inspector · merge selected',
+                                                ],
+                                                [
+                                                    'Ctrl+O · Ctrl+N · Ctrl+,',
+                                                    'Open link/file · new category · settings',
+                                                ],
+                                                ['Esc', 'Clear search, then close'],
+                                            ].map(([k, d]) => (
+                                                <tr key={k}>
+                                                    <td>
+                                                        <kbd>{k}</kbd>
+                                                    </td>
+                                                    <td className="muted" dir="auto">
+                                                        {t(d)}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </>
+                            )}
+                        </section>
+                    )}
+
+                    {showRules && (
+                        <section className="ssection">
+                            {renderSectionHeader('rules', 'Automatic rules')}
+                            <p className="muted small">
+                                {t(
+                                    'Run on every new copy, in order. A rule applies when ALL of its filled-in conditions match. Example: app “keepass”, action “Do not store”; or pattern “^https?://”, action “Move to category”.'
+                                )}
+                            </p>
+                            {s.rules.map((r, i) => (
+                                <div key={r.id} className="rulecard">
+                                    <div className="rulehead">
+                                        <Toggle
+                                            v={r.enabled}
+                                            on={(b) => updAuto(i, { enabled: b })}
+                                            label={r.name || t('Rule name')}
+                                        />
+                                        <input
+                                            value={r.name}
+                                            placeholder={t('Rule name')}
+                                            onChange={(e) => updAuto(i, { name: e.target.value })}
+                                        />
+                                        <button
+                                            type="button"
+                                            className="btn"
+                                            disabled={i === 0}
+                                            onClick={() => {
+                                                const a = [...s.rules];
+                                                [a[i - 1], a[i]] = [a[i], a[i - 1]];
+                                                set('rules', a);
+                                            }}
+                                        >
+                                            <span>↑</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="btn"
+                                            disabled={i === s.rules.length - 1}
+                                            onClick={() => {
+                                                const a = [...s.rules];
+                                                [a[i + 1], a[i]] = [a[i], a[i + 1]];
+                                                set('rules', a);
+                                            }}
+                                        >
+                                            <span>↓</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="btn"
+                                            onClick={() =>
+                                                set(
+                                                    'rules',
+                                                    s.rules.filter((_, j) => j !== i)
+                                                )
+                                            }
+                                        >
+                                            <span>{t('Remove')}</span>
+                                        </button>
+                                    </div>
+                                    <div className="rulegrid">
+                                        <label>
+                                            <span>{t('When copied from app(s)')}</span>
+                                            <input
+                                                dir="ltr"
+                                                value={r.apps}
+                                                placeholder="code, chrome"
+                                                onChange={(e) => updAuto(i, { apps: e.target.value })}
+                                            />
+                                        </label>
+                                        <label>
+                                            <span>{t('and text matches (regex)')}</span>
+                                            <input
+                                                dir="ltr"
+                                                value={r.pattern}
+                                                placeholder="^https?://"
+                                                onChange={(e) => updAuto(i, { pattern: e.target.value })}
+                                            />
+                                        </label>
+                                    </div>
+                                    <div className="kinds">
+                                        <span className="muted small">{t('Item type')}:</span>
+                                        {KINDS.map((k) => (
+                                            <label key={k} className="kind">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={r.kinds.includes(k)}
+                                                    onChange={(e) =>
+                                                        updAuto(i, {
+                                                            kinds: e.target.checked
+                                                                ? [...r.kinds, k]
+                                                                : r.kinds.filter((x) => x !== k),
+                                                        })
+                                                    }
+                                                />
+                                                <span>{t(k)}</span>
+                                            </label>
+                                        ))}
+                                        <span className="muted small">{r.kinds.length === 0 ? t('(any)') : ''}</span>
+                                    </div>
+                                    <div className="rulegrid">
+                                        <div>
+                                            <span className="field-label">{t('Then')}</span>
+                                            <Select v={r.action} on={(v) => updAuto(i, { action: v })} opts={ACTIONS} />
+                                        </div>
+                                        {r.action === 'to_board' && (
+                                            <div>
+                                                <span className="field-label">{t('Category')}</span>
+                                                <CustomSelect
+                                                    value={r.board}
+                                                    onChange={(v) => updAuto(i, { board: Number(v) })}
+                                                    options={[
+                                                        { value: 0, label: '—' },
+                                                        ...boards.map((b) => ({ value: b.id, label: b.name })),
+                                                    ]}
+                                                />
+                                            </div>
+                                        )}
+                                        {r.action === 'tag' && (
+                                            <label>
+                                                <span>{t('Tag')}</span>
+                                                <input
+                                                    value={r.value}
+                                                    placeholder="work"
+                                                    onChange={(e) => updAuto(i, { value: e.target.value })}
+                                                />
+                                            </label>
+                                        )}
+                                        {r.action === 'expire' && (
+                                            <label>
+                                                <span>{t('Minutes')}</span>
+                                                <input
+                                                    type="number"
+                                                    min={1}
+                                                    value={r.value}
+                                                    onChange={(e) => updAuto(i, { value: e.target.value })}
+                                                />
+                                            </label>
+                                        )}
+                                        {r.action === 'run_action' && (
+                                            <div>
+                                                <span className="field-label">{t('Custom action')}</span>
+                                                <CustomSelect
+                                                    value={r.value}
+                                                    onChange={(v) => updAuto(i, { value: String(v) })}
+                                                    options={[
+                                                        { value: '', label: '—' },
+                                                        ...s.actions.map((a) => ({ value: a.id, label: a.name })),
+                                                    ]}
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                            <button
+                                type="button"
+                                className="btn"
+                                onClick={() =>
+                                    set('rules', [
+                                        ...s.rules,
+                                        {
+                                            id: `r${Date.now()}`,
+                                            name: '',
+                                            enabled: false,
+                                            apps: '',
+                                            kinds: [],
+                                            pattern: '',
+                                            action: 'ignore',
+                                            board: 0,
+                                            value: '',
+                                        },
+                                    ])
+                                }
+                            >
+                                <span>{t('+ Add rule')}</span>
+                            </button>
+                        </section>
+                    )}
+
+                    {showActions && (
+                        <section className="ssection">
+                            {renderSectionHeader('actions', 'Custom actions')}
+                            <p className="muted small">
+                                {t(
+                                    'Shell commands (run with cmd /C) that receive the item’s text on stdin. They appear under “Actions” in the item menu and can be used by automatic rules.'
+                                )}{' '}
+                                <code dir="ltr">
+                                    {'powershell -NoProfile -Command "$input | ForEach-Object { $_.ToUpper() }"'}
+                                </code>
+                            </p>
+                            {s.actions.map((a, i) => (
+                                <div key={a.id} className="action">
+                                    <input
+                                        value={a.name}
+                                        placeholder={t('Name')}
+                                        onChange={(e) => updAct(i, { name: e.target.value })}
                                     />
                                     <input
-                                        value={r.name}
-                                        placeholder={t('Rule name')}
-                                        onChange={(e) => updAuto(i, { name: e.target.value })}
+                                        className="wide"
+                                        dir="ltr"
+                                        value={a.command}
+                                        placeholder="command"
+                                        onChange={(e) => updAct(i, { command: e.target.value })}
                                     />
-                                    <button
-                                        type="button"
-                                        className="btn"
-                                        disabled={i === 0}
-                                        onClick={() => {
-                                            const a = [...s.rules];
-                                            [a[i - 1], a[i]] = [a[i], a[i - 1]];
-                                            set('rules', a);
-                                        }}
-                                    >
-                                        <span>↑</span>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="btn"
-                                        disabled={i === s.rules.length - 1}
-                                        onClick={() => {
-                                            const a = [...s.rules];
-                                            [a[i + 1], a[i]] = [a[i], a[i + 1]];
-                                            set('rules', a);
-                                        }}
-                                    >
-                                        <span>↓</span>
-                                    </button>
+                                    <Select
+                                        v={a.output}
+                                        on={(v) => updAct(i, { output: v })}
+                                        opts={[
+                                            ['new_item', 'Output → new item'],
+                                            ['clipboard', 'Output → clipboard'],
+                                            ['none', 'Ignore output'],
+                                        ]}
+                                    />
                                     <button
                                         type="button"
                                         className="btn"
                                         onClick={() =>
                                             set(
-                                                'rules',
-                                                s.rules.filter((_, j) => j !== i)
+                                                'actions',
+                                                s.actions.filter((_, j) => j !== i)
                                             )
                                         }
                                     >
                                         <span>{t('Remove')}</span>
                                     </button>
                                 </div>
-                                <div className="rulegrid">
-                                    <label>
-                                        <span>{t('When copied from app(s)')}</span>
-                                        <input
-                                            dir="ltr"
-                                            value={r.apps}
-                                            placeholder="code, chrome"
-                                            onChange={(e) => updAuto(i, { apps: e.target.value })}
-                                        />
-                                    </label>
-                                    <label>
-                                        <span>{t('and text matches (regex)')}</span>
-                                        <input
-                                            dir="ltr"
-                                            value={r.pattern}
-                                            placeholder="^https?://"
-                                            onChange={(e) => updAuto(i, { pattern: e.target.value })}
-                                        />
-                                    </label>
-                                </div>
-                                <div className="kinds">
-                                    <span className="muted small">{t('Item type')}:</span>
-                                    {KINDS.map((k) => (
-                                        <label key={k} className="kind">
-                                            <input
-                                                type="checkbox"
-                                                checked={r.kinds.includes(k)}
-                                                onChange={(e) =>
-                                                    updAuto(i, {
-                                                        kinds: e.target.checked
-                                                            ? [...r.kinds, k]
-                                                            : r.kinds.filter((x) => x !== k),
-                                                    })
-                                                }
-                                            />
-                                            <span>{t(k)}</span>
-                                        </label>
-                                    ))}
-                                    <span className="muted small">{r.kinds.length === 0 ? t('(any)') : ''}</span>
-                                </div>
-                                <div className="rulegrid">
-                                    <div>
-                                        <span className="field-label">{t('Then')}</span>
-                                        <Select v={r.action} on={(v) => updAuto(i, { action: v })} opts={ACTIONS} />
-                                    </div>
-                                    {r.action === 'to_board' && (
-                                        <div>
-                                            <span className="field-label">{t('Category')}</span>
-                                            <CustomSelect
-                                                value={r.board}
-                                                onChange={(v) => updAuto(i, { board: Number(v) })}
-                                                options={[
-                                                    { value: 0, label: '—' },
-                                                    ...boards.map((b) => ({ value: b.id, label: b.name })),
-                                                ]}
-                                            />
-                                        </div>
-                                    )}
-                                    {r.action === 'tag' && (
-                                        <label>
-                                            <span>{t('Tag')}</span>
-                                            <input
-                                                value={r.value}
-                                                placeholder="work"
-                                                onChange={(e) => updAuto(i, { value: e.target.value })}
-                                            />
-                                        </label>
-                                    )}
-                                    {r.action === 'expire' && (
-                                        <label>
-                                            <span>{t('Minutes')}</span>
-                                            <input
-                                                type="number"
-                                                min={1}
-                                                value={r.value}
-                                                onChange={(e) => updAuto(i, { value: e.target.value })}
-                                            />
-                                        </label>
-                                    )}
-                                    {r.action === 'run_action' && (
-                                        <div>
-                                            <span className="field-label">{t('Custom action')}</span>
-                                            <CustomSelect
-                                                value={r.value}
-                                                onChange={(v) => updAuto(i, { value: String(v) })}
-                                                options={[
-                                                    { value: '', label: '—' },
-                                                    ...s.actions.map((a) => ({ value: a.id, label: a.name })),
-                                                ]}
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
-                        <button
-                            type="button"
-                            className="btn"
-                            onClick={() =>
-                                set('rules', [
-                                    ...s.rules,
-                                    {
-                                        id: `r${Date.now()}`,
-                                        name: '',
-                                        enabled: false,
-                                        apps: '',
-                                        kinds: [],
-                                        pattern: '',
-                                        action: 'ignore',
-                                        board: 0,
-                                        value: '',
-                                    },
-                                ])
-                            }
-                        >
-                            <span>{t('+ Add rule')}</span>
-                        </button>
-                    </section>
-                )}
+                            ))}
+                            <button
+                                type="button"
+                                className="btn"
+                                onClick={() =>
+                                    set('actions', [
+                                        ...s.actions,
+                                        {
+                                            id: `a${Date.now()}`,
+                                            name: t('My action'),
+                                            command: '',
+                                            output: 'new_item',
+                                        },
+                                    ])
+                                }
+                            >
+                                <span>{t('+ Add action')}</span>
+                            </button>
+                        </section>
+                    )}
 
-                {showActions && (
-                    <section className="ssection">
-                        {renderSectionHeader('actions', 'Custom actions')}
-                        <p className="muted small">
-                            {t(
-                                'Shell commands (run with cmd /C) that receive the item’s text on stdin. They appear under “Actions” in the item menu and can be used by automatic rules.'
-                            )}{' '}
-                            <code dir="ltr">
-                                {'powershell -NoProfile -Command "$input | ForEach-Object { $_.ToUpper() }"'}
-                            </code>
-                        </p>
-                        {s.actions.map((a, i) => (
-                            <div key={a.id} className="action">
-                                <input
-                                    value={a.name}
-                                    placeholder={t('Name')}
-                                    onChange={(e) => updAct(i, { name: e.target.value })}
-                                />
-                                <input
-                                    className="wide"
-                                    dir="ltr"
-                                    value={a.command}
-                                    placeholder="command"
-                                    onChange={(e) => updAct(i, { command: e.target.value })}
-                                />
-                                <Select
-                                    v={a.output}
-                                    on={(v) => updAct(i, { output: v })}
-                                    opts={[
-                                        ['new_item', 'Output → new item'],
-                                        ['clipboard', 'Output → clipboard'],
-                                        ['none', 'Ignore output'],
-                                    ]}
-                                />
-                                <button
-                                    type="button"
-                                    className="btn"
-                                    onClick={() =>
-                                        set(
-                                            'actions',
-                                            s.actions.filter((_, j) => j !== i)
-                                        )
-                                    }
-                                >
-                                    <span>{t('Remove')}</span>
-                                </button>
-                            </div>
-                        ))}
-                        <button
-                            type="button"
-                            className="btn"
-                            onClick={() =>
-                                set('actions', [
-                                    ...s.actions,
-                                    {
-                                        id: `a${Date.now()}`,
-                                        name: t('My action'),
-                                        command: '',
-                                        output: 'new_item',
-                                    },
-                                ])
-                            }
-                        >
-                            <span>{t('+ Add action')}</span>
-                        </button>
-                    </section>
-                )}
-
-                {showBackup && (
-                    <section className="ssection">
-                        {renderSectionHeader('backup', 'Backup & Data')}
-                        <p className="muted small">
-                            {t(
-                                'Every copy is written to disk immediately (SQLite WAL, full fsync), so a power cut cannot lose a completed copy.'
-                            )}
-                        </p>
-                        <Row
-                            k="auto_backup"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Daily automatic backup"
-                            hint="Automatically creates a compressed daily snapshot in the backups folder."
-                        >
-                            <Toggle
-                                v={s.auto_backup}
-                                on={(b) => set('auto_backup', b)}
+                    {showBackup && (
+                        <section className="ssection">
+                            {renderSectionHeader('backup', 'Backup & Data')}
+                            <p className="muted small">
+                                {t(
+                                    'Every copy is written to disk immediately (SQLite WAL, full fsync), so a power cut cannot lose a completed copy.'
+                                )}
+                            </p>
+                            <Row
+                                k="auto_backup"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
                                 label="Daily automatic backup"
-                            />
-                        </Row>
-                        <Row
-                            k="backup_keep"
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Backups to keep"
-                            hint="How many recent daily backup files to retain before deleting older ones."
-                        >
-                            <Num v={s.backup_keep} on={(n) => set('backup_keep', n)} min={1} max={90} />
-                        </Row>
-                        <Row
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Export history"
-                            hint="Saves everything (items, formats, categories) to a file you choose."
-                        >
-                            <button
-                                type="button"
-                                className="btn"
-                                onClick={() =>
-                                    run(async () => {
-                                        const p = await api.exportData();
-                                        return p ? t('Saved: {p}', { p }) : null;
-                                    })
-                                }
+                                hint="Automatically creates a compressed daily snapshot in the backups folder."
                             >
-                                <span>{t('Export…')}</span>
-                            </button>
-                        </Row>
-                        <Row
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Import / restore"
-                            hint="Merges an export or a daily backup into the current history. Nothing is overwritten or deleted."
-                        >
-                            <button
-                                type="button"
-                                className="btn"
-                                onClick={() =>
-                                    run(async () => {
-                                        const n = await api.importData();
-                                        return n === null ? null : t('Imported {n} new item(s)', { n });
-                                    })
-                                }
+                                <Toggle
+                                    v={s.auto_backup}
+                                    on={(b) => set('auto_backup', b)}
+                                    label="Daily automatic backup"
+                                />
+                            </Row>
+                            <Row
+                                k="backup_keep"
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Backups to keep"
+                                hint="How many recent daily backup files to retain before deleting older ones."
                             >
-                                <span>{t('Import…')}</span>
-                            </button>
-                        </Row>
-                        <Row
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Export / import settings"
-                            hint="Settings, rules, actions and shortcuts as a JSON file."
-                        >
-                            <div className="shortcut">
+                                <Num v={s.backup_keep} on={(n) => set('backup_keep', n)} min={1} max={90} />
+                            </Row>
+                            <Row
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Export history"
+                                hint="Saves everything (items, formats, categories) to a file you choose."
+                            >
                                 <button
                                     type="button"
                                     className="btn"
                                     onClick={() =>
                                         run(async () => {
-                                            const p = await api.exportSettings();
+                                            const p = await api.exportData();
                                             return p ? t('Saved: {p}', { p }) : null;
                                         })
                                     }
                                 >
                                     <span>{t('Export…')}</span>
                                 </button>
+                            </Row>
+                            <Row
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Import / restore"
+                                hint="Merges an export or a daily backup into the current history. Nothing is overwritten or deleted."
+                            >
                                 <button
                                     type="button"
                                     className="btn"
                                     onClick={() =>
-                                        run(async () => ((await api.importSettings()) ? t('Settings imported') : null))
+                                        run(async () => {
+                                            const n = await api.importData();
+                                            return n === null ? null : t('Imported {n} new item(s)', { n });
+                                        })
                                     }
                                 >
                                     <span>{t('Import…')}</span>
                                 </button>
-                            </div>
-                        </Row>
-                        <Row
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Back up now"
-                            hint="Create a compressed snapshot of the SQLite database right now."
-                        >
-                            <button
-                                type="button"
-                                className="btn"
-                                onClick={() => run(async () => t('Saved: {p}', { p: await api.backupNow() }))}
+                            </Row>
+                            <Row
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Export / import settings"
+                                hint="Settings, rules, actions and shortcuts as a JSON file."
                             >
-                                <span>{t('Create backup')}</span>
-                            </button>
-                        </Row>
-                        <Row
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Data folder"
-                            hint="Database, settings.json and backups."
-                        >
-                            <button type="button" className="btn" onClick={() => api.openDataDir()}>
-                                <span>{t('Open in Explorer')}</span>
-                            </button>
-                        </Row>
-                        <Row
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Erase history"
-                            hint="Removes unpinned history, with an option in the confirmation dialog to also delete pinned items and categories."
-                        >
-                            <button type="button" className="btn danger" onClick={askEraseHistory}>
-                                <span>{t('Erase history…')}</span>
-                            </button>
-                        </Row>
-                        <Row
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Reset all settings…"
-                            hint="Restores all preferences, shortcuts, and appearance options to factory defaults without deleting your clips."
-                        >
-                            <button type="button" className="btn" onClick={askResetAll}>
-                                <span>{t('Reset all settings…')}</span>
-                            </button>
-                        </Row>
-                        <Row
-                            s={s}
-                            searchQuery={q}
-                            onGearMenu={openGearMenu}
-                            label="Quit ClipNest"
-                            hint="Exit ClipNest completely and stop background clipboard monitoring."
-                        >
-                            <button type="button" className="btn danger" onClick={() => api.quit()}>
-                                <span>{t('Quit')}</span>
-                            </button>
-                        </Row>
-                    </section>
-                )}
-
-                {showHelp && (
-                    <section className="ssection">
-                        <div className="spane-head">
-                            <h2>{t('Help & Guide')}</h2>
-                        </div>
-                        <div className="guide-grid">
-                            <div className="guide-card">
-                                <h3>{t('Getting started')}</h3>
-                                <p className="muted">
-                                    {t(
-                                        'Press Win+V (or your configured shortcut) anywhere in Windows to open ClipNest at your text cursor. Double-click a card or press Enter to paste it with original formatting, or press Shift+Enter to paste as plain text.'
-                                    )}
-                                </p>
-                            </div>
-                            <div className="guide-card">
-                                <h3>{t('Smart search & filters')}</h3>
-                                <p className="muted">
-                                    {t(
-                                        'Type any word to search text, titles, app names, and tags with typo tolerance. Type image, code, link, file, or color to filter by item type (or wrap in quotes like "image" for literal text). Toggle .* for Regex or ~ for strict fuzzy matching.'
-                                    )}
-                                </p>
-                            </div>
-                            <div className="guide-card">
-                                <h3>{t('Categories & active tab')}</h3>
-                                <p className="muted">
-                                    {t(
-                                        'Create colour-coded Categories with + or Ctrl+N and drag cards onto any tab (hold Ctrl while dragging from a category to copy instead of move). Right-click a Category tab and enable Active category so all new copies go straight into that tab automatically.'
-                                    )}
-                                </p>
-                            </div>
-                            <div className="guide-card">
-                                <h3>{t('Paste Queue & Drop Basket')}</h3>
-                                <p className="muted">
-                                    {t(
-                                        'Press Ctrl+Alt+Q to open the floating Queue / Drop Basket window. In Queue mode, copy multiple items and press Ctrl+V repeatedly to paste them in FIFO or LIFO order. In Drop Basket mode, collect files and images from different folders and paste or move them all at once.'
-                                    )}
-                                </p>
-                            </div>
-                            <div className="guide-card">
-                                <h3>{t('Windows File Explorer context menu')}</h3>
-                                <p className="muted">
-                                    {t(
-                                        'Right-click inside any folder in Windows File Explorer and select ClipNest to view your copied files and paste them directly into that folder, or right-click any file to add it to the Drop Basket.'
-                                    )}
-                                </p>
-                            </div>
-                            <div className="guide-card">
-                                <h3>{t('Text transforms & Persian tools')}</h3>
-                                <p className="muted">
-                                    {t(
-                                        'Right-click any text card and choose Transform to convert case, format JSON, encode Base64/URL, normalize Arabic characters and digits to standard Persian/English, or convert all numbers to Persian digits.'
-                                    )}
-                                </p>
-                            </div>
-                        </div>
-
-                        <h3>{t('Inside the popup')}</h3>
-                        <table className="keys" dir="ltr">
-                            <tbody>
-                                {[
-                                    ['↑ ↓ · Shift+↑↓ · PgUp/PgDn · Ctrl+↑↓', 'Select / extend selection / jump'],
-                                    ['← → · Tab · Ctrl+[ ]', 'Switch Clipboard ↔ categories'],
-                                    ['Enter · Shift+Enter · Ctrl+Enter', 'Paste · plain text · keep formatting'],
-                                    ['Ctrl+1 … Ctrl+9', 'Quick-paste a visible card'],
-                                    ['Alt+↑ / Alt+↓ (or drag a card)', 'Move the card up / down'],
-                                    ['Space (or F3)', 'Preview (empty search)'],
-                                    ['Ctrl+C', 'Copy only'],
-                                    ['Delete / Ctrl+Delete', 'Delete (or remove inside a category)'],
-                                    ['F2 · Ctrl+T · Ctrl+P', 'Rename · tags · pin on top'],
-                                    ['Ctrl+E · Ctrl+I · Ctrl+M', 'Edit · formats inspector · merge selected'],
-                                    ['Ctrl+O · Ctrl+N · Ctrl+,', 'Open link/file · new category · settings'],
-                                    ['Esc', 'Clear search, then close'],
-                                ].map(([k, d]) => (
-                                    <tr key={k}>
-                                        <td>
-                                            <kbd>{k}</kbd>
-                                        </td>
-                                        <td className="muted" dir="auto">
-                                            {t(d)}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </section>
-                )}
-
-                {showAbout && (
-                    <section className="ssection">
-                        <div className="spane-head">
-                            <h2>{t('About')}</h2>
-                        </div>
-                        <div className="about-hero">
-                            <img className="about-logo" src="/icon.png" alt="ClipNest" draggable={false} />
-                            <div className="about-meta">
-                                <div className="about-title-row">
-                                    <h3>ClipNest</h3>
-                                    <span className="badge">v0.2.0</span>
+                                <div className="shortcut">
+                                    <button
+                                        type="button"
+                                        className="btn"
+                                        onClick={() =>
+                                            run(async () => {
+                                                const p = await api.exportSettings();
+                                                return p ? t('Saved: {p}', { p }) : null;
+                                            })
+                                        }
+                                    >
+                                        <span>{t('Export…')}</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="btn"
+                                        onClick={() =>
+                                            run(async () =>
+                                                (await api.importSettings()) ? t('Settings imported') : null
+                                            )
+                                        }
+                                    >
+                                        <span>{t('Import…')}</span>
+                                    </button>
                                 </div>
-                                <p className="muted">
-                                    {t('Fast, private clipboard manager & file collector for Windows 10 and 11.')}
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="guide-grid">
-                            <div className="guide-card">
-                                <h3>{t('100% Local & Private')}</h3>
-                                <p className="muted">
-                                    {t(
-                                        'All clipboard data, icons, and backups are stored strictly on your device with zero cloud sync or telemetry.'
-                                    )}
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="srow">
-                            <div className="slabel">
-                                <span>{t('Data folder')}</span>
-                                <div className="muted small" dir="ltr">
-                                    %APPDATA%\com.clipnest.app
-                                </div>
-                            </div>
-                            <div className="sctl">
-                                <button type="button" className="btn" onClick={() => api.openDataDir()}>
-                                    <Icon name="folder" size={13} /> <span>{t('Open in Explorer')}</span>
+                            </Row>
+                            <Row
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Back up now"
+                                hint="Create a compressed snapshot of the SQLite database right now."
+                            >
+                                <button
+                                    type="button"
+                                    className="btn"
+                                    onClick={() => run(async () => t('Saved: {p}', { p: await api.backupNow() }))}
+                                >
+                                    <span>{t('Create backup')}</span>
                                 </button>
+                            </Row>
+                            <Row
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Data folder"
+                                hint="Database, settings.json and backups."
+                            >
+                                <button type="button" className="btn" onClick={() => api.openDataDir()}>
+                                    <span>{t('Open in Explorer')}</span>
+                                </button>
+                            </Row>
+                            <Row
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Erase history"
+                                hint="Removes unpinned history, with an option in the confirmation dialog to also delete pinned items and categories."
+                            >
+                                <button type="button" className="btn danger" onClick={askEraseHistory}>
+                                    <span>{t('Erase history…')}</span>
+                                </button>
+                            </Row>
+                            <Row
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Reset all settings…"
+                                hint="Restores all preferences, shortcuts, and appearance options to factory defaults without deleting your clips."
+                            >
+                                <button type="button" className="btn" onClick={askResetAll}>
+                                    <span>{t('Reset all settings…')}</span>
+                                </button>
+                            </Row>
+                            <Row
+                                s={s}
+                                searchQuery={q}
+                                onGearMenu={openGearMenu}
+                                label="Quit ClipNest"
+                                hint="Exit ClipNest completely and stop background clipboard monitoring."
+                            >
+                                <button type="button" className="btn danger" onClick={() => api.quit()}>
+                                    <span>{t('Quit')}</span>
+                                </button>
+                            </Row>
+                        </section>
+                    )}
+
+                    {showHelp && (
+                        <section className="ssection">
+                            <div className="spane-head">
+                                <h2>{t('Help & Guide')}</h2>
                             </div>
+                            <div className="guide-grid">
+                                <div className="guide-card">
+                                    <h3>{t('Getting started')}</h3>
+                                    <p className="muted">
+                                        {t(
+                                            'Press Win+V (or your configured shortcut) anywhere in Windows to open ClipNest at your text cursor. Double-click a card or press Enter to paste it with original formatting, or press Shift+Enter to paste as plain text.'
+                                        )}
+                                    </p>
+                                </div>
+                                <div className="guide-card">
+                                    <h3>{t('Smart search & filters')}</h3>
+                                    <p className="muted">
+                                        {t(
+                                            'Type any word to search text, titles, app names, and tags with typo tolerance. Type image, code, link, file, or color to filter by item type (or wrap in quotes like "image" for literal text). Toggle .* for Regex or ~ for strict fuzzy matching.'
+                                        )}
+                                    </p>
+                                </div>
+                                <div className="guide-card">
+                                    <h3>{t('Categories & active tab')}</h3>
+                                    <p className="muted">
+                                        {t(
+                                            'Create colour-coded Categories with + or Ctrl+N and drag cards onto any tab (hold Ctrl while dragging from a category to copy instead of move). Right-click a Category tab and enable Active category so all new copies go straight into that tab automatically.'
+                                        )}
+                                    </p>
+                                </div>
+                                <div className="guide-card">
+                                    <h3>{t('Paste Queue & Drop Basket')}</h3>
+                                    <p className="muted">
+                                        {t(
+                                            'Press Ctrl+Alt+Q to open the floating Queue / Drop Basket window. In Queue mode, copy multiple items and press Ctrl+V repeatedly to paste them in FIFO or LIFO order. In Drop Basket mode, collect files and images from different folders and paste or move them all at once.'
+                                        )}
+                                    </p>
+                                </div>
+                                <div className="guide-card">
+                                    <h3>{t('Windows File Explorer context menu')}</h3>
+                                    <p className="muted">
+                                        {t(
+                                            'Right-click inside any folder in Windows File Explorer and select ClipNest to view your copied files and paste them directly into that folder, or right-click any file to add it to the Drop Basket.'
+                                        )}
+                                    </p>
+                                </div>
+                                <div className="guide-card">
+                                    <h3>{t('Text transforms & Persian tools')}</h3>
+                                    <p className="muted">
+                                        {t(
+                                            'Right-click any text card and choose Transform to convert case, format JSON, encode Base64/URL, normalize Arabic characters and digits to standard Persian/English, or convert all numbers to Persian digits.'
+                                        )}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <h3>{t('Inside the popup')}</h3>
+                            <table className="keys" dir="ltr">
+                                <tbody>
+                                    {[
+                                        ['↑ ↓ · Shift+↑↓ · PgUp/PgDn · Ctrl+↑↓', 'Select / extend selection / jump'],
+                                        ['← → · Tab · Ctrl+[ ]', 'Switch Clipboard ↔ categories'],
+                                        ['Enter · Shift+Enter · Ctrl+Enter', 'Paste · plain text · keep formatting'],
+                                        ['Ctrl+1 … Ctrl+9', 'Quick-paste a visible card'],
+                                        ['Alt+↑ / Alt+↓ (or drag a card)', 'Move the card up / down'],
+                                        ['Space (or F3)', 'Preview (empty search)'],
+                                        ['Ctrl+C', 'Copy only'],
+                                        ['Delete / Ctrl+Delete', 'Delete (or remove inside a category)'],
+                                        ['F2 · Ctrl+T · Ctrl+P', 'Rename · tags · pin on top'],
+                                        ['Ctrl+E · Ctrl+I · Ctrl+M', 'Edit · formats inspector · merge selected'],
+                                        ['Ctrl+O · Ctrl+N · Ctrl+,', 'Open link/file · new category · settings'],
+                                        ['Esc', 'Clear search, then close'],
+                                    ].map(([k, d]) => (
+                                        <tr key={k}>
+                                            <td>
+                                                <kbd>{k}</kbd>
+                                            </td>
+                                            <td className="muted" dir="auto">
+                                                {t(d)}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </section>
+                    )}
+
+                    {showAbout && (
+                        <section className="ssection">
+                            <div className="spane-head">
+                                <h2>{t('About')}</h2>
+                            </div>
+                            <div className="about-hero">
+                                <img className="about-logo" src="/icon.png" alt="ClipNest" draggable={false} />
+                                <div className="about-meta">
+                                    <div className="about-title-row">
+                                        <h3>ClipNest</h3>
+                                        <span className="badge">v0.2.0</span>
+                                    </div>
+                                    <p className="muted">
+                                        {t('Fast, private clipboard manager & file collector for Windows 10 and 11.')}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="guide-grid">
+                                <div className="guide-card">
+                                    <h3>{t('100% Local & Private')}</h3>
+                                    <p className="muted">
+                                        {t(
+                                            'All clipboard data, icons, and backups are stored strictly on your device with zero cloud sync or telemetry.'
+                                        )}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="srow">
+                                <div className="slabel">
+                                    <span>{t('Data folder')}</span>
+                                    <div className="muted small" dir="ltr">
+                                        %APPDATA%\com.clipnest.app
+                                    </div>
+                                </div>
+                                <div className="sctl">
+                                    <button type="button" className="btn" onClick={() => api.openDataDir()}>
+                                        <Icon name="folder" size={13} /> <span>{t('Open in Explorer')}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </section>
+                    )}
+
+                    {!hasSearchResults && (
+                        <div className="empty spane-empty" role="status">
+                            <Icon name="search" size={32} />
+                            <span>{t('Nothing found')}</span>
                         </div>
-                    </section>
-                )}
+                    )}
 
-                {!hasSearchResults && (
-                    <div className="empty spane-empty" role="status">
-                        <Icon name="search" size={32} />
-                        <span>{t('Nothing found')}</span>
-                    </div>
-                )}
-
-                {msg && (
-                    <div className="toast" role="status" aria-live="polite">
-                        {msg}
-                    </div>
-                )}
-                {menu && <ContextMenu x={menu.x} y={menu.y} entries={menu.entries} onClose={() => setMenu(null)} />}
-                {prompt && <Prompt p={prompt} onClose={() => setPrompt(null)} />}
-            </main>
+                    {msg && (
+                        <div className="toast" role="status" aria-live="polite">
+                            {msg}
+                        </div>
+                    )}
+                    {menu && <ContextMenu x={menu.x} y={menu.y} entries={menu.entries} onClose={() => setMenu(null)} />}
+                    {prompt && <Prompt p={prompt} onClose={() => setPrompt(null)} />}
+                </main>
+            </div>
         </div>
     );
 }

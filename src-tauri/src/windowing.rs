@@ -35,7 +35,8 @@ fn card_bg_for_theme(theme: &str) -> Color {
     }
 }
 
-/// Configures native DWM rounded corners on startup for pre-created frameless windows (`popup` and `tray`).
+/// Configures theme background colors and native DWM rounded corners on startup for frameless windows
+/// (`popup`, `tray`, `queue`, and `settings`), pre-creating the hidden `queue` window.
 pub fn init_startup_windows(app: &AppHandle) {
     let theme = app.state::<AppState>().settings.read().theme.clone();
     // Pre-create the (hidden) Paste Queue window so its webview is already loaded the first time it is
@@ -55,6 +56,9 @@ pub fn init_startup_windows(app: &AppHandle) {
     }
     if let Some(w) = app.get_webview_window("settings") {
         let _ = w.set_background_color(Some(window_bg_for_theme(&theme)));
+        if let Some(h) = hwnd_of(&w) {
+            win::round_window_corners(h);
+        }
     }
 }
 
@@ -209,7 +213,14 @@ fn ensure_window(app: &AppHandle, label: &str) -> Option<WebviewWindow> {
     };
     let base = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into())).background_color(bg);
     let built = if label == "settings" {
-        base.title("ClipNest Settings").inner_size(900.0, 680.0).min_inner_size(740.0, 520.0).center().build()
+        base.title("ClipNest Settings")
+            .inner_size(900.0, 680.0)
+            .min_inner_size(740.0, 520.0)
+            .decorations(false)
+            .resizable(true)
+            .shadow(true)
+            .center()
+            .build()
     } else if label == "tray" {
         base.title("ClipNest Menu")
             .inner_size(246.0, 268.0)
@@ -237,7 +248,7 @@ fn ensure_window(app: &AppHandle, label: &str) -> Option<WebviewWindow> {
     match built {
         Ok(w) => {
             if let Some(h) = hwnd_of(&w) {
-                if label == "tray" || label == "queue" {
+                if label == "tray" || label == "queue" || label == "settings" {
                     win::round_window_corners(h);
                 }
                 if label == "queue" {
@@ -260,6 +271,9 @@ pub fn open_settings(app: &AppHandle) {
     }
     let w = ensure_window(app, "settings");
     if let Some(w) = w {
+        if let Some(h) = hwnd_of(&w) {
+            win::round_window_corners(h);
+        }
         let _ = w.unminimize();
         let _ = w.show();
         apply_protection_to(app, &w);

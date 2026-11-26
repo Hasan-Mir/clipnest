@@ -609,6 +609,17 @@ export const FA: Record<string, string> = {
     '{n} item(s) were copied successfully and stay in the destination folder.':
         '{n} آیتم با موفقیت کپی شد و در پوشه‌ی مقصد باقی می‌ماند.',
     Close: 'بستن',
+    Minimize: 'کوچک‌نمایی',
+    Maximize: 'بزرگ‌نمایی',
+    Restore: 'بازگردانی اندازه',
+    'UI font family': 'فونت رابط کاربری',
+    'Choose the modern Latin font for the application interface (Persian and Arabic UI text always uses embedded Vazirmatn).':
+        'فونت مدرن لاتین برای رابط کاربری برنامه را انتخاب کنید (متن‌های فارسی و عربی رابط کاربری همیشه با فونت تعبیه‌شده‌ی Vazirmatn نمایش داده می‌شوند).',
+    'Base font size in pixels across the popup, queue, and settings windows (10 to 20 px, default 14 px).':
+        'اندازه‌ی پایه‌ی فونت بر حسب پیکسل در پنجره‌های اصلی، صف و تنظیمات (۱۰ تا ۲۰ پیکسل، پیش‌فرض ۱۴ پیکسل).',
+    'Items per page': 'تعداد آیتم در هر صفحه',
+    'How many clipboard items are loaded per scroll page in the popup list (20 to 500, default 100).':
+        'تعداد آیتم‌هایی که در هر صفحه‌ی اسکرول در لیست اصلی بارگذاری می‌شوند (۲۰ تا ۵۰۰، پیش‌فرض ۱۰۰).',
     'Drop Basket: group files by folder': 'سبد فایل (Drop Basket): گروه‌بندی فایل‌ها بر اساس پوشه',
     'When enabled, files that live in the same folder are shown as one expandable group. When disabled, every file is listed separately.':
         'در صورت فعال بودن، فایل‌هایی که در یک پوشه قرار دارند به‌صورت یک گروه قابل باز شدن نمایش داده می‌شوند. در صورت غیرفعال بودن، هر فایل جداگانه لیست می‌شود.',

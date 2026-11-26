@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { isKey } from './lib/shortcut';
+import { applyUiFont } from './lib/uiFonts';
 import { TooltipHost } from './lib/TooltipHost';
 import Popup from './popup/Popup';
 import SettingsView from './settings/Settings';
@@ -16,6 +17,7 @@ try {
     if (cachedTheme) {
         document.documentElement.dataset.theme = cachedTheme;
     }
+    applyUiFont(localStorage.getItem('clipnest_ui_font'));
 } catch {
     // ignore storage errors
 }

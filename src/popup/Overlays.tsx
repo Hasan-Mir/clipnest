@@ -4,6 +4,7 @@ import { Pinboard } from '../lib/api';
 import { CustomSelect } from '../lib/CustomSelect';
 import { Icon, IconName } from '../lib/icons';
 import { t } from '../lib/i18n';
+import { useEntered } from '../lib/useEntered';
 
 // ───────────── context menu (powered by @floating-ui/react) ─────────────
 export interface MenuChip {
@@ -124,6 +125,8 @@ export function ContextMenu({
             }),
         ],
     });
+
+    const menuEntered = useEntered(isPositioned);
 
     useLayoutEffect(() => {
         setOpenSub(null);
@@ -260,7 +263,7 @@ export function ContextMenu({
                 role="menu"
                 aria-label={t('Actions')}
                 tabIndex={-1}
-                className={`menu${isPositioned ? ' menu-ready' : ''}`}
+                className={`menu${menuEntered ? ' entered' : ''}`}
                 ref={(node) => {
                     menuElRef.current = node;
                     refs.setFloating(node);
@@ -499,6 +502,8 @@ function SubMenu({
         });
     }, [parentRect, anchor, refs]);
 
+    const subEntered = useEntered(isPositioned);
+
     useEffect(() => {
         setFocusIdx(actionableIndices[0] ?? -1);
     }, [actionableIndices]);
@@ -556,7 +561,7 @@ function SubMenu({
                 subMenuRef.current = node;
                 refs.setFloating(node);
             }}
-            className={`menu sub${isPositioned ? ' menu-ready' : ''}`}
+            className={`menu sub${subEntered ? ' entered' : ''}`}
             style={{
                 ...floatingStyles,
                 visibility: isPositioned ? 'visible' : 'hidden',
@@ -610,6 +615,7 @@ export interface PromptState {
 }
 
 export function Prompt({ p, onClose }: { p: PromptState; onClose: () => void }) {
+    const entered = useEntered(true);
     const [v, setV] = useState(p.initial ?? '');
     const [checked, setChecked] = useState(p.defaultChecked ?? false);
     const [checked2, setChecked2] = useState(p.defaultChecked2 ?? false);
@@ -628,7 +634,7 @@ export function Prompt({ p, onClose }: { p: PromptState; onClose: () => void }) 
 
     return (
         <div
-            className="overlay"
+            className={`overlay${entered ? ' entered' : ''}`}
             onMouseDown={onClose}
             onKeyDown={(e) => {
                 if (e.key === 'Escape') {
@@ -646,7 +652,7 @@ export function Prompt({ p, onClose }: { p: PromptState; onClose: () => void }) 
                 role="dialog"
                 aria-modal="true"
                 aria-label={p.title}
-                className="dialog"
+                className={`dialog${entered ? ' entered' : ''}`}
                 onMouseDown={(e) => e.stopPropagation()}
             >
                 <div className="dialog-title">{p.title}</div>
@@ -721,6 +727,7 @@ export function BoardDialog({
     ) => void;
     onClose: () => void;
 }) {
+    const entered = useEntered(true);
     const [name, setName] = useState(board.name);
     const [color, setColor] = useState(board.color || BOARD_COLORS[0]);
     const [max, setMax] = useState(board.max_items);
@@ -750,7 +757,7 @@ export function BoardDialog({
 
     return (
         <div
-            className="overlay"
+            className={`overlay${entered ? ' entered' : ''}`}
             onMouseDown={onClose}
             onKeyDown={(e) => {
                 if (e.key === 'Escape') {
@@ -764,7 +771,7 @@ export function BoardDialog({
                 role="dialog"
                 aria-modal="true"
                 aria-label={t('Category settings')}
-                className="dialog board-dlg"
+                className={`dialog board-dlg${entered ? ' entered' : ''}`}
                 onMouseDown={(e) => e.stopPropagation()}
             >
                 <div className="dialog-title">{t('Category settings')}</div>

@@ -1,4 +1,5 @@
-import React, { memo, useCallback, useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { useViewportVisible } from '../lib/useViewportVisible';
 import { api, ClipRow } from '../lib/api';
 import { appColor, basename, extOf, hostOf, relTime } from '../lib/format';
 import { highlightText, SearchMode } from '../lib/highlightMatch';
@@ -11,10 +12,17 @@ const iconCache = new Map<string, string | null>();
 let lastIconRev = 0;
 
 function Thumb({ id, w, h }: { id: number; w: number | null; h: number | null }) {
+    const wrapRef = useRef<HTMLDivElement>(null);
+    // Defer thumbnail IPC decoding until the card is within 300px of the scroll viewport so
+    // non-virtualized pagination never fires dozens of off-screen PNG reads on popup open.
+    const nearViewport = useViewportVisible(wrapRef);
     const [src, setSrc] = useState<string | null | undefined>(() => thumbCache.get(id));
     useEffect(() => {
         if (thumbCache.has(id)) {
             setSrc(thumbCache.get(id));
+            return;
+        }
+        if (!nearViewport) {
             return;
         }
         let alive = true;
@@ -36,12 +44,12 @@ function Thumb({ id, w, h }: { id: number; w: number | null; h: number | null })
         return () => {
             alive = false;
         };
-    }, [id]);
+    }, [id, nearViewport]);
     if (src === null) {
         return null;
     }
     return (
-        <div className="thumbwrap">
+        <div ref={wrapRef} className="thumbwrap">
             {src ? <img className="thumb" src={src} alt="" draggable={false} /> : <div className="thumb ph" />}
             {w && h ? (
                 <div className="dims">
@@ -78,6 +86,9 @@ function AppIcon({ exe, name, rev }: { exe: string; name: string; rev: number })
             })
             .catch(() => {
                 iconCache.set(key, null);
+                if (alive) {
+                    setSrc(null);
+                }
             });
         return () => {
             alive = false;

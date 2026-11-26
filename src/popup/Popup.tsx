@@ -1,6 +1,5 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { VList, VListHandle } from 'virtua';
 import { api, ClipRow, errText, ListResult, on, PasteMode, Pinboard, Status } from '../lib/api';
 import { basename } from '../lib/format';
 import { SearchMode } from '../lib/highlightMatch';
@@ -13,7 +12,15 @@ import { Card, DropMark } from './Card';
 import { BOARD_COLORS, BoardDialog, ContextMenu, MenuEntry, Prompt, PromptState } from './Overlays';
 import { Preview } from './Preview';
 
-const PAGE = 100;
+/** Default number of items loaded per scroll page (configurable via `settings.page_size`). */
+const DEFAULT_PAGE_SIZE = 100;
+
+function normalizePageSize(raw?: number): number {
+    if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+        return DEFAULT_PAGE_SIZE;
+    }
+    return Math.max(20, Math.min(500, Math.round(raw)));
+}
 
 function renderCopyAccentText(full: string, accentCopy: boolean) {
     if (!accentCopy) {
@@ -57,7 +64,11 @@ export default function Popup() {
     const [tab, setTab] = useState<number | null>(null);
     const [query, setQuery] = useState('');
     const [smode, setSmode] = useState<SearchMode>('smart');
-    const [limit, setLimit] = useState(PAGE);
+    const pageSize = normalizePageSize(settings?.page_size);
+    const pageSizeRef = useRef(pageSize);
+    pageSizeRef.current = pageSize;
+    const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
+    const [removingIds, setRemovingIds] = useState<Set<number>>(() => new Set());
     const [res, setRes] = useState<ListResult>({ items: [], total: 0, error: null });
     const [sel, setSel] = useState(0);
     const [multi, setMulti] = useState<number[]>([]);
@@ -109,7 +120,7 @@ export default function Popup() {
     const followIdRef = useRef<number | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
-    const vlistRef = useRef<VListHandle>(null);
+    const loadMoreRef = useRef<HTMLDivElement>(null);
     const tabsRef = useRef<HTMLDivElement>(null);
     const tabDragState = useRef<{ active: boolean; startX: number; startScroll: number; moved: boolean }>({
         active: false,
@@ -143,16 +154,50 @@ export default function Popup() {
         }
     }, [menu, preview, prompt, boardDlg]);
 
+    // Tracks IDs currently collapsing or awaiting backend deletion/removal so concurrent
+    // `items-changed` reloads never resurrect an item mid-animation or mid-IPC.
+    const pendingDeleteIdsRef = useRef<Set<number>>(new Set());
+
+    // Keep the initial page window aligned when the user changes `page_size` in Settings.
+    const prevPageSizeRef = useRef(pageSize);
+    useEffect(() => {
+        if (prevPageSizeRef.current !== pageSize) {
+            prevPageSizeRef.current = pageSize;
+            setLimit(pageSize);
+        }
+    }, [pageSize]);
+
     // ───────────── data ─────────────
     const reload = useCallback(async () => {
         const my = ++seq.current;
         try {
-            const [r, b] = await Promise.all([api.listItems(tab, query, smode, limit), api.listPinboards()]);
+            const [rawRes, b] = await Promise.all([api.listItems(tab, query, smode, limit), api.listPinboards()]);
             if (my !== seq.current) {
                 return;
             }
+            const pending = pendingDeleteIdsRef.current;
+            const r =
+                pending.size > 0
+                    ? (() => {
+                          const filtered = rawRes.items.filter((x) => !pending.has(x.id));
+                          const dropped = rawRes.items.length - filtered.length;
+                          return dropped > 0
+                              ? { ...rawRes, items: filtered, total: Math.max(0, rawRes.total - dropped) }
+                              : rawRes;
+                      })()
+                    : rawRes;
             setRes(r);
             setBoards(b);
+            // Prune stale IDs (deleted, expired, evicted, or moved to another category) from `multi`
+            // so `targets()` never gets stuck returning `[]` and the footer count stays accurate.
+            setMulti((prev) => {
+                if (prev.length === 0) {
+                    return prev;
+                }
+                const liveIds = new Set(r.items.map((x) => x.id));
+                const next = prev.filter((id) => liveIds.has(id));
+                return next.length === prev.length ? prev : next.length <= 1 ? [] : next;
+            });
             if (followIdRef.current !== null) {
                 const movedIdx = r.items.findIndex((x) => x.id === followIdRef.current);
                 followIdRef.current = null;
@@ -263,7 +308,7 @@ export default function Popup() {
                 }
                 const activeBoard = settingsRef.current?.active_pinboard ?? null;
                 setTab(activeBoard);
-                setLimit(PAGE);
+                setLimit(pageSizeRef.current);
                 setSel(0);
                 anchor.current = 0;
                 setMulti([]);
@@ -282,7 +327,6 @@ export default function Popup() {
                 reloadRef.current();
                 loadStatus();
                 listRef.current?.scrollTo(0, 0);
-                vlistRef.current?.scrollTo(0);
                 setTimeout(() => {
                     inputRef.current?.focus();
                     inputRef.current?.select();
@@ -412,15 +456,51 @@ export default function Popup() {
     }, [menu, preview, prompt, boardDlg]);
 
     useEffect(() => {
-        if (settings?.virtual_scroll !== false) {
-            vlistRef.current?.scrollToIndex(sel, { align: 'nearest' });
-        } else if (cur) {
+        setSel((s) => {
+            const clamped = Math.min(s, Math.max(0, items.length - 1));
+            return clamped === s ? s : clamped;
+        });
+    }, [items.length]);
+
+    useEffect(() => {
+        if (cur) {
             document.getElementById(`card-${cur.id}`)?.scrollIntoView({ block: 'nearest' });
         }
-    }, [sel, cur?.id, settings?.virtual_scroll]);
+    }, [sel, cur?.id]);
+
+    // Mouse/trackpad scroll pagination: loads the next `pageSize` clips when the bottom sentinel
+    // approaches the scroll viewport (previously only keyboard `move()` incremented `limit`).
+    const hasMoreItems = items.length < res.total;
+    useEffect(() => {
+        const sentinel = loadMoreRef.current;
+        const root = listRef.current;
+        if (!sentinel || !root || !hasMoreItems || typeof IntersectionObserver === 'undefined') {
+            return;
+        }
+        const obs = new IntersectionObserver(
+            (entries) => {
+                if (entries.some((e) => e.isIntersecting)) {
+                    setLimit((l) => (l <= items.length ? l + pageSizeRef.current : l));
+                }
+            },
+            { root, rootMargin: '200px 0px' }
+        );
+        obs.observe(sentinel);
+        return () => obs.disconnect();
+    }, [hasMoreItems, items.length]);
 
     // ───────────── helpers ─────────────
-    const targets = (): ClipRow[] => (multi.length > 1 ? items.filter((i) => multi.includes(i.id)) : cur ? [cur] : []);
+    // Respect any non-empty live `multi` selection (even length 1) before falling back to `cur`,
+    // preventing a deselected `cur` from being deleted if `multi` ever contains a single remaining ID.
+    const targets = (): ClipRow[] => {
+        if (multi.length > 0) {
+            const live = items.filter((i) => multi.includes(i.id));
+            if (live.length > 0) {
+                return live;
+            }
+        }
+        return cur ? [cur] : [];
+    };
 
     const move = (to: number, extend = false) => {
         const n = items.length;
@@ -438,7 +518,7 @@ export default function Popup() {
         }
         setSel(tt);
         if (tt >= n - 8 && n < res.total) {
-            setLimit((l) => l + PAGE);
+            setLimit((l) => l + pageSizeRef.current);
         }
     };
 
@@ -446,7 +526,7 @@ export default function Popup() {
         setSel(0);
         anchor.current = 0;
         setMulti([]);
-        setLimit(PAGE);
+        setLimit(pageSizeRef.current);
     };
 
     const tabIds: (number | null)[] = useMemo(() => [null, ...boards.map((b) => b.id)], [boards]);
@@ -479,141 +559,89 @@ export default function Popup() {
         return out;
     };
 
-    // ───────────── smooth card removal animation (compatible with virtua VList) ─────────────
-    // IMPORTANT: we never collapse .vlist-item height to 0px (which would poison virtua's index-based
-    // ResizeObserver size cache). Instead, deleted cards fade/scale out while all rendered cards below them
-    // smoothly glide upward via GPU `transform: translateY(-shiftY)` to fill their exact space, followed by a
-    // synchronous optimistic state handoff before paint so there is zero jump.
-    const pendingResetElsRef = useRef<HTMLElement[]>([]);
-    const animatingIdsRef = useRef<Set<number>>(new Set());
-
-    const resetCardStyles = useCallback((els: HTMLElement[]) => {
-        for (const el of els) {
-            el.style.transition = 'none';
-            el.style.transform = '';
-            el.style.opacity = '';
-            el.style.pointerEvents = '';
-            el.style.willChange = '';
-            void el.offsetHeight;
-            el.style.transition = '';
+    // ───────────── smooth declarative CSS Grid card removal animation ─────────────
+    // Because `virtua` (`VList`) has been removed in favor of a paginated native DOM list, cards
+    // collapse cleanly via `.card-slot.removing` (`grid-template-rows: 1fr -> 0fr`, `opacity: 1 -> 0`).
+    // This eliminates imperative `translateY` DOM mutations, forced reflows, overlapping-delete style
+    // races, and virtualizer height-cache poisoning while letting every sibling below glide up natively.
+    const animateAndRemoveCards = useCallback(async (ids: number[], performRemove: () => Promise<void>) => {
+        const freshIds = ids.filter((id) => !pendingDeleteIdsRef.current.has(id));
+        if (freshIds.length === 0) {
+            return;
         }
-    }, []);
+        freshIds.forEach((id) => pendingDeleteIdsRef.current.add(id));
+        const idSet = new Set(freshIds);
+        const canAnimate = (settingsRef.current?.animations ?? true) && (settingsRef.current?.delete_animation ?? true);
 
-    useLayoutEffect(() => {
-        if (pendingResetElsRef.current.length > 0) {
-            resetCardStyles(pendingResetElsRef.current);
-            pendingResetElsRef.current = [];
-        }
-    }, [res.items, resetCardStyles]);
-
-    const animateAndRemoveCards = useCallback(
-        async (ids: number[], performRemove: () => Promise<void>) => {
-            const freshIds = ids.filter((id) => !animatingIdsRef.current.has(id));
-            if (freshIds.length === 0) {
-                return;
+        try {
+            if (canAnimate && freshIds.length <= 15) {
+                setRemovingIds((prev) => {
+                    const next = new Set(prev);
+                    freshIds.forEach((id) => next.add(id));
+                    return next;
+                });
+                await new Promise<void>((r) => window.setTimeout(r, 240));
             }
-            freshIds.forEach((id) => animatingIdsRef.current.add(id));
-            const canAnimate =
-                (settingsRef.current?.animations ?? true) && (settingsRef.current?.delete_animation ?? true);
-            const idSet = new Set(freshIds);
-            const touched: HTMLElement[] = [];
+
+            // Invalidate any `reload()` started prior to optimistic removal so stale responses
+            // cannot resurrect items while `performRemove()` is still executing.
+            ++seq.current;
+            setRes((prev) => {
+                const nextItems = prev.items.filter((x) => !idSet.has(x.id));
+                if (nextItems.length === prev.items.length) {
+                    return prev;
+                }
+                const removedCount = prev.items.length - nextItems.length;
+                return {
+                    ...prev,
+                    items: nextItems,
+                    total: Math.max(0, prev.total - removedCount),
+                };
+            });
+            // Remove only the deleted IDs from `multi` so any new selection made during the 240ms
+            // collapse animation is preserved instead of wiped.
+            setMulti((prev) => {
+                if (prev.length === 0) {
+                    return prev;
+                }
+                const next = prev.filter((id) => !idSet.has(id));
+                return next.length === prev.length ? prev : next.length <= 1 ? [] : next;
+            });
+            setRemovingIds((prev) => {
+                if (prev.size === 0) {
+                    return prev;
+                }
+                const next = new Set(prev);
+                freshIds.forEach((id) => next.delete(id));
+                return next;
+            });
 
             try {
-                if (canAnimate && freshIds.length > 0 && freshIds.length <= 12) {
-                    const listEl = listRef.current;
-                    const rendered = listEl
-                        ? Array.from(listEl.querySelectorAll<HTMLElement>('.card'))
-                        : freshIds
-                              .map((id) => document.getElementById(`card-${id}`))
-                              .filter((el): el is HTMLElement => el !== null);
-
-                    const entries = rendered.map((el) => ({
-                        el,
-                        id: Number(el.dataset.cardId),
-                        rect: el.getBoundingClientRect(),
-                    }));
-
-                    if (entries.some((e) => idSet.has(e.id))) {
-                        const strides = entries.map((e, idx) => {
-                            if (idx + 1 < entries.length) {
-                                const d = entries[idx + 1].rect.top - e.rect.top;
-                                if (d > 0) {
-                                    return d;
-                                }
-                            }
-                            const p = e.el.parentElement;
-                            return p && p.classList.contains('vlist-item') ? p.offsetHeight : e.rect.height + 6;
-                        });
-
-                        const moves: { el: HTMLElement; removed: boolean; shiftY: number }[] = [];
-                        let accShift = 0;
-                        for (let i = 0; i < entries.length; i++) {
-                            const e = entries[i];
-                            if (idSet.has(e.id)) {
-                                accShift += strides[i];
-                                moves.push({ el: e.el, removed: true, shiftY: 0 });
-                            } else if (accShift > 0) {
-                                moves.push({ el: e.el, removed: false, shiftY: accShift });
-                            }
-                        }
-
-                        for (const m of moves) {
-                            touched.push(m.el);
-                            m.el.style.pointerEvents = 'none';
-                            m.el.style.willChange = 'transform, opacity';
-                            m.el.style.transition = m.removed
-                                ? 'transform 210ms cubic-bezier(0.22, 1, 0.36, 1), opacity 175ms ease'
-                                : 'transform 220ms cubic-bezier(0.22, 1, 0.36, 1)';
-                        }
-                        void entries[0].el.offsetHeight;
-                        for (const m of moves) {
-                            if (m.removed) {
-                                m.el.style.opacity = '0';
-                                m.el.style.transform = 'scale(0.95)';
-                            } else {
-                                m.el.style.transform = `translateY(${-m.shiftY}px)`;
-                            }
-                        }
-                        await new Promise<void>((r) => window.setTimeout(r, 220));
-                    }
-                }
-
-                pendingResetElsRef.current = touched;
-                setRes((prev) => {
-                    const nextItems = prev.items.filter((x) => !idSet.has(x.id));
-                    if (nextItems.length === prev.items.length) {
-                        return prev;
-                    }
-                    const removedCount = prev.items.length - nextItems.length;
-                    return {
-                        ...prev,
-                        items: nextItems,
-                        total: Math.max(0, prev.total - removedCount),
-                    };
-                });
-                if (touched.length > 0) {
-                    window.requestAnimationFrame(() => {
-                        if (pendingResetElsRef.current === touched) {
-                            pendingResetElsRef.current = [];
-                            resetCardStyles(touched);
-                        }
-                    });
-                }
-                setSel((s) => Math.max(0, s));
-
-                try {
-                    await performRemove();
-                } catch (e) {
-                    resetCardStyles(touched);
-                    reloadRef.current();
-                    throw e;
-                }
-            } finally {
-                freshIds.forEach((id) => animatingIdsRef.current.delete(id));
+                await performRemove();
+            } catch (e) {
+                freshIds.forEach((id) => pendingDeleteIdsRef.current.delete(id));
+                reloadRef.current();
+                throw e;
             }
-        },
-        [resetCardStyles]
-    );
+        } finally {
+            setRemovingIds((prev) => {
+                let changed = false;
+                for (const id of freshIds) {
+                    if (prev.has(id)) {
+                        changed = true;
+                        break;
+                    }
+                }
+                if (!changed) {
+                    return prev;
+                }
+                const next = new Set(prev);
+                freshIds.forEach((id) => next.delete(id));
+                return next;
+            });
+            freshIds.forEach((id) => pendingDeleteIdsRef.current.delete(id));
+        }
+    }, []);
 
     // ───────────── actions ─────────────
     const doPaste = async (mode: PasteMode, id?: number) => {
@@ -665,7 +693,6 @@ export default function Popup() {
                     await api.deleteItems(ids);
                 }
             });
-            setMulti([]);
             focusSearchQuietly();
         } catch (e) {
             fail(e);
@@ -949,7 +976,7 @@ export default function Popup() {
             const lst = listRef.current;
             if (lst) {
                 const lr = lst.getBoundingClientRect();
-                const scrollTarget = (lst.querySelector('.vlist') as HTMLElement | null) ?? lst;
+                const scrollTarget = lst;
                 if (e.clientY >= lr.top && e.clientY < lr.top + 32) {
                     scrollTarget.scrollTop -= 8;
                 } else if (e.clientY <= lr.bottom && e.clientY > lr.bottom - 32) {
@@ -997,6 +1024,9 @@ export default function Popup() {
                 const ids = multi.includes(id) ? multi : [id];
                 api.setPinboard(ids, targetBoardId, tab, shouldCopy)
                     .then(() => {
+                        if (!shouldCopy) {
+                            setMulti([]);
+                        }
                         if (targetBoard) {
                             showToast(
                                 shouldCopy
@@ -1121,13 +1151,16 @@ export default function Popup() {
                     onClick: (ctrlPressed: boolean) => {
                         const shouldCopy = isMainTab || ctrlPressed;
                         api.setPinboard(ids, b.id, tab, shouldCopy)
-                            .then(() =>
+                            .then(() => {
+                                if (!shouldCopy) {
+                                    setMulti([]);
+                                }
                                 showToast(
                                     shouldCopy
                                         ? t('Copied to {name}', { name: b.name })
                                         : t('Moved to {name}', { name: b.name })
-                                )
-                            )
+                                );
+                            })
                             .catch(fail);
                     },
                 })),
@@ -1420,8 +1453,8 @@ export default function Popup() {
     const onKeyRef = useRef(onKey);
     onKeyRef.current = onKey;
 
-    // Fallback window keydown listener so if DOM focus ever lands on document.body (e.g. after virtual list
-    // unmounts a scrolled card or after deleting an item), ArrowUp / ArrowDown / Delete still navigate cleanly.
+    // Fallback window keydown listener so if DOM focus ever lands on document.body (e.g. after deleting
+    // an item or closing an overlay), ArrowUp / ArrowDown / Delete still navigate cleanly.
     useEffect(() => {
         const onGlobalKeyDown = (e: KeyboardEvent) => {
             const popupEl = document.querySelector('.popup');
@@ -1461,11 +1494,26 @@ export default function Popup() {
         if (ck) {
             const act = settings?.ctrl_click_action ?? 'multi_select';
             if (act === 'multi_select') {
-                setMulti((m) => {
-                    const base = m.length ? m : cur ? [cur.id] : [];
-                    return base.includes(it.id) ? base.filter((x) => x !== it.id) : [...base, it.id];
-                });
-                setSel(idx);
+                // Keep `sel` and `anchor` synchronized when toggling items: if deselecting shrinks
+                // `multi` down to a single remaining item, collapse cleanly back to single-selection
+                // on that remaining item so Delete can never target the deselected card.
+                const base = multi.length ? multi : cur ? [cur.id] : [];
+                const removing = base.includes(it.id);
+                const next = removing ? base.filter((x) => x !== it.id) : [...base, it.id];
+                if (next.length === 1) {
+                    const onlyIdx = items.findIndex((i) => i.id === next[0]);
+                    setMulti([]);
+                    if (onlyIdx >= 0) {
+                        setSel(onlyIdx);
+                        anchor.current = onlyIdx;
+                    }
+                } else {
+                    setMulti(next);
+                    if (!removing || next.length === 0) {
+                        setSel(idx);
+                        anchor.current = idx;
+                    }
+                }
             } else if (act === 'paste') {
                 setSel(idx);
                 doPaste('auto', it.id);
@@ -1588,8 +1636,8 @@ export default function Popup() {
     const lines = s?.card_lines ?? 4;
     const showThumbs = s?.show_thumbnails ?? true;
     const hlEnabled = s?.highlight_matches ?? true;
-    const useVirtual = s?.virtual_scroll !== false;
-    const toolbar = s?.show_toolbar && cur;
+    // Show the side toolbar whenever toggled on, even on an empty list (item actions disable gracefully).
+    const toolbar = Boolean(s?.show_toolbar);
     const showCounts = s?.show_pinboard_counts ?? true;
     const isCopyDrag = tab === null || dragCtrl;
     const accentCopyDrag = tab !== null && dragCtrl;
@@ -1723,7 +1771,7 @@ export default function Popup() {
                 <span className="spacer" />
                 <button
                     type="button"
-                    className={`iconbtn${status?.popup_pinned ? ' on' : ''}`}
+                    className={`iconbtn pin-toggle${status?.popup_pinned ? ' pinned' : ''}`}
                     aria-pressed={Boolean(status?.popup_pinned)}
                     aria-label={status?.popup_pinned ? t('Unpin window') : t('Pin window on top')}
                     data-tip={status?.popup_pinned ? t('Unpin window') : t('Pin window on top')}
@@ -1735,7 +1783,7 @@ export default function Popup() {
                 </button>
                 <button
                     type="button"
-                    className={`iconbtn${settings?.show_toolbar ? ' on' : ''}`}
+                    className={`iconbtn toolbar-toggle${settings?.show_toolbar ? ' active' : ''}`}
                     aria-pressed={Boolean(settings?.show_toolbar)}
                     aria-label={t('Toggle side toolbar')}
                     data-tip={t('Toggle side toolbar')}
@@ -1975,13 +2023,16 @@ export default function Popup() {
                                 if (id && tab !== b.id) {
                                     const ids = multi.includes(id) ? multi : [id];
                                     api.setPinboard(ids, b.id, tab, shouldCopy)
-                                        .then(() =>
+                                        .then(() => {
+                                            if (!shouldCopy) {
+                                                setMulti([]);
+                                            }
                                             showToast(
                                                 shouldCopy
                                                     ? t('Copied to {name}', { name: b.name })
                                                     : t('Moved to {name}', { name: b.name })
-                                            )
-                                        )
+                                            );
+                                        })
                                         .catch(fail);
                                 }
                             }}
@@ -2059,56 +2110,44 @@ export default function Popup() {
             )}
 
             <div className="mainrow">
-                {res.error || items.length === 0 || !useVirtual ? (
-                    <div
-                        id="clip-list"
-                        role="listbox"
-                        aria-label={t('Clipboard')}
-                        aria-multiselectable="true"
-                        className={`list${draggingId !== null ? ' is-dragging-card' : ''}`}
-                        ref={listRef}
-                        onDragOver={handleListDragOver}
-                        onDrop={handleListDrop}
-                    >
-                        {res.error && <div className="empty err">{res.error}</div>}
-                        {!res.error && items.length === 0 && (
-                            <div className="empty">
-                                {query
-                                    ? t('Nothing found')
-                                    : tab === null
-                                      ? t('Nothing copied yet')
-                                      : t('This category is empty — drag cards onto its tab')}
+                <div
+                    id="clip-list"
+                    role="listbox"
+                    aria-label={t('Clipboard')}
+                    aria-multiselectable="true"
+                    className={`list${draggingId !== null ? ' is-dragging-card' : ''}`}
+                    ref={listRef}
+                    onDragOver={handleListDragOver}
+                    onDrop={handleListDrop}
+                >
+                    {res.error && <div className="empty err">{res.error}</div>}
+                    {!res.error && items.length === 0 && (
+                        <div className="empty">
+                            {query
+                                ? t('Nothing found')
+                                : tab === null
+                                  ? t('Nothing copied yet')
+                                  : t('This category is empty — drag cards onto its tab')}
+                        </div>
+                    )}
+                    {!res.error &&
+                        items.map((it, i) => (
+                            <div key={it.id} className={`card-slot${removingIds.has(it.id) ? ' removing' : ''}`}>
+                                <div className="card-slot-inner">{renderCard(it, i)}</div>
                             </div>
-                        )}
-                        {!res.error && items.map((it, i) => renderCard(it, i))}
-                    </div>
-                ) : (
-                    <div
-                        id="clip-list"
-                        role="listbox"
-                        aria-label={t('Clipboard')}
-                        aria-multiselectable="true"
-                        className={`list vlist-host${draggingId !== null ? ' is-dragging-card' : ''}`}
-                        ref={listRef}
-                        onDragOver={handleListDragOver}
-                        onDrop={handleListDrop}
-                    >
-                        <VList ref={vlistRef} className="vlist">
-                            {items.map((it, i) => (
-                                <div key={i} className="vlist-item">
-                                    {renderCard(it, i)}
-                                </div>
-                            ))}
-                        </VList>
-                    </div>
-                )}
+                        ))}
+                    {!res.error && hasMoreItems && (
+                        <div ref={loadMoreRef} className="list-sentinel" aria-hidden="true" />
+                    )}
+                </div>
 
-                {toolbar && cur && (
+                {toolbar && (
                     <div className="toolbar" role="toolbar" aria-label={t('Actions')}>
                         <button
                             type="button"
                             aria-label={t('Preview')}
                             data-tip={t('Preview')}
+                            disabled={!cur}
                             onClick={() => openPreview()}
                         >
                             <Icon name="eye" size={16} />
@@ -2117,6 +2156,7 @@ export default function Popup() {
                             type="button"
                             aria-label={t('Pin on top')}
                             data-tip={t('Pin on top')}
+                            disabled={!cur}
                             onClick={() => togglePin()}
                         >
                             <Icon name="pin" size={16} />
@@ -2125,8 +2165,8 @@ export default function Popup() {
                             type="button"
                             aria-label={t('Move up (Alt+↑)')}
                             data-tip={t('Move up (Alt+↑)')}
-                            disabled={Boolean(query) || sel <= 0}
-                            onClick={() => moveCardStep(cur, -1)}
+                            disabled={!cur || Boolean(query) || sel <= 0}
+                            onClick={() => cur && moveCardStep(cur, -1)}
                         >
                             <Icon name="up" size={16} />
                         </button>
@@ -2134,31 +2174,45 @@ export default function Popup() {
                             type="button"
                             aria-label={t('Move down (Alt+↓)')}
                             data-tip={t('Move down (Alt+↓)')}
-                            disabled={Boolean(query) || sel >= items.length - 1}
-                            onClick={() => moveCardStep(cur, 1)}
+                            disabled={!cur || Boolean(query) || sel >= items.length - 1}
+                            onClick={() => cur && moveCardStep(cur, 1)}
                         >
                             <Icon name="chevronDown" size={16} />
                         </button>
-                        <button type="button" aria-label={t('Tags…')} data-tip={t('Tags…')} onClick={() => tagItem()}>
+                        <button
+                            type="button"
+                            aria-label={t('Tags…')}
+                            data-tip={t('Tags…')}
+                            disabled={!cur}
+                            onClick={() => tagItem()}
+                        >
                             <Icon name="tag" size={16} />
                         </button>
-                        <button type="button" aria-label={t('Copy')} data-tip={t('Copy')} onClick={() => doCopy()}>
+                        <button
+                            type="button"
+                            aria-label={t('Copy')}
+                            data-tip={t('Copy')}
+                            disabled={!cur}
+                            onClick={() => doCopy()}
+                        >
                             <Icon name="copy" size={16} />
                         </button>
                         <button
                             type="button"
                             aria-label={t('Formats (MIME inspector)')}
                             data-tip={t('Formats (MIME inspector)')}
-                            onClick={() => openPreview(cur, false, true)}
+                            disabled={!cur}
+                            onClick={() => cur && openPreview(cur, false, true)}
                         >
                             <Icon name="info" size={16} />
                         </button>
-                        {cur.kind !== 'image' && cur.kind !== 'file' && (
+                        {(!cur || (cur.kind !== 'image' && cur.kind !== 'file')) && (
                             <button
                                 type="button"
                                 aria-label={t('Edit…')}
                                 data-tip={t('Edit…')}
-                                onClick={() => openPreview(cur, true)}
+                                disabled={!cur}
+                                onClick={() => cur && openPreview(cur, true)}
                             >
                                 <Icon name="edit" size={16} />
                             </button>
@@ -2167,6 +2221,7 @@ export default function Popup() {
                             type="button"
                             aria-label={t('Merge selected')}
                             data-tip={t('Merge selected')}
+                            disabled={!cur}
                             onClick={mergePrompt}
                         >
                             <Icon name="merge" size={16} />
@@ -2175,7 +2230,8 @@ export default function Popup() {
                             type="button"
                             aria-label={t('Actions')}
                             data-tip={t('Actions')}
-                            onClick={(e) => openMenu(cur, e.clientX, e.clientY)}
+                            disabled={!cur}
+                            onClick={(e) => cur && openMenu(cur, e.clientX, e.clientY)}
                         >
                             <Icon name="bolt" size={16} />
                         </button>
@@ -2184,6 +2240,7 @@ export default function Popup() {
                             aria-label={t('Delete')}
                             data-tip={t('Delete')}
                             className="danger"
+                            disabled={!cur}
                             onClick={() => doDelete(false)}
                         >
                             <Icon name="trash" size={16} />

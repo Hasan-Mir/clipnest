@@ -83,7 +83,11 @@ pub struct Settings {
     pub theme: String,
     pub accent: String,
     pub density: String,
+    /// Base UI font size in pixels (preset choices: 10..=20, default 14).
     pub font_size: u32,
+    /// Modern Latin UI font preset (`google-sans`, `inter`, `plus-jakarta-sans`, `dm-sans`, `roboto`).
+    /// Persian/Arabic UI glyphs always fall back to the embedded `Vazirmatn` font.
+    pub ui_font: String,
     pub font_family: String,
     pub card_lines: u32,
     pub card_max_height: u32,
@@ -98,7 +102,10 @@ pub struct Settings {
     pub delete_animation: bool,
     pub show_thumbnails: bool,
     pub thumbnail_size: String,
-    pub virtual_scroll: bool,
+    /// Number of clips fetched per scroll page in the popup list (default 100, clamped 20..=500).
+    /// Replaces the removed `virtual_scroll` (`virtua`) flag; `#[serde(default)]` keeps older
+    /// `settings.json` files containing `virtual_scroll` backward-compatible.
+    pub page_size: u32,
     pub highlight_matches: bool,
     pub highlight_color: String,
     pub highlight_bg: String,
@@ -166,7 +173,8 @@ impl Default for Settings {
             theme: "dark".into(),
             accent: "#4f8cff".into(),
             density: "compact".into(),
-            font_size: 13,
+            font_size: 14,
+            ui_font: "google-sans".into(),
             font_family: String::new(),
             card_lines: 4,
             card_max_height: 160,
@@ -181,7 +189,7 @@ impl Default for Settings {
             delete_animation: true,
             show_thumbnails: true,
             thumbnail_size: "medium".into(),
-            virtual_scroll: true,
+            page_size: 100,
             highlight_matches: true,
             highlight_color: "accent".into(),
             highlight_bg: "transparent".into(),
@@ -232,5 +240,19 @@ pub struct Queue {
 impl Default for Queue {
     fn default() -> Self {
         Queue { active: false, mode: "queue".into(), items: Vec::new(), basket: Vec::new() }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_settings_with_virtual_scroll_deserializes_cleanly() {
+        let json = r#"{"virtual_scroll": true, "font_size": 13}"#;
+        let s: Settings = serde_json::from_str(json).expect("legacy settings.json must deserialize");
+        assert_eq!(s.font_size, 13);
+        assert_eq!(s.page_size, 100);
+        assert_eq!(s.ui_font, "google-sans");
     }
 }

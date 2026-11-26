@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { autoUpdate, flip, offset, shift, size, useFloating } from '@floating-ui/react';
 import { t } from './i18n';
 import { Icon } from './icons';
+import { useEntered } from './useEntered';
 
 export interface SelectOption<T extends string | number> {
     value: T;
@@ -74,6 +75,7 @@ export function CustomSelect<T extends string | number>({
         );
     }, [options, filter]);
 
+    const menuEntered = useEntered(open && isPositioned);
     const selectedOpt = options.find((o) => o.value === value);
     const selectedLabel = selectedOpt?.label ?? String(value);
 
@@ -195,7 +197,7 @@ export function CustomSelect<T extends string | number>({
                 <div
                     ref={refs.setFloating}
                     role="listbox"
-                    className={`cselect-menu${isPositioned ? ' cselect-menu-ready' : ''}`}
+                    className={`cselect-menu${menuEntered ? ' entered' : ''}`}
                     style={{
                         ...floatingStyles,
                         visibility: isPositioned ? 'visible' : 'hidden',

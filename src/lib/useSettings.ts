@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, on, Settings } from './api';
 import { contrastOn } from './format';
 import { setLang } from './i18n';
+import { applyUiFont } from './uiFonts';
 
 export const DEFAULT_SETTINGS: Settings = {
     language: 'en',
@@ -41,7 +42,8 @@ export const DEFAULT_SETTINGS: Settings = {
     theme: 'dark',
     accent: '#4f8cff',
     density: 'compact',
-    font_size: 13,
+    font_size: 14,
+    ui_font: 'google-sans',
     font_family: '',
     card_lines: 4,
     card_max_height: 160,
@@ -56,7 +58,7 @@ export const DEFAULT_SETTINGS: Settings = {
     delete_animation: true,
     show_thumbnails: true,
     thumbnail_size: 'medium',
-    virtual_scroll: true,
+    page_size: 100,
     highlight_matches: true,
     highlight_color: 'accent',
     highlight_bg: 'transparent',
@@ -152,6 +154,7 @@ export function useSettings(): [Settings | null, (s: Settings) => void] {
         r.style.setProperty('--accent', s.accent);
         r.style.setProperty('--accent-fg', contrastOn(s.accent));
         r.style.setProperty('--fs', `${s.font_size}px`);
+        applyUiFont(s.ui_font);
 
         const fam = s.font_family ? s.font_family.trim() : '';
         if (fam) {
