@@ -1,47 +1,48 @@
-# 📋 ClipNest — مدیر کلیپ‌بورد سریع، هوشمند و خصوصی برای ویندوز (همراه با CLI کامل: `clipnest` / `clipn`)
+# 📋 ClipNest — Fast, Smart & Private Clipboard Manager for Windows (with Full CLI: `clipnest` / `clipn`)
 
-**ClipNest** یک مدیر کلیپ‌بورد فوق‌سریع، ایمن و کاملاً آفلاین برای **ویندوز ۱۰ و ۱۱** است که سادگی و زیبایی رابط کاربری Copywren و Notion را با قدرت و امکانات پیشرفته CopyQ و یک رابط خط فرمان (`clipnest` و نام کوتاه `clipn`) برای اسکریپت‌نویسی و اتومیشن ترکیب می‌کند.
-Fast, accessible, private clipboard manager, file collector & automation CLI for Windows (Tauri v2 · Rust · Win32 · React · SQLite).
+**ClipNest** is a fast, secure, and 100% offline clipboard manager and file collector for **Windows 10 and 11**. It pairs the clean, distraction-free UI of Copywren and Notion with the power-user depth of CopyQ and a full command-line interface (`clipnest` and short alias `clipn`) for scripting and automation.
 
----
-
-## ✨ امکانات کلیدی (Key Features)
-
-- ⚡ **عملکرد آنی، نوشتن اتمی و ایمنی کامل داده:** هسته‌ی بومی Rust + SQLite در حالت WAL با `synchronous=FULL`؛ تمامی نوشتن‌های فایل، تنظیمات، خروجی‌ها و بک‌آپ‌ها به‌صورت اتمی (`.tmp` + rename) انجام می‌شوند تا هیچ فایلی هرگز دچار خرابی (corruption) نشود.
-- 💻 **رابط خط فرمان کامل با نام کوتاه `clipn` (`clipnest` / `clipn` CLI):** الهام‌گرفته از CopyQ CLI با دستورات کوتاه و command-first (`add`, `list`, `search`, `get`, `copy`, `paste`, `edit`, `rename`, `delete`, `pin`, `unpin`, `tag`, `move`, `merge`, `formats`, `transform`, `category`, `queue`, `basket`, `rule`, `action`, `config`, `export`, `import`, `backup`, `erase`, `status`, `path`)، راهنمای کامل برای تک‌تک دستورات با `-h` / `--help`، پشتیبانی از `stdin`/`stdout` و pipelineهای شل، خروجی انسانی و `--json`، ارتباط محلی امن (IPC) و fallback آفلاین مستقیم به دیتابیس.
-- 🗂️ **دسته‌بندی‌ها (Categories) با منطق هوشمند Copy to / Move to و سنجاق مستقل:**
-    - تب‌های رنگی نامحدود با اسکرول افقی نرم (با چرخ ماوس یا کلیک و کشیدن / Grab-to-scroll) و گزینه‌ی چندخطی شدن تب‌ها (`Wrap category tabs onto multiple lines` مشابه `workbench.editor.wrapTabs` در VS Code).
-    - در تب اصلی **Clipboard**، راست‌کلیک یا کشیدن کارت روی یک دسته‌بندی عملیات **Copy to** (با آیکن کپی) را انجام می‌دهد (چون آیتم در تب اصلی باقی می‌ماند).
-    - در داخل یک **Category**، عملیات پیش‌فرض در منوی راست‌کلیک و Drag & Drop روی دسته‌بندی دیگر **Move to** (با آیکن فلش به راست) است و با نگه داشتن کلید **`Ctrl`** در لحظه به **Copy to** (با هایلایت رنگی کلمه Copy به رنگ accent و آیکن کپی) تبدیل می‌شود.
-    - **سنجاق مستقل در هر دسته‌بندی (`Independent pinning per category`):** به‌طور پیش‌فرض پین کردن یک کارت داخل یک دسته‌بندی فقط در همان دسته‌بندی اعمال می‌شود و تب اصلی Clipboard یا سایر دسته‌بندی‌ها را تغییر نمی‌دهد (قابل تغییر از تنظیمات).
-- 📂 **انتخاب چندتایی فایل‌ها در Windows Explorer (`Show in Explorer`):** هنگام انتخاب چند فایل (چه داخل یک کارت چندفایله و چه با انتخاب چند کارت فایل) و زدن گزینه‌ی **Show in Explorer**، پوشه‌ی مقصد باز شده و **تمامی فایل‌های انتخاب‌شده هم‌زمان در Explorer در حالت Select قرار می‌گیرند** (با استفاده از API بومی `SHOpenFolderAndSelectItems`).
-- ♿ **دسترسی‌پذیری کامل (Full Accessibility & Keyboard Navigation):** پشتیبانی کامل از صفحه‌خوان‌ها (NVDA / Jaws / Narrator) با نقش‌های استاندارد ARIA (`listbox`, `option`, `tablist`, `tab`, `menu`, `menuitem`, `dialog`, `aria-live="polite"`)، باز کردن منوی راست‌کلیک کارت با `Shift+F10` یا کلید `ContextMenu`، پیمایش کامل منوها و زیرمنوها با کلیدهای جهت‌نما، و غیرفعال‌سازی کامل شورتکات‌های مزاحم مرورگر (مانند دیالوگ پرینت `Ctrl+P`).
-- 🎨 **نمایش و پیست دقیق استایل (Original Style / Rich HTML):** کدها و متن‌های کپی‌شده از VS Code، Word و مرورگرها دقیقاً با همان فونت، رنگ و پس‌زمینه داخل Shadow DOM امن نمایش داده می‌شوند؛ همراه با دکمه‌ی سریع `Aa` برای تغییر آنی بین نمایش با استایل و متن ساده.
-- 🧺 **صف پیست دوحالته و سبد فایل و تصویر (Paste Queue & Drop Basket):**
-    - **Queue Mode:** چندین متن یا آیتم را کپی کنید و با زدن پیاپی `Ctrl+V` به ترتیب (FIFO یا LIFO) پیست کنید.
-    - **Drop Basket (Collector Mode):** فایل‌ها و تصاویر را از پوشه‌های مختلف جمع کنید و با یک کلیک همه‌ی آن‌ها را در پوشه‌ی مقصد پیست یا منتقل کنید (حذف فایل مبدأ در حالت `CUT` فقط پس از تأیید کامل کپی و بررسی دقیق حجم فایل در مقصد انجام می‌شود).
-- 🪟 **رابط کاربری یکپارچه بدون قاب ویندوز (Frameless Calm Desktop UI):**
-    - پنجره‌های Popup، Settings و Paste Queue همگی بدون نوار عنوان بومی ویندوز و با گوشه‌های گرد DWM و کنترل‌های داخلی طراحی شده‌اند؛ همراه با حس فشردن فیزیکی روی دکمه‌ها، سوییچ‌ها و کنترل‌های پنجره، و انیمیشن‌های آرام شبیه Notion برای منوها، دیالوگ‌ها و حذف کارت‌ها (CSS Grid Collapse).
-    - **صفحه‌بندی تدریجی بدون Virtual List:** لیست اصلی با صفحه‌بندی قابل تنظیم از تنظیمات (`Items per page`، پیش‌فرض ۱۰۰)، بارگذاری تنبل تصاویر و کارت‌های `RichView` (`IntersectionObserver`)، و `scrollbar-gutter: stable` بدون پرش افقی اسکرول‌بار کار می‌کند.
-    - **تایپوگرافی مدرن با پشتیبانی دائمی فارسی:** ۵ فونت مدرن متغیر برای رابط کاربری لاتین (`Google Sans` پیش‌فرض، `Inter`، `Plus Jakarta Sans`، `DM Sans` و `Roboto`) همراه با فونت تعبیه‌شده‌ی `Vazirmatn` برای متن‌های فارسی/عربی و انتخاب اندازه‌ی فونت (`10` تا `20 px`، پیش‌فرض `14 px`).
+Built with Tauri v2 · Rust · Win32 · React · SQLite.
 
 ---
 
-## 💻 استفاده از خط فرمان (`clipnest` و نام کوتاه `clipn`)
+## ✨ Key Features
 
-### نصب CLI
+- ⚡ **Instant Performance, Atomic Writes & Data Safety:** Native Rust + SQLite core in WAL mode with `synchronous=FULL`; all file, settings, export, and backup writes are performed atomically (`.tmp` + rename) so no file is ever left half-written or corrupted.
+- 💻 **Full Command-Line Interface with Short Alias `clipn` (`clipnest` / `clipn` CLI):** Inspired by CopyQ CLI with short, command-first subcommands (`add`, `list`, `search`, `get`, `copy`, `paste`, `edit`, `rename`, `delete`, `pin`, `unpin`, `tag`, `move`, `merge`, `formats`, `transform`, `category`, `queue`, `basket`, `rule`, `action`, `config`, `export`, `import`, `backup`, `erase`, `status`, `path`), full `-h` / `--help` documentation for every command, `stdin`/`stdout` pipeline support, human-readable and `--json` output, secure local IPC, and direct offline database fallback.
+- 🗂️ **Categories with Smart Copy to / Move to & Independent Pinning:**
+    - Unlimited color-coded category tabs with smooth horizontal scrolling (mouse wheel or grab-to-scroll) and an optional multi-row tab wrap mode (`Wrap category tabs onto multiple lines`, similar to `workbench.editor.wrapTabs` in VS Code).
+    - In the main **Clipboard** tab, right-clicking or dragging a card onto a category performs **Copy to** (with a copy icon), keeping the item in the main history.
+    - Inside a **Category**, the default action in the context menu and Drag & Drop onto another category is **Move to** (with a right-arrow icon); holding **`Ctrl`** switches it live to **Copy to** (highlighting the word `Copy` in the accent color with a copy icon).
+    - **Independent pinning per category:** By default, pinning a card inside a category pins it only within that category without altering the main Clipboard tab or other categories (configurable in Settings).
+- 📂 **Multi-File Selection in Windows Explorer (`Show in Explorer`):** When selecting multiple files (either inside a multi-file card or across multiple selected file cards) and choosing **Show in Explorer**, the target folder opens with **all selected files highlighted simultaneously** using the native `SHOpenFolderAndSelectItems` Win32 API.
+- ♿ **Full Accessibility & Keyboard Navigation:** Full screen-reader support (NVDA / JAWS / Narrator) with standard ARIA roles (`listbox`, `option`, `tablist`, `tab`, `menu`, `menuitem`, `dialog`, `aria-live="polite"`), opening card context menus via `Shift+F10` or the `ContextMenu` key, full arrow-key navigation across menus and submenus, and suppression of intrusive browser shortcuts (such as Chromium's `Ctrl+P` print dialog).
+- 🎨 **Rich Style Preservation (Original Style / Rich HTML):** Code snippets and formatted text copied from VS Code, Word, and browsers render inside an isolated Shadow DOM with their original font, colors, and background, paired with a quick `Aa` toggle to switch instantly between Rich and Plain Text views.
+- 🧺 **Dual-Mode Paste Queue & File/Image Drop Basket:**
+    - **Queue Mode:** Copy multiple items in sequence and press `Ctrl+V` repeatedly to paste them in order (FIFO or LIFO).
+    - **Drop Basket (Collector Mode):** Collect files and images from across folders and paste or move them all into a destination folder in one click (`CUT` mode removes source files only after destination copy and exact byte-size verification succeed).
+- 🪟 **Unified Frameless Calm Desktop UI:**
+    - Popup, Settings, and Paste Queue windows all run without native Windows title-bar chrome, featuring DWM rounded corners, built-in window controls, tactile physical press-in feedback across buttons, switches, and window chrome, and calm Notion-style entrance and CSS Grid Collapse card-removal animations.
+    - **Incremental Scroll Pagination (No Virtual List):** The main list uses configurable scroll pagination (`Items per page`, default `100`), viewport-proximity lazy loading for thumbnails and `RichView` (`IntersectionObserver`), and `scrollbar-gutter: stable` to prevent horizontal layout shifts while filtering.
+    - **Modern Typography with Built-In Persian/Arabic Support:** Five self-hosted variable UI fonts (`Google Sans` default, `Inter`, `Plus Jakarta Sans`, `DM Sans`, and `Roboto`) with embedded `Vazirmatn` locked in for Persian/Arabic glyphs, plus configurable font sizes (`10` to `20 px`, default `14 px`).
 
-1. **همراه با نصاب ویندوز ClipNest (بدون نیاز به Node.js):** پس از نصب برنامه، هر دو دستور `clipnest` و نام کوتاه `clipn` به‌طور خودکار به `PATH` کاربر اضافه می‌شوند. در نسخه‌ی Portable نیز می‌توانید با دستور `clipn path install` آن‌ها را به `PATH` اضافه کنید.
-2. **نصب از طریق npm:**
+---
+
+## 💻 Command-Line Interface (`clipnest` and short alias `clipn`)
+
+### Installing the CLI
+
+1. **Included with the ClipNest Windows Installer (no Node.js required):** After installing ClipNest, both `clipnest` and `clipn` are added to your user `PATH` automatically. In the Portable edition, run `clipn path install` to register them in `PATH`.
+2. **Install via npm:**
     ```bash
     npm install -g @seymi/clipnest-cli
     clipn --help
     clipnest --help
     ```
 
-### راهنمای سریع تمام دستورات CLI (`-h` / `--help`)
+### Quick Command Reference (`-h` / `--help`)
 
-برای مشاهده‌ی راهنمای کلی یا راهنمای اختصاصی هر دستور، کافی است `-h` یا `--help` را به دستور اضافه کنید:
+Append `-h` or `--help` to view general help or detailed usage for any subcommand:
 
 ```bash
 clipn --help
@@ -49,58 +50,58 @@ clipn <command> --help
 clipn help <command>
 ```
 
-| دستور (با `clipn` یا `clipnest`)      | توضیح و فلگ‌های اصلی                                                                                                                                                          |
-| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `add <text\|->`                       | افزودن متن، ورودی پایپ (`-`) یا فایل (`-f <path>`) به تاریخچه (`-c/--copy`، `-p/--pin`، `-b/--category <name>`، `-t/--tags`، `--title`)                                       |
-| `list` (یا `ls`)                      | نمایش فهرست آخرین آیتم‌ها (`-n <limit>`، `-b/--category <name>`، `-k/--kind <kind>`، `--pinned`، `--json`)                                                                    |
-| `search <query>` (یا `find`)          | جستجو در تاریخچه (`-m smart\|fuzzy\|regex`، `-r/--regex`، `-z/--fuzzy`، `-b/--category <name>`، `-n <limit>`)                                                                 |
-| `get [id]`                            | دریافت محتوای خام آیتم (`12` یا `@0`/`latest`) یا محتوای فعلی کلیپ‌بورد سیستم (بدون آرگومان)؛ پشتیبانی از `--format plain\|html\|meta\|formats` و `-o <file>`                 |
-| `copy <text\|->` (یا `cp`)            | قرار دادن متن، `stdin` (`-`)، فایل (`-f`) یا آیتم تاریخچه (`--id <id>`) در کلیپ‌بورد سیستم (`--plain`)                                                                        |
-| `paste [id]`                          | کپی آیتم (پیش‌فرض `@0`) در کلیپ‌بورد و پیست در پنجره‌ی فعال (`--plain`، `--rich`، `--auto`)                                                                                   |
-| `edit <id> [text\|-]`                 | ویرایش متن، عنوان (`--title`) یا برچسب‌های (`--tags`) یک آیتم                                                                                                                 |
-| `rename <id> <title>`                 | تنظیم یا پاک کردن عنوان سفارشی آیتم                                                                                                                                           |
-| `delete <id...>` (یا `rm`)            | حذف یک یا چند آیتم (حذف بیش از ۳ آیتم نیازمند `--yes` است)                                                                                                                    |
-| `pin <id...>` / `unpin <id...>`       | سنجاق کردن یا برداشتن سنجاق آیتم‌ها (پشتیبانی از `--category <name>` برای پین مستقل در یک دسته‌بندی)                                                                          |
-| `tag <id> [tags...]`                  | تنظیم، افزودن (`--add`)، حذف (`--remove`) یا پاک کردن (`--clear`) تگ‌های آیتم                                                                                                 |
-| `move <id...> --to <cat\|main>`       | انتقال یا کپی (`--copy`، `--from <cat>`) آیتم‌ها به دسته‌بندی مقصد، یا تغییر ترتیب (`--before <id>` / `--after <id>`)                                                         |
-| `merge <id1> <id2> [...]`             | ادغام چند آیتم متنی در یک آیتم جدید (`--sep "\n---\n"`، `--copy`)                                                                                                             |
-| `formats [id]`                        | مشاهده‌ی فرمت‌های ذخیره‌شده‌ی کلیپ‌بورد/MIME و حجم هرکدام                                                                                                                     |
-| `transform <tr\|list> [id\|-]`        | اجرای تبدیل‌های متنی (`upper`, `lower`, `json-pretty`, `b64-enc`, `fa-normalize`, `fa-digits` و غیره) با `--save` و `--copy`                                                  |
-| `category <subcommand>`               | مدیریت دسته‌بندی‌ها (`list`، `create <name> --color #hex --max N --active`، `update`، `delete <name> --yes`، `activate <name\|none>`)؛ نام مستعار: `cat`, `pinboard`, `board` |
-| `queue <subcommand>`                  | مدیریت صف پیست (`status`, `list`, `add <id...>`, `remove <id>`, `clear`, `toggle`, `close`, `fifo <on\|off>`)                                                                 |
-| `basket <subcommand>`                 | مدیریت سبد فایل (`list`, `add <file\|id...>`, `remove <id>`, `cut <id>`, `paste-to <folder>`, `clear`)                                                                        |
-| `rule <subcommand>`                   | مدیریت قوانین خودکار (`list`, `add`, `enable`, `disable`, `delete`)                                                                                                           |
-| `action <subcommand>`                 | مدیریت و اجرای اکشن‌های سفارشی شل (`list`, `run <act> [id]`, `add <name> --cmd <cmd>`, `delete`)                                                                              |
-| `config <subcommand>`                 | مشاهده و تغییر تنظیمات (`list`, `get <key>`, `set <key> <val>`, `reset [key] [--yes]`)                                                                                        |
-| `status`                              | نمایش وضعیت دیمون، کپچر، صف، تعداد آیتم‌ها و مسیر داده (`--check-running`، `--json`)                                                                                          |
-| `pause [min]` / `resume`              | توقف موقت یا ادامه‌ی ثبت کلیپ‌بورد                                                                                                                                            |
-| `plain [on\|off\|toggle]`             | تغییر یا تنظیم حالت پیست متن ساده‌ی سراسری                                                                                                                                    |
-| `export <file>` / `import <file>`     | خروجی گرفتن یا وارد کردن تاریخچه و دسته‌بندی‌ها (`.json` یا `.db.gz`) یا تنظیمات (`--settings`)                                                                               |
-| `backup [file]`                       | تهیه‌ی فوری اسنپ‌شات فشرده SQLite (`.db.gz`)                                                                                                                                  |
-| `erase --yes`                         | پاک‌سازی تاریخچه (`--category <name>`، `--include-pinned`، `--all-boards`)                                                                                                    |
-| `open` / `hide` / `settings` / `quit` | باز و بسته کردن پنجره‌ی پاپ‌آپ، باز کردن تنظیمات یا خروج کامل از برنامه                                                                                                       |
-| `path [status\|install\|uninstall]`   | بررسی، افزودن یا حذف `clipnest` و `clipn` در `PATH` کاربر ویندوز                                                                                                              |
+| Command (`clipn` or `clipnest`)       | Description & Key Flags                                                                                                                                      |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `add <text\|->`                       | Add text, piped `stdin` (`-`), or a file (`-f <path>`) to history (`-c/--copy`, `-p/--pin`, `-b/--category <name>`, `-t/--tags`, `--title`)                  |
+| `list` (or `ls`)                      | List recent items (`-n <limit>`, `-b/--category <name>`, `-k/--kind <kind>`, `--pinned`, `--json`)                                                           |
+| `search <query>` (or `find`)          | Search history (`-m smart\|fuzzy\|regex`, `-r/--regex`, `-z/--fuzzy`, `-b/--category <name>`, `-n <limit>`)                                                  |
+| `get [id]`                            | Read raw item content (`12` or `@0`/`latest`) or current system clipboard (no args); supports `--format plain\|html\|meta\|formats` and `-o <file>`          |
+| `copy <text\|->` (or `cp`)            | Put text, `stdin` (`-`), file (`-f`), or history item (`--id <id>`) onto the system clipboard (`--plain`)                                                    |
+| `paste [id]`                          | Copy an item (default `@0`) and paste into the active window (`--plain`, `--rich`, `--auto`)                                                                 |
+| `edit <id> [text\|-]`                 | Edit an item's text, title (`--title`), or tags (`--tags`)                                                                                                   |
+| `rename <id> <title>`                 | Set or clear a custom item title                                                                                                                             |
+| `delete <id...>` (or `rm`)            | Delete one or more items (deleting more than 3 items requires `--yes`)                                                                                       |
+| `pin <id...>` / `unpin <id...>`       | Pin or unpin items (supports `--category <name>` for per-category independent pinning)                                                                       |
+| `tag <id> [tags...]`                  | Set, add (`--add`), remove (`--remove`), or clear (`--clear`) item tags                                                                                      |
+| `move <id...> --to <cat\|main>`       | Move or copy (`--copy`, `--from <cat>`) items to a category, or reorder (`--before <id>` / `--after <id>`)                                                   |
+| `merge <id1> <id2> [...]`             | Merge multiple text items into a new clip (`--sep "\n---\n"`, `--copy`)                                                                                      |
+| `formats [id]`                        | Inspect stored clipboard/MIME formats and byte sizes                                                                                                         |
+| `transform <tr\|list> [id\|-]`        | Run built-in text transforms (`upper`, `lower`, `json-pretty`, `b64-enc`, `fa-normalize`, `fa-digits`, etc.) with `--save` and `--copy`                     |
+| `category <subcommand>`               | Manage categories (`list`, `create <name> --color #hex --max N --active`, `update`, `delete <name> --yes`, `activate <name\|none>`); aliases: `cat`, `pinboard`, `board` |
+| `queue <subcommand>`                  | Manage Paste Queue (`status`, `list`, `add <id...>`, `remove <id>`, `clear`, `toggle`, `close`, `fifo <on\|off>`)                                            |
+| `basket <subcommand>`                 | Manage Drop Basket (`list`, `add <file\|id...>`, `remove <id>`, `cut <id>`, `paste-to <folder>`, `clear`)                                                    |
+| `rule <subcommand>`                   | Manage automatic rules (`list`, `add`, `enable`, `disable`, `delete`)                                                                                        |
+| `action <subcommand>`                 | Manage and execute custom shell actions (`list`, `run <act> [id]`, `add <name> --cmd <cmd>`, `delete`)                                                       |
+| `config <subcommand>`                 | View and update settings (`list`, `get <key>`, `set <key> <val>`, `reset [key] [--yes]`)                                                                     |
+| `status`                              | Show daemon, capture, queue, item count, and data directory status (`--check-running`, `--json`)                                                             |
+| `pause [min]` / `resume`              | Temporarily pause or resume clipboard capture                                                                                                                |
+| `plain [on\|off\|toggle]`             | Toggle or set global plain-text paste mode                                                                                                                   |
+| `export <file>` / `import <file>`     | Export or import history and categories (`.json` or `.db.gz`) or settings (`--settings`)                                                                     |
+| `backup [file]`                       | Create an immediate compressed SQLite snapshot (`.db.gz`)                                                                                                    |
+| `erase --yes`                         | Erase history (`--category <name>`, `--include-pinned`, `--all-boards`)                                                                                      |
+| `open` / `hide` / `settings` / `quit` | Show or hide the popup window, open Settings, or exit ClipNest completely                                                                                    |
+| `path [status\|install\|uninstall]`   | Check, add, or remove `clipnest` and `clipn` in the Windows user `PATH`                                                                                      |
 
-### مثال‌های کاربردی و Pipeline
+### Practical Pipeline Examples
 
 ```bash
-# افزودن خروجی پایپ به تاریخچه ClipNest با نام کوتاه clipn
+# Add piped command output to ClipNest history using the short alias `clipn`
 git log -5 --oneline | clipn add -
 
-# قرار دادن خروجی پایپ در کلیپ‌بورد سیستم
+# Copy piped output directly to the Windows clipboard
 git diff | clipn copy -
 
-# عملیات ترکیبی: افزودن به تاریخچه و کپی در کلیپ‌بورد با یک بار خواندن stdin
+# Combined: save to history and copy to clipboard in a single stdin read
 git diff | clipn add - --copy
 
-# دریافت محتوای خام یک آیتم برای پایپ یا ذخیره در فایل
+# Retrieve raw item content for piping or saving to a file
 clipn get 12 > output.txt
 clipn get @0 | another-command
 
-# خواندن محتوای فعلی کلیپ‌بورد سیستم
+# Read the current system clipboard
 clipn get
 
-# مدیریت آیتم‌ها، دسته‌بندی‌ها (Categories)، تبدیل متن و خروجی JSON
+# Manage items, categories, text transforms, and JSON output
 clipn list -n 20
 clipn search "keyword" --json
 clipn pin 12 --category Work
@@ -113,70 +114,70 @@ clipn status
 clipn export backup.json
 ```
 
-مستندات کامل دستورات، فلگ‌ها و کدهای خروجی (Exit Codes) در فایل [`packages/cli/README.md`](packages/cli/README.md) قرار دارد.
+Full documentation for all CLI commands, flags, and exit codes is available in [`packages/cli/README.md`](packages/cli/README.md).
 
 ---
 
-## 🚀 پیش‌نیازها و اجرا (Build, Test & Format)
+## 🚀 Prerequisites, Build, Test & Format
 
-1. **Windows 10 (2004+)** یا **Windows 11** (همراه با WebView2)
-2. **[Rust](https://rustup.rs)** (نسخه‌ی `stable-x86_64-pc-windows-msvc`، ۱.۷۷ به بالا)
-3. **Visual Studio Build Tools** با گزینه‌ی «Desktop development with C++»
+1. **Windows 10 (2004+)** or **Windows 11** (with WebView2)
+2. **[Rust](https://rustup.rs)** (`stable-x86_64-pc-windows-msvc`, 1.77+)
+3. **Visual Studio Build Tools** with the "Desktop development with C++" workload
 4. **Node.js ≥ 20**
 
 ```powershell
 npm install
-npm run tauri dev       # اجرای محیط توسعه
-npm run tauri:build     # ساخت نصاب NSIS، باینری CLI و نسخه‌ی Portable
+npm run tauri dev       # Run in development mode
+npm run tauri:build     # Build NSIS installer, CLI binary, and Portable edition
 ```
 
-### 🧪 اجرای تست‌ها و فرمت خودکار کد (Testing & Formatting)
+### 🧪 Testing & Formatting
 
 ```powershell
-bun run typecheck:bun   # بررسی فوق‌سریع تایپ‌ها با Bun (`bun check --skipLibCheck`) — توصیه برای AI Agents و توسعه
-npm run typecheck       # بررسی کامل تایپ‌های TypeScript با tsc (کندتر)
-npm test                # اجرای تست‌های واحد فرانت‌اند و CLI با Vitest
-npm run test:rust       # اجرای تست‌های واحد و یکپارچه بک‌اند و CLI با Cargo Test
-npm run test:all        # اجرای کامل تمامی تست‌های فرانت‌اند و Rust
-npm run format          # مرتب‌سازی خودکار کدهای فرانت‌اند (Prettier) و Rust (rustfmt)
-npm run format:check    # بررسی استایل کدها در CI
+bun run typecheck:bun   # Ultra-fast TypeScript check with Bun (`bun check --skipLibCheck`)
+npm run typecheck       # Full TypeScript check with tsc
+npm test                # Run frontend and CLI unit tests with Vitest
+npm run test:rust       # Run core and Tauri Rust unit/integration tests
+npm run test:all        # Run all frontend, CLI, and Rust tests
+npm run format          # Auto-format frontend (Prettier) and Rust (rustfmt)
+npm run format:check    # Verify formatting in CI
 ```
 
 ---
 
-## ⌨️ کلیدهای میانبر (Keyboard & Mouse Shortcuts)
+## ⌨️ Keyboard & Mouse Shortcuts
 
-| عملکرد                                         | کلید / ماوس                                                      |
-| ---------------------------------------------- | ---------------------------------------------------------------- |
-| باز کردن پنجره‌ی اصلی                          | `Win+V` (پیش‌فرض؛ در تنظیمات قابل تغییر به `Alt+V` و غیره)       |
-| پیست با استایل / متن ساده (یا مسیر فایل)       | دوبار کلیک یا `Enter` / `Shift+Enter` (`Ctrl+Enter` = با استایل) |
-| انتخاب تکی / انتخاب بازه‌ای / انتخاب چندتایی   | تک‌کلیک / `Shift+Click` (یا `Shift+↑/↓`) / `Ctrl+Click`          |
-| باز کردن منوی راست‌کلیک کارت با کیبورد         | `Shift+F10` یا کلید `ContextMenu`                                |
-| کپی به دسته‌بندی هنگام Drag & Drop یا در منو   | نگه داشتن کلید `Ctrl`                                            |
-| پیست سریع کارت‌های قابل‌مشاهده                 | `Ctrl+1` … `Ctrl+9`                                              |
-| جابه‌جایی ترتیب کارت‌ها                        | کشیدن با ماوس (Drag & Drop) یا `Alt+↑/↓`                         |
-| پیش‌نمایش و ویرایش درجا (با ذخیره‌ی خودکار)    | `Space` (یا `F3`) · `Ctrl+E`                                     |
-| جابه‌جایی بین تب Clipboard و دسته‌بندی‌ها      | `←` `→` یا `Tab` یا `Ctrl+[ ]`                                   |
-| فوکوس روی نوار جستجو                           | `Ctrl+F`                                                         |
-| سنجاق کردن آیتم به بالای لیست                  | `Ctrl+P`                                                         |
-| تغییر نام / برچسب‌ها / بازرس فرمت‌ها           | `F2` / `Ctrl+T` / `Ctrl+I`                                       |
-| ادغام چند آیتم انتخاب‌شده                      | `Ctrl+M`                                                         |
-| صف پیست و سبد فایل (Paste Queue / Drop Basket) | `Ctrl+Alt+Q`                                                     |
-| تغییر حالت متن ساده‌ی سراسری                   | `Ctrl+Alt+P`                                                     |
-| باز کردن تنظیمات                               | `Ctrl+,`                                                         |
+| Action                                        | Shortcut / Mouse                                               |
+| --------------------------------------------- | -------------------------------------------------------------- |
+| Open ClipNest popup                           | `Win+V` (default; customizable to `Alt+V`, etc. in Settings)   |
+| Paste rich / plain text (or file path)        | Double-click or `Enter` / `Shift+Enter` (`Ctrl+Enter` = rich)  |
+| Single / range / multi selection              | Click / `Shift+Click` (or `Shift+↑/↓`) / `Ctrl+Click`          |
+| Open card context menu via keyboard           | `Shift+F10` or `ContextMenu` key                               |
+| Copy to category on Drag & Drop or menu       | Hold `Ctrl`                                                    |
+| Quick-paste visible cards                     | `Ctrl+1` … `Ctrl+9`                                            |
+| Reorder cards                                 | Drag & Drop or `Alt+↑/↓`                                       |
+| Preview & inline edit (with auto-save)        | `Space` (or `F3`) · `Ctrl+E`                                   |
+| Switch between Clipboard & category tabs      | `←` `→` or `Tab` or `Ctrl+[ ]`                                 |
+| Focus search bar                              | `Ctrl+F`                                                       |
+| Pin item to top                               | `Ctrl+P`                                                       |
+| Rename / Tags / MIME format inspector         | `F2` / `Ctrl+T` / `Ctrl+I`                                     |
+| Merge selected items                          | `Ctrl+M`                                                       |
+| Toggle Paste Queue / Drop Basket              | `Ctrl+Alt+Q`                                                   |
+| Toggle global plain-text paste mode           | `Ctrl+Alt+P`                                                   |
+| Open Settings                                 | `Ctrl+,`                                                       |
 
 ---
 
-## 📂 مسیر ذخیره‌سازی داده‌ها
+## 📂 Data Storage Location
 
-تمامی داده‌ها به‌صورت کاملاً محلی در مسیر زیر ذخیره می‌شوند:
+All data is stored strictly locally at:
 `%APPDATA%\com.clipnest.app\` (`clipnest.db`, `settings.json`, `backups\`, `cli-rpc.json`)
 
 ---
 
-## 🙏 قدردانی و الهام‌گیری (Credits & Acknowledgements)
+## 🙏 Credits & Acknowledgements
 
-این نرم‌افزار با الهام و الگوبرداری از دو پروژه‌ی ارزشمند **Copywren** و **CopyQ** طراحی و توسعه داده شده است و صمیمانه از سازندگان آن‌ها قدردانی می‌کنیم:
+ClipNest is inspired by and modeled after two outstanding projects:
 
-- **Copywren:** طراحی رابط کاربری (UI)، ساختار بصری کارت‌ها، پنجره‌ی پاپ‌آپ و تجربه‌ی کاربری مدرن ClipNest مستقیماً از رابط کاربری چشم‌نواز **Copywren** الگوبرداری شده است.
-- **[CopyQ](https://github.com/hluk/CopyQ):** ایده‌ی امکانات پیشرفته‌ی مدیریت کلیپ‌بورد، دسته‌بندی‌ها ( تب‌ها)، قوانین خودکار، اکشن‌های سفارشی، نوار ابزار کناری و طراحی رابط خط فرمان (`clipnest` / `clipn` CLI) از نرم‌افزار قدرتمند و متن‌باز **CopyQ** الهام گرفته شده است.
+- **Copywren:** ClipNest's clean UI design, card structure, popup layout, and modern user experience are directly inspired by **Copywren**.
+- **[CopyQ](https://github.com/hluk/CopyQ):** ClipNest's advanced clipboard management features—category tabs, automatic rules, custom shell actions, side toolbar, and command-line interface (`clipnest` / `clipn`)—are inspired by the open-source **CopyQ** project.

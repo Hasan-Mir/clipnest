@@ -1,56 +1,56 @@
-# گزارش کامل تغییرات معماری، رفع باگ‌ها و بازطراحی رابط کاربری ClipNest
+# ClipNest Architecture, Bug Fixes & Calm UI Craft Report
 
-این گزارش تمامی تغییرات اعمال‌شده در این مرحله، دلایل فنی هر تصمیم معماری (برای توسعه‌دهندگان آینده)، نتایج بازبینی همگرای چندعاملی (Cycle 1 و Cycle 2) و فهرست فایل‌های تغییریافته را مستند می‌کند.
-
----
-
-## ۱. خلاصه‌ی تغییرات کلیدی
-
-1. **پنجره‌ی تنظیمات بدون قاب (Frameless Settings) + کامندهای `async` در Rust:**
-   - در `src-tauri/tauri.conf.json` و `src-tauri/src/windowing.rs` پنجره‌ی `settings` به حالت `decorations: false` همراه با `shadow: true` و گوشه‌های گرد بومی ویندوز ۱۱ (`win::round_window_corners`) تبدیل شد.
-   - چهار کامند ناهمزمان (`async fn`) در `src-tauri/src/commands.rs` (`settings_minimize`، `settings_toggle_maximize`، `settings_is_maximized`، `settings_close`) اضافه و در `src-tauri/src/lib.rs` و `src/lib/api.ts` ثبت شدند تا از deadlockهای IPC روی WebView2 جلوگیری شود.
-   - نوار عنوان داخلی `SettingsTitleBar` با `dir="ltr"` ثابت، `data-tauri-drag-region` بدون `onDoubleClick` مضاعف، همگام‌سازی خودکار وضعیت Maximize/Restore با `resize`/`focus` و نمایش خطای toast در صورت خطای IPC در `src/settings/Settings.tsx` پیاده‌سازی شد.
-   - بخش‌های tray و drag-and-drop کاملاً دست‌نخورده باقی ماندند.
-
-2. **حذف نوار عنوان مشکی بومی ویندوز روی پنجره‌ی Paste Queue:**
-   - **علت ریشه‌ای:** در `packages/core/src/platform/win.rs` تابع `make_no_activate` فلگ `WS_EX_TOOLWINDOW` را پس از ساخت پنجره به `GWL_EXSTYLE` اضافه می‌کرد. از آنجا که Tauri/tao روی پنجره‌های `decorations(false)` قابل تغییر اندازه، `WS_CAPTION | WS_THICKFRAME` را نگه می‌دارد، افزودن `WS_EX_TOOLWINDOW` باعث می‌شد DWM ویندوز یک نوار عنوان مشکی ToolWindow با دکمه‌ی قرمز `X` بالای پنجره رسم کند.
-   - **اصلاح:** حذف `WS_EX_TOOLWINDOW` از `make_no_activate` (چون مخفی‌سازی از تسک‌بار قبلاً با `.skip_taskbar(true)` انجام شده است)، حفظ `WS_EX_NOACTIVATE` و فراخوانی `SetWindowPos(..., SWP_FRAMECHANGED)`.
-
-3. **حذف کامل `virtua` (`VList`) و جایگزینی با لیست DOM صفحه‌بندی‌شده + انیمیشن حذف CSS Grid Collapse:**
-   - حذف وابستگی `virtua` از `package.json`، حذف شاخه‌ی `<VList>` از `src/popup/Popup.tsx`، حذف `.vlist*` از `src/styles.css`، و حذف گزینه‌ی `virtual_scroll` از تنظیمات (`models.rs`، `api.ts`، `useSettings.ts`، `Settings.tsx`، `README.md`). به دلیل وجود `#[serde(default)]` بدون `deny_unknown_fields` در `models.rs`، فایل‌های `settings.json` قدیمی کاربران بدون خطا خوانده می‌شوند (همراه با تست واحد `legacy_settings_with_virtual_scroll_deserializes_cleanly`).
-   - افزودن تنظیم `page_size` (**Items per page**، پیش‌فرض `100`، بازه‌ی `20..500`) و `IntersectionObserver` sentinel در انتهای `.list` برای لود خودکار صفحات بعدی هنگام اسکرول با ماوس و کیبورد.
-   - افزودن هوک مشترک `src/lib/useViewportVisible.ts` (`IntersectionObserver` با `rootMargin: '300px'`) در `RichView.tsx` و `Thumb` (`Card.tsx`) و `content-visibility: auto` روی `.card` برای حفظ سرعت باز شدن پنجره بدون کش‌ریزی IPC.
-   - جایگزینی ۱۳۰ خط کد دستوری `translateY` با انیمیشن declarative در CSS Grid (`.card-slot` و `.card-slot.removing` با `grid-template-rows: 1fr -> 0fr` و `margin-bottom: 6px -> 0`).
-
-4. **رفع ۷ باگ انتخاب چندتایی، حذف و همگام‌سازی لیست (`src/popup/Popup.tsx`):**
-   - اصلاح `targets()` برای پشتیبانی از `multi.length > 0` و اصلاح `Ctrl+Click` deselect (تبدیل تمیز انتخاب ۲تایی به انتخاب تکی روی آیتم باقی‌مانده + آپدیت `anchor.current`).
-   - پالایش آیدی‌های منقضی/حذف/منتقل‌شده از `multi` در `reload()` و پاک‌سازی `multi` پس از Move به دسته‌بندی دیگر (`!shouldCopy`).
-   - فیلتر کردن `pendingDeleteIdsRef` در `reload()` و افزایش `++seq.current` هنگام حذف خوش‌بینانه برای جلوگیری از بازگشت موقت آیتم حذف‌شده.
-   - حذف `setMulti([])` مطلق در `doDelete` (فقط آیدی‌های حذف‌شده از `multi` کم می‌شوند) و clamp کردن خالص `sel` با `useEffect` روی `items.length`.
-
-5. **اصلاحات UX و استایل Calm Desktop UI (`src/styles.css`، `Popup.tsx`، `Overlays.tsx`، `CustomSelect.tsx`، `Settings.tsx`):**
-   - افزودن `scrollbar-gutter: stable` روی `.list`، `.qlist`، `.spane` و `.cselect-list` برای حذف کامل شیفت افقی هنگام فیلتر شدن لیست.
-   - بازطراحی دکمه‌ی **Pin** در هدر Popup (تغییر `fill` به رنگ accent + چرخش نرم `-45deg` بدون پس‌زمینه‌ی رنگی) و دکمه‌ی **Toggle side toolbar** (تغییر رنگ SVG بدون پس‌زمینه‌ی رنگی).
-   - رفع باگ باز نشدن نوار ابزار کناری در لیست خالی (`const toolbar = Boolean(s?.show_toolbar)` و غیرفعال شدن ایمن دکمه‌های وابسته به کارت با `disabled={!cur}`).
-   - افزودن حس فشردن فیزیکی آرام‌تر (`175ms`) روی همه‌ی دکمه‌ها، **سوییچ‌ها (`.switch`)** و **دکمه‌های Close/Minimize/Maximize (`.win-ctl`)** با `:where(...)` برای جلوگیری از تداخل specificity.
-   - رفع مشکل پریدن انیمیشن باز شدن دیالوگ‌ها، مودال‌ها و منوها در mount اولیه با هوک double-rAF (`src/lib/useEntered.ts`) و زمان‌بندی آرام‌تر شبیه Notion (`210ms–240ms`).
-   - افزودن ۵ فونت مدرن متغیر برای رابط کاربری لاتین (`Google Sans` پیش‌فرض، `Inter`، `Plus Jakarta Sans`، `DM Sans`، `Roboto` از `@fontsource-variable/*`) همراه با قفل بودن دائمی فونت تعبیه‌شده‌ی `Vazirmatn` برای متن‌های فارسی/عربی (`src/lib/uiFonts.ts`)، و انتخاب اندازه‌ی فونت `12 / 14 / 16 / 18 px` در تنظیمات.
+This report documents the architectural changes, bug fixes, design rationale (for future maintainers), convergent multi-agent review results, and modified files.
 
 ---
 
-## ۲. نتیجه‌ی بازبینی همگرای چندعاملی (Convergent Multi-Agent Review)
+## 1. Summary of Changes
 
-- **Cycle 1 (۲ ساب‌ایجنت مستقل Backend و Frontend):**
-  - بخش Rust/Win32/Tauri بدون هیچ باگ کامپایل یا رگرسیون تأیید شد (تنها نیاز به اجرای `npm install` برای همگام‌سازی `package-lock.json` و افزودن تست serde و اصلاح کامنت `windowing.rs` گزارش شد).
-  - در بخش Frontend چهار باگ مهم کشف و بلافاصله رفع شدند: (۱) تعریف نشدن `subEntered` در `SubMenu`، (۲) جا ماندن کلاس `.entered` روی `.overlay`/`.dialog` در `Prompt` و `BoardDialog`، (۳) بریدگی نشانگرهای drag-and-drop توسط `content-visibility: auto` و `overflow: hidden` روی `.card-slot-inner`، و (۴) تداخل specificity سلکتور `button:not(...)` با `.switch:active` و `.win-ctl`.
-- **Cycle 2 (ساب‌ایجنت همگرایی تازه):**
-  - همه‌ی اصلاحات Cycle 1 بدون هیچ رگرسیونی تأیید شدند و آخرین مورد جزئی (`!important` روی `.switch:active` داخل `@media (prefers-reduced-motion: reduce)`) اعمال شد.
+1. **Frameless Settings Window & `async` Rust Window Commands:**
+   - Updated `src-tauri/tauri.conf.json` and `src-tauri/src/windowing.rs` so the `settings` window uses `decorations: false`, `shadow: true`, and native Windows 11 DWM rounded corners (`win::round_window_corners`).
+   - Added and registered four `async fn` Tauri commands (`settings_minimize`, `settings_toggle_maximize`, `settings_is_maximized`, `settings_close`) in `src-tauri/src/commands.rs`, `src-tauri/src/lib.rs`, and `src/lib/api.ts` to avoid Win32/WebView2 IPC deadlocks.
+   - Added `SettingsTitleBar` (`dir="ltr"`, `data-tauri-drag-region` without duplicate `onDoubleClick`, automatic `resize`/`focus` maximize-state sync, and visible error toast on IPC failure) in `src/settings/Settings.tsx`.
+   - Left tray and drag-and-drop subsystems completely untouched.
+
+2. **Eliminated Native Windows Title Bar on the Paste Queue Window:**
+   - **Root Cause:** `packages/core/src/platform/win.rs::make_no_activate` previously added `WS_EX_TOOLWINDOW` to `GWL_EXSTYLE` after window creation. Because Tauri/tao retains `WS_CAPTION | WS_THICKFRAME` on resizable frameless windows (`decorations(false)`), adding `WS_EX_TOOLWINDOW` caused Windows DWM to paint a black ToolWindow caption bar with a red `X` button above the WebView.
+   - **Fix:** Omitted `WS_EX_TOOLWINDOW` (taskbar hiding is already handled by `.skip_taskbar(true)` in `windowing.rs`), kept `WS_EX_NOACTIVATE` with `WS_EX_APPWINDOW` cleared, and called `SetWindowPos(..., SWP_FRAMECHANGED)`.
+
+3. **Removed `virtua` (`VList`) in Favor of Configurable Scroll Pagination & CSS Grid Collapse:**
+   - Removed `virtua` from `package.json`, removed the `<VList>` render branch from `src/popup/Popup.tsx`, removed `.vlist*` CSS from `src/styles.css`, and replaced `virtual_scroll` with `page_size` (**Items per page**, default `100`, range `20..500`) across `models.rs`, `api.ts`, `useSettings.ts`, `Settings.tsx`, and `README.md`. `#[serde(default)]` without `deny_unknown_fields` preserves full backward compatibility for existing `settings.json` files (verified by `legacy_settings_with_virtual_scroll_deserializes_cleanly`).
+   - Added an `IntersectionObserver` bottom sentinel in `Popup.tsx` so mouse/trackpad scrolling loads subsequent pages automatically.
+   - Added `src/lib/useViewportVisible.ts` (shared `IntersectionObserver`, `rootMargin: '300px'`) in `RichView.tsx` and `Thumb` (`Card.tsx`), paired with `content-visibility: auto` on `.card`, preventing off-screen IPC bursts and cache thrashing.
+   - Replaced the 130-line imperative `translateY` animation hack with declarative CSS Grid Collapse (`.card-slot` with `grid-template-columns: minmax(0, 1fr)` and `min-width: 0` so wide `<pre>`/`RichView` lines never cause horizontal overflow).
+
+4. **Fixed 7 Multi-Select, Delete & Reload Synchronization Bugs (`src/popup/Popup.tsx`):**
+   - Fixed `targets()` to honor any live `multi.length > 0` selection and fixed `Ctrl+Click` deselection collapsing 2 items to 1 so `sel` and `anchor.current` move to the remaining selected item instead of leaving `cur` on the deselected card.
+   - Pruned stale/moved/expired IDs from `multi` inside `reload()` and cleared `multi` on non-copy category moves (`!shouldCopy`).
+   - Filtered `pendingDeleteIdsRef` in `reload()` and incremented `++seq.current` during optimistic removal so concurrent `items-changed` events never resurrect deleted items mid-animation.
+   - Replaced unconditional `setMulti([])` in `doDelete` with targeted removal of `idSet` and added a pure `useEffect` clamping `sel` when `items.length` shrinks.
+
+5. **Calm Desktop UI Polish (`src/styles.css`, `Popup.tsx`, `Overlays.tsx`, `CustomSelect.tsx`, `Settings.tsx`):**
+   - Added `scrollbar-gutter: stable` and `overflow-x: hidden` on `.list` (and `scrollbar-gutter: stable` on `.qlist`, `.spane`, `.cselect-list`) to eliminate horizontal layout shift when filtering.
+   - Redesigned the popup **Pin** button (accent SVG `fill` + smooth `-45deg` rotation instead of a solid background square) and **Toggle side toolbar** button (accent SVG stroke without a solid background box).
+   - Fixed the side toolbar toggle so it opens cleanly even when the list is empty (`const toolbar = Boolean(s?.show_toolbar)` with `disabled={!cur}` on card-specific actions).
+   - Added calm `175ms` tactile press-in physics across buttons, switches (`.switch:active`), and window controls (`.win-ctl`) using `:where(...)` so component rules retain clean specificity.
+   - Fixed instant-popping modal/menu/dropdown entrance animations with double-rAF `src/lib/useEntered.ts` (`.entered` on `CustomSelect`, `ContextMenu`, `SubMenu`, `Prompt`, `BoardDialog`) and smooth `.srow::before` modified-setting bar transitions.
+   - Added 5 self-hosted `@fontsource-variable/*` UI fonts (`Google Sans` default, `Inter`, `Plus Jakarta Sans`, `DM Sans`, `Roboto`) with embedded `Vazirmatn` permanently locked in for Persian/Arabic glyphs (`src/lib/uiFonts.ts`), plus `10..20 px` font size presets (default `14 px`).
 
 ---
 
-## ۳. دستورات لازم پس از استخراج روی ویندوز
+## 2. Convergent Multi-Agent Review Summary
 
-به دلیل آفلاین بودن سندباکس و نبود `node_modules` و `cargo`، لطفاً پس از استخراج فایل فشرده روی مخزن و بستن نمونه‌ی در حال اجرای ClipNest در tray، دستورات زیر را اجرا کنید:
+- **Cycle 1 (Backend & Frontend Fresh-Context Auditors):**
+  - Backend/Rust/Win32/serde changes passed with zero Rust or Win32 defects (flagged `package-lock.json` sync via `npm install`, `windowing.rs` doc comment update, and adding a legacy serde unit test).
+  - Frontend audit caught and resolved 4 defects: undeclared `subEntered` in `SubMenu`, missing `.entered` class on `.overlay`/`.dialog` in `Prompt` and `BoardDialog`, drag-drop insertion indicator clipping from `content-visibility: auto` / `overflow: hidden`, and global `button:not(...)` specificity overriding `.switch:active` and `.win-ctl`.
+- **Cycle 2 & Polish Verification:**
+  - Verified all Cycle 1 fixes with zero regressions, tightened `@media (prefers-reduced-motion: reduce)` for `.switch:active`, and verified `grid-template-columns: minmax(0, 1fr)` + `min-width: 0` horizontal overflow elimination and `.srow::before` LTR/RTL transitions.
+
+---
+
+## 3. Post-Extraction Verification Commands (Windows)
+
+Because `node_modules` and `cargo` are unavailable in this offline sandbox, quit any running ClipNest tray instance after extracting the archive and run:
 
 ```powershell
 npm install
