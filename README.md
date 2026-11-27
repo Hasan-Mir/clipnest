@@ -183,3 +183,19 @@ ClipNest is inspired by and modeled after two outstanding projects:
 
 - **[Copywren](https://github.com/sonatina-dream/copywren):** ClipNest's clean UI design, card structure, category tabs, popup layout, and modern user experience are directly inspired by **Copywren**.
 - **[CopyQ](https://github.com/hluk/CopyQ):** ClipNest's advanced clipboard management features—automatic rules, custom shell actions, side toolbar, and command-line interface (`clipnest` / `clipn`)—are inspired by the open-source **CopyQ** project.
+
+---
+
+## 🔒 Privacy Policy & Code Signing
+
+ClipNest is 100% offline and stores all clipboard history, thumbnails, settings, and backups locally on your device. It contains no telemetry, analytics, crash-reporting uploads, or cloud synchronization.
+
+> This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
+
+Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
+---
+
+## 📄 License
+
+ClipNest is open-source software licensed under the [MIT License](LICENSE).

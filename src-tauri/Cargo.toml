@@ -2,6 +2,7 @@
 name = "clipnest"
 version = "0.2.0"
 description = "ClipNest - a fast, private clipboard manager for Windows"
+license = "MIT"
 edition = "2021"
 rust-version = "1.77"
 default-run = "clipnest"

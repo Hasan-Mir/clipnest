@@ -2,6 +2,7 @@
 name = "clipnest-core"
 version = "0.2.0"
 description = "ClipNest Core — Native Rust engine (SQLite, search, rules, transforms, Win32 clipboard, IPC, and N-API addon) shared by ClipNest GUI and CLI"
+license = "MIT"
 edition = "2021"
 rust-version = "1.77"
 

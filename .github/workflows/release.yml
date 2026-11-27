@@ -123,6 +123,67 @@ jobs:
           releaseDraft: ${{ github.event.inputs.draft == 'true' }}
           prerelease: false
 
+      - name: Stage unsigned Windows binaries for SignPath
+        if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $stage = Join-Path $env:RUNNER_TEMP "signpath-unsigned"
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $stage
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          $appExe = @("src-tauri/target/release/ClipNest.exe", "src-tauri/target/release/clipnest.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if ($null -eq $appExe) { throw "Expected ClipNest executable was not found." }
+          Copy-Item $appExe $stage -Force
+          Copy-Item "src-tauri/target/release/clipnest-cli.exe" $stage -Force
+          $setupExe = Get-ChildItem "src-tauri/target/release/bundle/nsis/*-setup.exe" | Select-Object -First 1
+          if ($null -eq $setupExe) { throw "Expected NSIS setup executable was not found." }
+          Copy-Item $setupExe.FullName $stage -Force
+
+      - name: Upload unsigned artifact for SignPath
+        if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+        id: signpath_upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: signpath-unsigned-windows
+          path: ${{ runner.temp }}/signpath-unsigned
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Sign Windows binaries with SignPath
+        if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'clipnest' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
+          github-artifact-id: ${{ steps.signpath_upload.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: ${{ runner.temp }}/signpath-signed
+
+      - name: Apply signed binaries and update NSIS installer in GitHub Release
+        if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.changelog.outputs.tag }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $signed = Join-Path $env:RUNNER_TEMP "signpath-signed"
+          $signedApp = Get-ChildItem -Path $signed -Recurse -File | Where-Object { $_.Name -ieq "ClipNest.exe" -or $_.Name -ieq "clipnest.exe" } | Select-Object -First 1
+          $signedCli = Get-ChildItem -Path $signed -Recurse -File -Filter "clipnest-cli.exe" | Select-Object -First 1
+          $signedSetup = Get-ChildItem -Path $signed -Recurse -File -Filter "*-setup.exe" | Select-Object -First 1
+          if ($null -eq $signedApp -or $null -eq $signedCli -or $null -eq $signedSetup) {
+            throw "Expected signed binaries were not found in $signed."
+          }
+          if (Test-Path "src-tauri/target/release/ClipNest.exe") {
+            Copy-Item $signedApp.FullName "src-tauri/target/release/ClipNest.exe" -Force
+          } else {
+            Copy-Item $signedApp.FullName "src-tauri/target/release/clipnest.exe" -Force
+          }
+          Copy-Item $signedCli.FullName "src-tauri/target/release/clipnest-cli.exe" -Force
+          gh release upload --clobber -- $env:RELEASE_TAG $signedSetup.FullName
+
       - name: Package & upload Portable ZIP and CLI binary to GitHub Release
         shell: pwsh
         env:
