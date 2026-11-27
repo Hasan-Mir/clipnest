@@ -4,7 +4,8 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, vi } from 'vitest';
-import { api, ClipRow } from '../lib/api';
+import { api, ClipRow, Pinboard } from '../lib/api';
+import { computeReorderTargetId, moveBoardId, resolveDisplayedBoards, TabRect } from '../lib/categoryReorder';
 import { ColorPicker, hexToHsl, hslToHex, isValidHex } from '../lib/ColorPicker';
 import { CustomSelect } from '../lib/CustomSelect';
 import { ContextMenu, MenuEntry } from '../popup/Overlays';
@@ -514,5 +515,57 @@ describe('UI Accessibility KeyDown handlers', () => {
             root.unmount();
         });
         container.remove();
+    });
+
+    it('categoryReorder helpers handle LTR, RTL, anti-oscillation, wrapped rows, and live board sync', () => {
+        const makeBoard = (id: number, name: string, position: number): Pinboard => ({
+            id,
+            name,
+            color: '#4f8cff',
+            position,
+            count: 0,
+            max_items: 0,
+            list_style: 'inherit',
+            paste_mode: 'inherit',
+        });
+
+        const liveBoards = [makeBoard(1, 'Work', 1), makeBoard(2, 'Code', 2), makeBoard(3, 'Links', 3)];
+        // Deleted board 99 drops out, newly created board 3 appends at end.
+        const resolved = resolveDisplayedBoards(liveBoards, [2, 99, 1]);
+        expect(resolved.map((b) => b.id)).toEqual([2, 1, 3]);
+
+        expect(moveBoardId([1, 2, 3], 1, 3)).toEqual([2, 3, 1]);
+        expect(moveBoardId([1, 2, 3], 2, 2)).toEqual([1, 2, 3]);
+
+        // LTR unequal widths: Tab 1 [0..60], Tab 2 [60..200] (midpoint 130)
+        const ltrRects: TabRect[] = [
+            { id: 1, left: 0, right: 60, top: 0, bottom: 28 },
+            { id: 2, left: 60, right: 200, top: 0, bottom: 28 },
+        ];
+        expect(computeReorderTargetId(1, 100, 14, ltrRects, false, false)).toBeNull();
+        expect(computeReorderTargetId(1, 131, 14, ltrRects, false, false)).toBe(2);
+
+        // After swap: Tab 2 [0..140] (mid 70), Tab 1 [140..200]. Cursor still at 131 must NOT oscillate back.
+        const afterSwapLtr: TabRect[] = [
+            { id: 2, left: 0, right: 140, top: 0, bottom: 28 },
+            { id: 1, left: 140, right: 200, top: 0, bottom: 28 },
+        ];
+        expect(computeReorderTargetId(1, 131, 14, afterSwapLtr, false, false)).toBeNull();
+        expect(computeReorderTargetId(1, 69, 14, afterSwapLtr, false, false)).toBe(2);
+
+        // RTL: Tab 1 on right [200..260], Tab 2 on left [60..200] (midpoint 130)
+        const rtlRects: TabRect[] = [
+            { id: 1, left: 200, right: 260, top: 0, bottom: 28 },
+            { id: 2, left: 60, right: 200, top: 0, bottom: 28 },
+        ];
+        expect(computeReorderTargetId(1, 160, 14, rtlRects, true, false)).toBeNull();
+        expect(computeReorderTargetId(1, 129, 14, rtlRects, true, false)).toBe(2);
+
+        // Multi-row wrapped mode: cross-row drag triggers immediately on entering target rect
+        const wrappedRects: TabRect[] = [
+            { id: 1, left: 0, right: 80, top: 0, bottom: 28 },
+            { id: 2, left: 0, right: 80, top: 34, bottom: 62 },
+        ];
+        expect(computeReorderTargetId(1, 20, 48, wrappedRects, false, true)).toBe(2);
     });
 });

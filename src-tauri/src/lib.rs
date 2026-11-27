@@ -551,6 +551,7 @@ pub fn run() {
             commands::update_item_text,
             commands::create_pinboard,
             commands::update_pinboard,
+            commands::reorder_pinboards,
             commands::delete_pinboard,
             commands::run_action,
             commands::open_item,

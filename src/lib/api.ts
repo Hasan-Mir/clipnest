@@ -255,6 +255,7 @@ export const api = {
     importData: () => invoke<number | null>('import_data'),
     exportSettings: () => invoke<string | null>('export_settings'),
     importSettings: () => invoke<boolean>('import_settings'),
+    reorderPinboards: (ids: number[]) => invoke<void>('reorder_pinboards', { ids }),
     deletePinboard: (id: number) => invoke<void>('delete_pinboard', { id }),
     runAction: (id: number, action: string) => invoke<number | null>('run_action', { id, action }),
     openItem: (id: number) => invoke<void>('open_item', { id }),

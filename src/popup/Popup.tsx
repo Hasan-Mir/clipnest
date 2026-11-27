@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { api, ClipRow, errText, ListResult, on, PasteMode, Pinboard, Status } from '../lib/api';
+import { computeReorderTargetId, moveBoardId, resolveDisplayedBoards, TabRect } from '../lib/categoryReorder';
 import { basename } from '../lib/format';
 import { SearchMode } from '../lib/highlightMatch';
 import { isRtl, num, t, useLang } from '../lib/i18n';
@@ -91,6 +92,9 @@ export default function Popup() {
     const [explorerTarget, setExplorerTarget] = useState<string | null>(null);
     const [tabsGrabbing, setTabsGrabbing] = useState(false);
     const [tabsHasScroll, setTabsHasScroll] = useState(false);
+    const [reorderIds, setReorderIds] = useState<number[] | null>(null);
+    const [draggingBoardId, setDraggingBoardId] = useState<number | null>(null);
+    const reorderMode = reorderIds !== null;
 
     const anchor = useRef(0);
     const seq = useRef(0);
@@ -128,11 +132,25 @@ export default function Popup() {
         startScroll: 0,
         moved: false,
     });
+    const boardsRef = useRef<Pinboard[]>(boards);
+    boardsRef.current = boards;
+    const reorderIdsRef = useRef<number[] | null>(reorderIds);
+    reorderIdsRef.current = reorderIds;
+    const draggingBoardIdRef = useRef<number | null>(draggingBoardId);
+    draggingBoardIdRef.current = draggingBoardId;
+    const longPressTimerRef = useRef<number | null>(null);
+    const longPressOriginRef = useRef<{ boardId: number; startX: number; startY: number } | null>(null);
+    const didDragBoardRef = useRef(false);
+    const lastReorderSwapRef = useRef<{ targetId: number; x: number; y: number } | null>(null);
+    const autoScrollRafRef = useRef<number | null>(null);
+    const lastPointerRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+    const cancelReorderModeRef = useRef<() => void>(() => {});
     const emptyDragRef = useRef<HTMLDivElement>(null);
     const toastTimer = useRef<number | undefined>(undefined);
     const settingsRef = useRef(settings);
     settingsRef.current = settings;
 
+    const displayedBoards = useMemo(() => resolveDisplayedBoards(boards, reorderIds), [boards, reorderIds]);
     const items = res.items;
     const cur: ClipRow | undefined = items[sel];
     const curBoard = boards.find((b) => b.id === tab) ?? null;
@@ -291,6 +309,7 @@ export default function Popup() {
             on('explorer-files-mode', () => syncExplorerTarget()),
             on('popup-hidden', () => {
                 hiddenAt.current = Date.now();
+                cancelReorderModeRef.current();
                 setCtrl(false);
                 setDragCtrl(false);
                 setDraggingId(null);
@@ -303,6 +322,7 @@ export default function Popup() {
                 document.body.classList.remove('dragging-card');
             }),
             on('popup-shown', () => {
+                cancelReorderModeRef.current();
                 if (Date.now() - hiddenAt.current > 60_000) {
                     setQuery('');
                 }
@@ -394,9 +414,178 @@ export default function Popup() {
         };
     }, [boards.length, wrapCategories, dragOverTabId, settings?.show_pinboard_counts]);
 
-    // Click-and-drag scrolling on the category tabs bar
+    const cancelLongPress = useCallback(() => {
+        if (longPressTimerRef.current !== null) {
+            window.clearTimeout(longPressTimerRef.current);
+            longPressTimerRef.current = null;
+        }
+        longPressOriginRef.current = null;
+    }, []);
+
+    const stopAutoScroll = useCallback(() => {
+        if (autoScrollRafRef.current !== null) {
+            window.cancelAnimationFrame(autoScrollRafRef.current);
+            autoScrollRafRef.current = null;
+        }
+    }, []);
+
+    const startReorderMode = useCallback((initialDragBoardId?: number) => {
+        if (boardsRef.current.length <= 1) {
+            return;
+        }
+        setMenu(null);
+        const currentIds = boardsRef.current.map((b) => b.id);
+        reorderIdsRef.current = currentIds;
+        setReorderIds(currentIds);
+        if (initialDragBoardId !== undefined) {
+            tabDragState.current.active = false;
+            tabDragState.current.moved = false;
+            setTabsGrabbing(false);
+            didDragBoardRef.current = true;
+            draggingBoardIdRef.current = initialDragBoardId;
+            setDraggingBoardId(initialDragBoardId);
+        }
+    }, []);
+
+    const cancelReorderMode = useCallback(() => {
+        cancelLongPress();
+        stopAutoScroll();
+        draggingBoardIdRef.current = null;
+        didDragBoardRef.current = false;
+        lastReorderSwapRef.current = null;
+        reorderIdsRef.current = null;
+        setDraggingBoardId(null);
+        setReorderIds(null);
+    }, [cancelLongPress, stopAutoScroll]);
+    cancelReorderModeRef.current = cancelReorderMode;
+
+    const confirmReorderMode = useCallback(() => {
+        cancelLongPress();
+        stopAutoScroll();
+        const draft = reorderIdsRef.current;
+        draggingBoardIdRef.current = null;
+        didDragBoardRef.current = false;
+        lastReorderSwapRef.current = null;
+        reorderIdsRef.current = null;
+        setDraggingBoardId(null);
+        setReorderIds(null);
+        if (!draft) {
+            return;
+        }
+        const resolved = resolveDisplayedBoards(boardsRef.current, draft);
+        const nextIds = resolved.map((b) => b.id);
+        const prevIds = boardsRef.current.map((b) => b.id);
+        const changed = nextIds.length === prevIds.length && nextIds.some((id, idx) => id !== prevIds[idx]);
+        if (!changed) {
+            return;
+        }
+        setBoards(resolved.map((b, idx) => ({ ...b, position: idx + 1 })));
+        api.reorderPinboards(nextIds)
+            .then(() => showToast(t('Category order saved')))
+            .catch((e) => {
+                reload();
+                fail(e);
+            });
+    }, [cancelLongPress, stopAutoScroll, showToast, reload, fail]);
+
     useEffect(() => {
+        if (reorderMode && boards.length <= 1) {
+            cancelReorderMode();
+        }
+    }, [reorderMode, boards.length, cancelReorderMode]);
+
+    // Click-and-drag scrolling on the category tabs bar + long-press & drag-to-reorder categories
+    useEffect(() => {
+        const readTabRects = (): TabRect[] => {
+            const container = tabsRef.current;
+            if (!container) {
+                return [];
+            }
+            const els = container.querySelectorAll<HTMLElement>('[data-board-id]');
+            const rects: TabRect[] = [];
+            els.forEach((el) => {
+                const id = Number(el.dataset.boardId);
+                if (!Number.isFinite(id)) {
+                    return;
+                }
+                const r = el.getBoundingClientRect();
+                rects.push({ id, left: r.left, right: r.right, top: r.top, bottom: r.bottom });
+            });
+            return rects;
+        };
+
+        const runReorderHitTest = (clientX: number, clientY: number) => {
+            const dragged = draggingBoardIdRef.current;
+            if (dragged === null || !reorderIdsRef.current) {
+                return;
+            }
+            const rects = readTabRects();
+            const targetId = computeReorderTargetId(dragged, clientX, clientY, rects, isRtl(lang), wrapCategories);
+            if (targetId !== null && targetId !== dragged) {
+                const prevSwap = lastReorderSwapRef.current;
+                if (
+                    prevSwap &&
+                    prevSwap.targetId === targetId &&
+                    Math.hypot(clientX - prevSwap.x, clientY - prevSwap.y) < 12
+                ) {
+                    return;
+                }
+                lastReorderSwapRef.current = { targetId, x: clientX, y: clientY };
+                didDragBoardRef.current = true;
+                setReorderIds((prev) => {
+                    if (!prev) {
+                        return prev;
+                    }
+                    const base = resolveDisplayedBoards(boardsRef.current, prev).map((b) => b.id);
+                    const next = moveBoardId(base, dragged, targetId);
+                    reorderIdsRef.current = next;
+                    return next;
+                });
+            }
+        };
+
+        const tickAutoScroll = () => {
+            const container = tabsRef.current;
+            if (draggingBoardIdRef.current === null || !container || wrapCategories) {
+                autoScrollRafRef.current = null;
+                return;
+            }
+            const rect = container.getBoundingClientRect();
+            const edge = 28;
+            const px = lastPointerRef.current.x;
+            let delta = 0;
+            if (px < rect.left + edge) {
+                delta = -Math.max(2, Math.round(((rect.left + edge - px) / edge) * 9));
+            } else if (px > rect.right - edge) {
+                delta = Math.max(2, Math.round(((px - (rect.right - edge)) / edge) * 9));
+            }
+            if (delta !== 0) {
+                const before = container.scrollLeft;
+                container.scrollLeft += delta;
+                if (container.scrollLeft !== before) {
+                    runReorderHitTest(lastPointerRef.current.x, lastPointerRef.current.y);
+                }
+            }
+            autoScrollRafRef.current = window.requestAnimationFrame(tickAutoScroll);
+        };
+
         const onMouseMove = (e: MouseEvent) => {
+            lastPointerRef.current = { x: e.clientX, y: e.clientY };
+
+            if (draggingBoardIdRef.current !== null) {
+                didDragBoardRef.current = true;
+                runReorderHitTest(e.clientX, e.clientY);
+                if (!wrapCategories && autoScrollRafRef.current === null) {
+                    autoScrollRafRef.current = window.requestAnimationFrame(tickAutoScroll);
+                }
+                return;
+            }
+
+            const lp = longPressOriginRef.current;
+            if (lp && Math.hypot(e.clientX - lp.startX, e.clientY - lp.startY) > 5) {
+                cancelLongPress();
+            }
+
             const st = tabDragState.current;
             if (!st.active || !tabsRef.current) {
                 return;
@@ -410,7 +599,18 @@ export default function Popup() {
                 tabsRef.current.scrollLeft = st.startScroll - dx;
             }
         };
-        const onMouseUp = () => {
+
+        const finishPointer = () => {
+            cancelLongPress();
+            stopAutoScroll();
+            lastReorderSwapRef.current = null;
+            if (draggingBoardIdRef.current !== null) {
+                draggingBoardIdRef.current = null;
+                setDraggingBoardId(null);
+                window.setTimeout(() => {
+                    didDragBoardRef.current = false;
+                }, 40);
+            }
             if (tabDragState.current.active) {
                 tabDragState.current.active = false;
                 setTabsGrabbing(false);
@@ -419,13 +619,18 @@ export default function Popup() {
                 }, 40);
             }
         };
+
         window.addEventListener('mousemove', onMouseMove);
-        window.addEventListener('mouseup', onMouseUp);
+        window.addEventListener('mouseup', finishPointer);
+        window.addEventListener('blur', finishPointer);
         return () => {
+            cancelLongPress();
+            stopAutoScroll();
             window.removeEventListener('mousemove', onMouseMove);
-            window.removeEventListener('mouseup', onMouseUp);
+            window.removeEventListener('mouseup', finishPointer);
+            window.removeEventListener('blur', finishPointer);
         };
-    }, []);
+    }, [lang, wrapCategories, cancelLongPress, stopAutoScroll]);
 
     // Keep the active category tab scrolled into view when switching tabs via keyboard
     useEffect(() => {
@@ -957,7 +1162,7 @@ export default function Popup() {
             setDragCtrl((prev) => (prev === ctrlNow ? prev : ctrlNow));
 
             const tabsEl = tabsRef.current;
-            if (tabsEl) {
+            if (tabsEl && !reorderIdsRef.current) {
                 const tr = tabsEl.getBoundingClientRect();
                 const insideTabs =
                     e.clientX >= tr.left - 4 &&
@@ -1038,7 +1243,7 @@ export default function Popup() {
                 pointerDragState.current.justDragged = false;
             }, 40);
 
-            if (targetBoardId !== null && targetBoardId !== tab) {
+            if (!reorderIdsRef.current && targetBoardId !== null && targetBoardId !== tab) {
                 const shouldCopy = tab === null || e.ctrlKey || e.metaKey || dragCtrlRef.current;
                 const targetBoard = boards.find((b) => b.id === targetBoardId);
                 const ids = multi.includes(id) ? multi : [id];
@@ -1252,27 +1457,41 @@ export default function Popup() {
 
     const openTabMenu = (b: Pinboard | null, x: number, y: number) => {
         if (!b) {
-            setMenu({
-                x,
-                y,
-                entries: [{ label: t('Erase history…'), danger: true, onClick: () => askErase(null) }],
-            });
+            const entries: MenuEntry[] = [];
+            if (boards.length > 1) {
+                entries.push({
+                    label: reorderMode ? t('Done reordering') : t('Reorder categories'),
+                    onClick: () => (reorderMode ? confirmReorderMode() : startReorderMode()),
+                });
+                entries.push({ sep: true });
+            }
+            entries.push({ label: t('Erase history…'), danger: true, onClick: () => askErase(null) });
+            setMenu({ x, y, entries });
             return;
         }
         const isAct = settings?.active_pinboard === b.id;
+        const entries: MenuEntry[] = [
+            {
+                label: isAct ? t('Deactivate category') : t('Activate category (new copies go here)'),
+                onClick: () => {
+                    if (settings) {
+                        saveSettings({ ...settings, active_pinboard: isAct ? null : b.id });
+                    }
+                },
+            },
+            { label: t('Category settings…'), onClick: () => setBoardDlg(b) },
+        ];
+        if (boards.length > 1) {
+            entries.push({
+                label: reorderMode ? t('Done reordering') : t('Reorder categories'),
+                onClick: () => (reorderMode ? confirmReorderMode() : startReorderMode()),
+            });
+        }
         setMenu({
             x,
             y,
             entries: [
-                {
-                    label: isAct ? t('Deactivate category') : t('Activate category (new copies go here)'),
-                    onClick: () => {
-                        if (settings) {
-                            saveSettings({ ...settings, active_pinboard: isAct ? null : b.id });
-                        }
-                    },
-                },
-                { label: t('Category settings…'), onClick: () => setBoardDlg(b) },
+                ...entries,
                 { sep: true },
                 {
                     label: t('Erase history…'),
@@ -1321,6 +1540,31 @@ export default function Popup() {
                 setMenu(null);
             }
             return;
+        }
+        if (reorderMode) {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelReorderMode();
+                return;
+            }
+            if (e.key === 'Enter') {
+                if (e.target instanceof HTMLElement && e.target.closest('button')) {
+                    return;
+                }
+                e.preventDefault();
+                confirmReorderMode();
+                return;
+            }
+            const rk = e.key;
+            const rck = e.ctrlKey || e.metaKey;
+            if (
+                (rck && (isKey(e, ']') || isKey(e, '[') || isKey(e, 'n'))) ||
+                rk === 'Tab' ||
+                ((rk === 'ArrowLeft' || rk === 'ArrowRight') && (query === '' || e.altKey))
+            ) {
+                e.preventDefault();
+                return;
+            }
         }
         const k = e.key;
         const ck = e.ctrlKey || e.metaKey;
@@ -1918,14 +2162,14 @@ export default function Popup() {
                 aria-label={t('Categories')}
                 className={`tabs${wrapCategories ? ' wrap' : ''}${tabsGrabbing ? ' grabbing' : ''}${
                     tabsHasScroll ? ' has-scroll' : ''
-                }`}
+                }${reorderMode ? ' reordering' : ''}${draggingBoardId !== null ? ' reordering-dragging' : ''}`}
                 onWheel={(e) => {
                     if (!wrapCategories && tabsRef.current && e.deltaY !== 0 && e.deltaX === 0) {
                         tabsRef.current.scrollLeft += isRtl(lang) ? -e.deltaY : e.deltaY;
                     }
                 }}
                 onMouseDown={(e) => {
-                    if (!wrapCategories && e.button === 0 && tabsRef.current) {
+                    if (!wrapCategories && !reorderMode && e.button === 0 && tabsRef.current) {
                         tabDragState.current = {
                             active: true,
                             startX: e.clientX,
@@ -1935,19 +2179,20 @@ export default function Popup() {
                     }
                 }}
                 onClickCapture={(e) => {
-                    if (tabDragState.current.moved) {
+                    if (tabDragState.current.moved || didDragBoardRef.current) {
                         e.preventDefault();
                         e.stopPropagation();
                         tabDragState.current.moved = false;
+                        didDragBoardRef.current = false;
                     }
                 }}
                 onDragEnter={() => {
-                    if (draggingId !== null) {
+                    if (!reorderMode && draggingId !== null) {
                         setDragInTabs(true);
                     }
                 }}
                 onDragOver={(e) => {
-                    if (draggingId !== null) {
+                    if (!reorderMode && draggingId !== null) {
                         e.preventDefault();
                         setDragInTabs(true);
                     }
@@ -1978,11 +2223,12 @@ export default function Popup() {
                 >
                     <span>{t('Clipboard')}</span>
                 </button>
-                {boards.map((b) => {
-                    const isDropTarget = dragOverTabId === b.id && tab !== b.id;
+                {displayedBoards.map((b) => {
+                    const isDropTarget = !reorderMode && dragOverTabId === b.id && tab !== b.id;
                     const isActiveTarget = settings?.active_pinboard === b.id;
                     const isCopyDrop = tab === null || dragCtrl;
                     const accentCopyDrop = tab !== null && dragCtrl;
+                    const isDraggingThis = draggingBoardId === b.id;
                     return (
                         <button
                             key={b.id}
@@ -1993,18 +2239,58 @@ export default function Popup() {
                             aria-controls="clip-list"
                             className={`tab${tab === b.id ? ' active' : ''}${isDropTarget ? ' drop-target' : ''}${
                                 isActiveTarget ? ' active-board' : ''
-                            }`}
-                            data-tip={isActiveTarget ? t('Active category (new copies go here)') : undefined}
+                            }${reorderMode ? ' reordering no-press' : ''}${isDraggingThis ? ' dragging-tab' : ''}`}
+                            data-tip={
+                                reorderMode
+                                    ? undefined
+                                    : isActiveTarget
+                                      ? t('Active category (new copies go here)')
+                                      : undefined
+                            }
+                            onMouseDown={(e) => {
+                                if (e.button !== 0 || boards.length <= 1) {
+                                    return;
+                                }
+                                if (reorderMode) {
+                                    e.stopPropagation();
+                                    lastPointerRef.current = { x: e.clientX, y: e.clientY };
+                                    draggingBoardIdRef.current = b.id;
+                                    setDraggingBoardId(b.id);
+                                    return;
+                                }
+                                cancelLongPress();
+                                longPressOriginRef.current = {
+                                    boardId: b.id,
+                                    startX: e.clientX,
+                                    startY: e.clientY,
+                                };
+                                longPressTimerRef.current = window.setTimeout(() => {
+                                    longPressTimerRef.current = null;
+                                    const origin = longPressOriginRef.current;
+                                    longPressOriginRef.current = null;
+                                    if (origin && origin.boardId === b.id) {
+                                        lastPointerRef.current = { x: origin.startX, y: origin.startY };
+                                        startReorderMode(b.id);
+                                    }
+                                }, 350);
+                            }}
                             onClick={() => {
+                                if (reorderMode) {
+                                    return;
+                                }
                                 setTab(b.id);
                                 resetView();
                                 focusSearchQuietly();
                             }}
                             onContextMenu={(e) => {
                                 e.preventDefault();
+                                cancelLongPress();
                                 openTabMenu(b, e.clientX, e.clientY);
                             }}
                             onDragEnter={(e) => {
+                                if (reorderMode) {
+                                    return;
+                                }
                                 e.preventDefault();
                                 setDragInTabs(true);
                                 if (tab !== b.id) {
@@ -2014,6 +2300,9 @@ export default function Popup() {
                                 }
                             }}
                             onDragOver={(e) => {
+                                if (reorderMode) {
+                                    return;
+                                }
                                 e.preventDefault();
                                 setDragInTabs(true);
                                 const wantCopy = tab === null || e.ctrlKey || e.metaKey;
@@ -2035,6 +2324,9 @@ export default function Popup() {
                                 }
                             }}
                             onDrop={(e) => {
+                                if (reorderMode) {
+                                    return;
+                                }
                                 e.preventDefault();
                                 const shouldCopy = tab === null || e.ctrlKey || e.metaKey || dragCtrl;
                                 setDragInTabs(false);
@@ -2079,16 +2371,32 @@ export default function Popup() {
                         </button>
                     );
                 })}
-                <button
-                    type="button"
-                    className="tab plus"
-                    aria-label={t('New category (Ctrl+N)')}
-                    data-tip={t('New category (Ctrl+N)')}
-                    onClick={() => newBoard()}
-                >
-                    <Icon name="plus" size={12} />
-                </button>
+                {!reorderMode && (
+                    <button
+                        type="button"
+                        className="tab plus"
+                        aria-label={t('New category (Ctrl+N)')}
+                        data-tip={t('New category (Ctrl+N)')}
+                        onClick={() => newBoard()}
+                    >
+                        <Icon name="plus" size={12} />
+                    </button>
+                )}
             </div>
+
+            {reorderMode && (
+                <div className="reorder-bar" role="region" aria-label={t('Reorder categories')}>
+                    <span className="reorder-hint">{t('Drag categories to reorder')}</span>
+                    <span className="spacer" />
+                    <button type="button" className="btn small-btn" onClick={cancelReorderMode}>
+                        <span>{t('Cancel')}</span>
+                    </button>
+                    <button type="button" className="btn primary small-btn" onClick={confirmReorderMode}>
+                        <Icon name="check" size={12} />
+                        <span>{t('Done')}</span>
+                    </button>
+                </div>
+            )}
 
             {explorerTarget && (
                 <div className="explorer-bar">

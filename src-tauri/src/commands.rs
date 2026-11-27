@@ -254,6 +254,13 @@ pub async fn update_pinboard(
 }
 
 #[tauri::command]
+pub async fn reorder_pinboards(app: AppHandle, state: State<'_, AppState>, ids: Vec<i64>) -> Res<()> {
+    db::reorder_pinboards(&state.db.lock(), &ids)?;
+    changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn delete_pinboard(app: AppHandle, state: State<'_, AppState>, id: i64) -> Res<()> {
     db::delete_pinboard(&state.db.lock(), id)?;
     let mut s = state.settings.read().clone();

@@ -841,6 +841,37 @@ pub fn trim_board(conn: &Connection, board: i64) {
     }
 }
 
+/// Persists a new display order for categories (pinboards) atomically.
+/// Unknown or duplicate IDs are ignored; any existing categories omitted from `ids`
+/// (for example, created concurrently) are appended in their previous `(position, id)` order.
+pub fn reorder_pinboards(conn: &Connection, ids: &[i64]) -> Result<(), String> {
+    with_write_tx(conn, "reorder_pb", || {
+        let existing: Vec<i64> = {
+            let mut st = conn.prepare("SELECT id FROM pinboards ORDER BY position, id").map_err(|e| e.to_string())?;
+            let rows = st.query_map([], |r| r.get::<_, i64>(0)).map_err(|e| e.to_string())?;
+            rows.collect::<Result<Vec<i64>, _>>().map_err(|e| e.to_string())?
+        };
+        let existing_set: std::collections::HashSet<i64> = existing.iter().copied().collect();
+        let mut ordered: Vec<i64> = Vec::with_capacity(existing.len());
+        let mut seen: std::collections::HashSet<i64> = std::collections::HashSet::with_capacity(existing.len());
+        for &id in ids {
+            if existing_set.contains(&id) && seen.insert(id) {
+                ordered.push(id);
+            }
+        }
+        for id in existing {
+            if seen.insert(id) {
+                ordered.push(id);
+            }
+        }
+        let mut update_st = conn.prepare("UPDATE pinboards SET position=?1 WHERE id=?2").map_err(|e| e.to_string())?;
+        for (idx, id) in ordered.into_iter().enumerate() {
+            update_st.execute(params![(idx + 1) as i64, id]).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    })
+}
+
 pub fn delete_pinboard(conn: &Connection, id: i64) -> Result<(), String> {
     // Remove membership in this category first, and re-point `clips.pinboard_id` for any clip
     // that still belongs to another category so `ON DELETE CASCADE` never deletes shared clips.
@@ -1903,5 +1934,29 @@ mod tests {
         assert!(r2.is_ok(), "Thread 2 move_item/assign_category failed: {:?}", r2);
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reorder_pinboards_updates_positions_and_preserves_unlisted() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(SCHEMA).unwrap();
+
+        let b1 = create_pinboard(&conn, "Alpha", "#4f8cff").unwrap();
+        let b2 = create_pinboard(&conn, "Beta", "#10b981").unwrap();
+        let b3 = create_pinboard(&conn, "Gamma", "#f59e0b").unwrap();
+
+        // Reorder with a duplicate, an unknown ID, and one omitted existing category (`b2`).
+        reorder_pinboards(&conn, &[b3, 999_999, b1, b3]).unwrap();
+
+        let boards = list_pinboards(&conn).unwrap();
+        assert_eq!(boards.iter().map(|b| b.id).collect::<Vec<_>>(), vec![b3, b1, b2]);
+        assert_eq!(boards.iter().map(|b| b.position).collect::<Vec<_>>(), vec![1, 2, 3]);
+
+        // Empty slice preserves current order and subsequent `create_pinboard` appends at position 4.
+        reorder_pinboards(&conn, &[]).unwrap();
+        let b4 = create_pinboard(&conn, "Delta", "#ef4444").unwrap();
+        let boards_after = list_pinboards(&conn).unwrap();
+        assert_eq!(boards_after.iter().map(|b| b.id).collect::<Vec<_>>(), vec![b3, b1, b2, b4]);
+        assert_eq!(boards_after.iter().map(|b| b.position).collect::<Vec<_>>(), vec![1, 2, 3, 4]);
     }
 }

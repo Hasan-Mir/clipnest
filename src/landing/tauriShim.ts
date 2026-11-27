@@ -1033,6 +1033,34 @@ export async function invoke<T = unknown>(cmd: string, args: Record<string, unkn
             return undefined as T;
         }
 
+        case 'reorder_pinboards': {
+            const rawIds = Array.isArray(args.ids) ? (args.ids as number[]) : [];
+            const byId = new Map(state.boards.map((b) => [b.id, b]));
+            const next: Pinboard[] = [];
+            const seen = new Set<number>();
+            for (const id of rawIds) {
+                if (seen.has(id)) {
+                    continue;
+                }
+                const found = byId.get(id);
+                if (found) {
+                    next.push(found);
+                    seen.add(id);
+                }
+            }
+            for (const b of state.boards) {
+                if (!seen.has(b.id)) {
+                    next.push(b);
+                }
+            }
+            next.forEach((b, idx) => {
+                b.position = idx + 1;
+            });
+            state.boards = next;
+            emitDemoEvent('items-changed');
+            return undefined as T;
+        }
+
         case 'delete_pinboard': {
             const id = Number(args.id);
             state.boards = state.boards.filter((x) => x.id !== id);
