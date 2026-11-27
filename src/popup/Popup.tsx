@@ -449,6 +449,12 @@ export default function Popup() {
 
     useEffect(() => {
         if (!menu && !preview && !prompt && !boardDlg) {
+            if (
+                document.documentElement.dataset.embeddedDemo === 'true' &&
+                !document.querySelector('.popup')?.contains(document.activeElement)
+            ) {
+                return;
+            }
             inputRef.current?.focus({ preventScroll: true });
         } else if (preview || prompt || boardDlg) {
             setCtrl(false);
@@ -464,7 +470,21 @@ export default function Popup() {
 
     useEffect(() => {
         if (cur) {
-            document.getElementById(`card-${cur.id}`)?.scrollIntoView({ block: 'nearest' });
+            const el = document.getElementById(`card-${cur.id}`);
+            if (document.documentElement.dataset.embeddedDemo === 'true') {
+                const lst = listRef.current;
+                if (el && lst) {
+                    const er = el.getBoundingClientRect();
+                    const lr = lst.getBoundingClientRect();
+                    if (er.top < lr.top) {
+                        lst.scrollTop -= lr.top - er.top + 4;
+                    } else if (er.bottom > lr.bottom) {
+                        lst.scrollTop += er.bottom - lr.bottom + 4;
+                    }
+                }
+            } else {
+                el?.scrollIntoView({ block: 'nearest' });
+            }
         }
     }, [sel, cur?.id]);
 
@@ -1457,6 +1477,9 @@ export default function Popup() {
     // an item or closing an overlay), ArrowUp / ArrowDown / Delete still navigate cleanly.
     useEffect(() => {
         const onGlobalKeyDown = (e: KeyboardEvent) => {
+            if (document.documentElement.dataset.embeddedDemo === 'true') {
+                return;
+            }
             const popupEl = document.querySelector('.popup');
             const active = document.activeElement;
             if (!popupEl || !active || !popupEl.contains(active)) {

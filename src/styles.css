@@ -50,8 +50,8 @@
     --accent-fg: #ffffff;
     --fs: 14px;
     --ui-font:
-        'Google Sans Flex', 'Google Sans', 'Vazirmatn', system-ui, -apple-system, 'Segoe UI Variable Text', 'Segoe UI',
-        Tahoma, sans-serif;
+        'Google Sans Flex Variable', 'Google Sans Flex', 'Google Sans', 'Vazirmatn', system-ui, -apple-system,
+        'Segoe UI Variable Text', 'Segoe UI', Tahoma, sans-serif;
     --card-font: 'Vazirmatn', system-ui, -apple-system, 'Segoe UI Variable Text', 'Segoe UI', Tahoma, sans-serif;
     --card-max-h: 160px;
     --thumb-max-h: 110px;

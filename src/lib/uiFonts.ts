@@ -33,8 +33,8 @@ export const UI_FONTS: readonly UiFontPreset[] = [
     {
         id: 'google-sans',
         label: 'Google Sans',
-        cssFamily: 'Google Sans Flex',
-        stack: `'Google Sans Flex', 'Google Sans', ${PERSIAN_AND_SYSTEM_FALLBACK}`,
+        cssFamily: 'Google Sans Flex Variable',
+        stack: `'Google Sans Flex Variable', 'Google Sans Flex', 'Google Sans', ${PERSIAN_AND_SYSTEM_FALLBACK}`,
     },
     {
         id: 'inter',

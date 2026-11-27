@@ -9,7 +9,9 @@
     ],
     "scripts": {
         "dev": "vite",
+        "dev:landing": "vite --config vite.landing.config.ts",
         "build": "npm run build:core && vite build && npm run build:cli",
+        "build:landing": "vite build --config vite.landing.config.ts",
         "build:core": "npm run build --workspace @seymi/clipnest-core",
         "build:core:native": "npm run build:native --workspace @seymi/clipnest-core",
         "build:cli": "npm run build --workspace @seymi/clipnest-core && npm run build --workspace @seymi/clipnest-cli",
