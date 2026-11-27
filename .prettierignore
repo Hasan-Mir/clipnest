@@ -4,3 +4,5 @@ src-tauri/target
 src-tauri/gen
 public/fonts
 docs/dist
+docs/landing-assets
+docs/fonts

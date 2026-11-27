@@ -48,37 +48,37 @@ clipn <command> --help
 clipn help <command>
 ```
 
-| Command (`clipn` or `clipnest`)       | Description & Key Flags                                                                                                                                      |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `add <text\|->`                       | Add text, piped `stdin` (`-`), or a file (`-f <path>`) to history (`-c/--copy`, `-p/--pin`, `-b/--category <name>`, `-t/--tags`, `--title`)                  |
-| `list` (or `ls`)                      | List recent items (`-n <limit>`, `-b/--category <name>`, `-k/--kind <kind>`, `--pinned`, `--json`)                                                           |
-| `search <query>` (or `find`)          | Search history (`-m smart\|fuzzy\|regex`, `-r/--regex`, `-z/--fuzzy`, `-b/--category <name>`, `-n <limit>`)                                                  |
-| `get [id]`                            | Read raw item content (`12` or `@0`/`latest`) or current system clipboard (no args); supports `--format plain\|html\|meta\|formats` and `-o <file>`          |
-| `copy <text\|->` (or `cp`)            | Put text, `stdin` (`-`), file (`-f`), or history item (`--id <id>`) onto the system clipboard (`--plain`)                                                    |
-| `paste [id]`                          | Copy an item (default `@0`) and paste into the active window (`--plain`, `--rich`, `--auto`)                                                                 |
-| `edit <id> [text\|-]`                 | Edit an item's text, title (`--title`), or tags (`--tags`)                                                                                                   |
-| `rename <id> <title>`                 | Set or clear a custom item title                                                                                                                             |
-| `delete <id...>` (or `rm`)            | Delete one or more items (deleting more than 3 items requires `--yes`)                                                                                       |
-| `pin <id...>` / `unpin <id...>`       | Pin or unpin items (supports `--category <name>` for per-category independent pinning)                                                                       |
-| `tag <id> [tags...]`                  | Set, add (`--add`), remove (`--remove`), or clear (`--clear`) item tags                                                                                      |
-| `move <id...> --to <cat\|main>`       | Move or copy (`--copy`, `--from <cat>`) items to a category, or reorder (`--before <id>` / `--after <id>`)                                                   |
-| `merge <id1> <id2> [...]`             | Merge multiple text items into a new clip (`--sep "\n---\n"`, `--copy`)                                                                                      |
-| `formats [id]`                        | Inspect stored clipboard/MIME formats and byte sizes                                                                                                         |
-| `transform <tr\|list> [id\|-]`        | Run built-in text transforms (`upper`, `lower`, `json-pretty`, `b64-enc`, `fa-normalize`, `fa-digits`, etc.) with `--save` and `--copy`                     |
+| Command (`clipn` or `clipnest`)       | Description & Key Flags                                                                                                                                                  |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `add <text\|->`                       | Add text, piped `stdin` (`-`), or a file (`-f <path>`) to history (`-c/--copy`, `-p/--pin`, `-b/--category <name>`, `-t/--tags`, `--title`)                              |
+| `list` (or `ls`)                      | List recent items (`-n <limit>`, `-b/--category <name>`, `-k/--kind <kind>`, `--pinned`, `--json`)                                                                       |
+| `search <query>` (or `find`)          | Search history (`-m smart\|fuzzy\|regex`, `-r/--regex`, `-z/--fuzzy`, `-b/--category <name>`, `-n <limit>`)                                                              |
+| `get [id]`                            | Read raw item content (`12` or `@0`/`latest`) or current system clipboard (no args); supports `--format plain\|html\|meta\|formats` and `-o <file>`                      |
+| `copy <text\|->` (or `cp`)            | Put text, `stdin` (`-`), file (`-f`), or history item (`--id <id>`) onto the system clipboard (`--plain`)                                                                |
+| `paste [id]`                          | Copy an item (default `@0`) and paste into the active window (`--plain`, `--rich`, `--auto`)                                                                             |
+| `edit <id> [text\|-]`                 | Edit an item's text, title (`--title`), or tags (`--tags`)                                                                                                               |
+| `rename <id> <title>`                 | Set or clear a custom item title                                                                                                                                         |
+| `delete <id...>` (or `rm`)            | Delete one or more items (deleting more than 3 items requires `--yes`)                                                                                                   |
+| `pin <id...>` / `unpin <id...>`       | Pin or unpin items (supports `--category <name>` for per-category independent pinning)                                                                                   |
+| `tag <id> [tags...]`                  | Set, add (`--add`), remove (`--remove`), or clear (`--clear`) item tags                                                                                                  |
+| `move <id...> --to <cat\|main>`       | Move or copy (`--copy`, `--from <cat>`) items to a category, or reorder (`--before <id>` / `--after <id>`)                                                               |
+| `merge <id1> <id2> [...]`             | Merge multiple text items into a new clip (`--sep "\n---\n"`, `--copy`)                                                                                                  |
+| `formats [id]`                        | Inspect stored clipboard/MIME formats and byte sizes                                                                                                                     |
+| `transform <tr\|list> [id\|-]`        | Run built-in text transforms (`upper`, `lower`, `json-pretty`, `b64-enc`, `fa-normalize`, `fa-digits`, etc.) with `--save` and `--copy`                                  |
 | `category <subcommand>`               | Manage categories (`list`, `create <name> --color #hex --max N --active`, `update`, `delete <name> --yes`, `activate <name\|none>`); aliases: `cat`, `pinboard`, `board` |
-| `queue <subcommand>`                  | Manage Paste Queue (`status`, `list`, `add <id...>`, `remove <id>`, `clear`, `toggle`, `close`, `fifo <on\|off>`)                                            |
-| `basket <subcommand>`                 | Manage Drop Basket (`list`, `add <file\|id...>`, `remove <id>`, `cut <id>`, `paste-to <folder>`, `clear`)                                                    |
-| `rule <subcommand>`                   | Manage automatic rules (`list`, `add`, `enable`, `disable`, `delete`)                                                                                        |
-| `action <subcommand>`                 | Manage and execute custom shell actions (`list`, `run <act> [id]`, `add <name> --cmd <cmd>`, `delete`)                                                       |
-| `config <subcommand>`                 | View and update settings (`list`, `get <key>`, `set <key> <val>`, `reset [key] [--yes]`)                                                                     |
-| `status`                              | Show daemon, capture, queue, item count, and data directory status (`--check-running`, `--json`)                                                             |
-| `pause [min]` / `resume`              | Temporarily pause or resume clipboard capture                                                                                                                |
-| `plain [on\|off\|toggle]`             | Toggle or set global plain-text paste mode                                                                                                                   |
-| `export <file>` / `import <file>`     | Export or import history and categories (`.json` or `.db.gz`) or settings (`--settings`)                                                                     |
-| `backup [file]`                       | Create an immediate compressed SQLite snapshot (`.db.gz`)                                                                                                    |
-| `erase --yes`                         | Erase history (`--category <name>`, `--include-pinned`, `--all-boards`)                                                                                      |
-| `open` / `hide` / `settings` / `quit` | Show or hide the popup window, open Settings, or exit ClipNest completely                                                                                    |
-| `path [status\|install\|uninstall]`   | Check, add, or remove `clipnest` and `clipn` in the Windows user `PATH`                                                                                      |
+| `queue <subcommand>`                  | Manage Paste Queue (`status`, `list`, `add <id...>`, `remove <id>`, `clear`, `toggle`, `close`, `fifo <on\|off>`)                                                        |
+| `basket <subcommand>`                 | Manage Drop Basket (`list`, `add <file\|id...>`, `remove <id>`, `cut <id>`, `paste-to <folder>`, `clear`)                                                                |
+| `rule <subcommand>`                   | Manage automatic rules (`list`, `add`, `enable`, `disable`, `delete`)                                                                                                    |
+| `action <subcommand>`                 | Manage and execute custom shell actions (`list`, `run <act> [id]`, `add <name> --cmd <cmd>`, `delete`)                                                                   |
+| `config <subcommand>`                 | View and update settings (`list`, `get <key>`, `set <key> <val>`, `reset [key] [--yes]`)                                                                                 |
+| `status`                              | Show daemon, capture, queue, item count, and data directory status (`--check-running`, `--json`)                                                                         |
+| `pause [min]` / `resume`              | Temporarily pause or resume clipboard capture                                                                                                                            |
+| `plain [on\|off\|toggle]`             | Toggle or set global plain-text paste mode                                                                                                                               |
+| `export <file>` / `import <file>`     | Export or import history and categories (`.json` or `.db.gz`) or settings (`--settings`)                                                                                 |
+| `backup [file]`                       | Create an immediate compressed SQLite snapshot (`.db.gz`)                                                                                                                |
+| `erase --yes`                         | Erase history (`--category <name>`, `--include-pinned`, `--all-boards`)                                                                                                  |
+| `open` / `hide` / `settings` / `quit` | Show or hide the popup window, open Settings, or exit ClipNest completely                                                                                                |
+| `path [status\|install\|uninstall]`   | Check, add, or remove `clipnest` and `clipn` in the Windows user `PATH`                                                                                                  |
 
 ### Practical Pipeline Examples
 
@@ -145,24 +145,24 @@ npm run format:check    # Verify formatting in CI
 
 ## ⌨️ Keyboard & Mouse Shortcuts
 
-| Action                                        | Shortcut / Mouse                                               |
-| --------------------------------------------- | -------------------------------------------------------------- |
-| Open ClipNest popup                           | `Win+V` (default; customizable to `Alt+V`, etc. in Settings)   |
-| Paste rich / plain text (or file path)        | Double-click or `Enter` / `Shift+Enter` (`Ctrl+Enter` = rich)  |
-| Single / range / multi selection              | Click / `Shift+Click` (or `Shift+↑/↓`) / `Ctrl+Click`          |
-| Open card context menu via keyboard           | `Shift+F10` or `ContextMenu` key                               |
-| Copy to category on Drag & Drop or menu       | Hold `Ctrl`                                                    |
-| Quick-paste visible cards                     | `Ctrl+1` … `Ctrl+9`                                            |
-| Reorder cards                                 | Drag & Drop or `Alt+↑/↓`                                       |
-| Preview & inline edit (with auto-save)        | `Space` (or `F3`) · `Ctrl+E`                                   |
-| Switch between Clipboard & category tabs      | `←` `→` or `Tab` or `Ctrl+[ ]`                                 |
-| Focus search bar                              | `Ctrl+F`                                                       |
-| Pin item to top                               | `Ctrl+P`                                                       |
-| Rename / Tags / MIME format inspector         | `F2` / `Ctrl+T` / `Ctrl+I`                                     |
-| Merge selected items                          | `Ctrl+M`                                                       |
-| Toggle Paste Queue / Drop Basket              | `Ctrl+Alt+Q`                                                   |
-| Toggle global plain-text paste mode           | `Ctrl+Alt+P`                                                   |
-| Open Settings                                 | `Ctrl+,`                                                       |
+| Action                                   | Shortcut / Mouse                                              |
+| ---------------------------------------- | ------------------------------------------------------------- |
+| Open ClipNest popup                      | `Win+V` (default; customizable to `Alt+V`, etc. in Settings)  |
+| Paste rich / plain text (or file path)   | Double-click or `Enter` / `Shift+Enter` (`Ctrl+Enter` = rich) |
+| Single / range / multi selection         | Click / `Shift+Click` (or `Shift+↑/↓`) / `Ctrl+Click`         |
+| Open card context menu via keyboard      | `Shift+F10` or `ContextMenu` key                              |
+| Copy to category on Drag & Drop or menu  | Hold `Ctrl`                                                   |
+| Quick-paste visible cards                | `Ctrl+1` … `Ctrl+9`                                           |
+| Reorder cards                            | Drag & Drop or `Alt+↑/↓`                                      |
+| Preview & inline edit (with auto-save)   | `Space` (or `F3`) · `Ctrl+E`                                  |
+| Switch between Clipboard & category tabs | `←` `→` or `Tab` or `Ctrl+[ ]`                                |
+| Focus search bar                         | `Ctrl+F`                                                      |
+| Pin item to top                          | `Ctrl+P`                                                      |
+| Rename / Tags / MIME format inspector    | `F2` / `Ctrl+T` / `Ctrl+I`                                    |
+| Merge selected items                     | `Ctrl+M`                                                      |
+| Toggle Paste Queue / Drop Basket         | `Ctrl+Alt+Q`                                                  |
+| Toggle global plain-text paste mode      | `Ctrl+Alt+P`                                                  |
+| Open Settings                            | `Ctrl+,`                                                      |
 
 ---
 
