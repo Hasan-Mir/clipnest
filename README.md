@@ -21,10 +21,8 @@ Built with Tauri v2 · Rust · Win32 · React · SQLite.
 - 🧺 **Dual-Mode Paste Queue & File/Image Drop Basket:**
     - **Queue Mode:** Copy multiple items in sequence and press `Ctrl+V` repeatedly to paste them in order (FIFO or LIFO).
     - **Drop Basket (Collector Mode):** Collect files and images from across folders and paste or move them all into a destination folder in one click (`CUT` mode removes source files only after destination copy and exact byte-size verification succeed).
-- 🪟 **Unified Frameless Calm Desktop UI:**
-    - Popup, Settings, and Paste Queue windows all run without native Windows title-bar chrome, featuring DWM rounded corners, built-in window controls, tactile physical press-in feedback across buttons, switches, and window chrome, and calm Notion-style entrance and CSS Grid Collapse card-removal animations.
-    - **Incremental Scroll Pagination (No Virtual List):** The main list uses configurable scroll pagination (`Items per page`, default `100`), viewport-proximity lazy loading for thumbnails and `RichView` (`IntersectionObserver`), and `scrollbar-gutter: stable` to prevent horizontal layout shifts while filtering.
-    - **Modern Typography with Built-In Persian/Arabic Support:** Five self-hosted variable UI fonts (`Google Sans` default, `Inter`, `Plus Jakarta Sans`, `DM Sans`, and `Roboto`) with embedded `Vazirmatn` locked in for Persian/Arabic glyphs, plus configurable font sizes (`10` to `20 px`, default `14 px`).
+- 📜 **Incremental Scroll Pagination (No Virtual List):** The main list uses configurable scroll pagination (`Items per page`, default `100`), viewport-proximity lazy loading for thumbnails and `RichView` (`IntersectionObserver`), and `scrollbar-gutter: stable` to prevent horizontal layout shifts while filtering.
+- 🔤 **Modern Typography with Built-In Persian/Arabic Support:** Five self-hosted variable UI fonts (`Google Sans` default, `Inter`, `Plus Jakarta Sans`, `DM Sans`, and `Roboto`) with embedded `Vazirmatn` locked in for Persian/Arabic glyphs, plus configurable font sizes (`10` to `20 px`, default `14 px`).
 
 ---
 
@@ -179,5 +177,5 @@ All data is stored strictly locally at:
 
 ClipNest is inspired by and modeled after two outstanding projects:
 
-- **Copywren:** ClipNest's clean UI design, card structure, popup layout, and modern user experience are directly inspired by **Copywren**.
-- **[CopyQ](https://github.com/hluk/CopyQ):** ClipNest's advanced clipboard management features—category tabs, automatic rules, custom shell actions, side toolbar, and command-line interface (`clipnest` / `clipn`)—are inspired by the open-source **CopyQ** project.
+- **[Copywren](https://github.com/sonatina-dream/copywren):** ClipNest's clean UI design, card structure, category tabs, popup layout, and modern user experience are directly inspired by **Copywren**.
+- **[CopyQ](https://github.com/hluk/CopyQ):** ClipNest's advanced clipboard management features—automatic rules, custom shell actions, side toolbar, and command-line interface (`clipnest` / `clipn`)—are inspired by the open-source **CopyQ** project.
