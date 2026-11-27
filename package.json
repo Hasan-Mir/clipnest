@@ -25,7 +25,8 @@
         "format:check": "prettier --check \"**/*.{ts,tsx,css,json}\" && cargo fmt --manifest-path packages/core/Cargo.toml --all -- --check && cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
         "prepare": "husky",
         "bundle:context": "bun run scripts/bundle-context.ts",
-        "tauri": "tauri dev",
+        "tauri": "tauri",
+        "tauri:dev": "tauri dev",
         "tauri:build": "tauri build && cargo build --release --manifest-path packages/core/Cargo.toml --bin clipnest-cli && bun run scripts/build-portable.ts",
         "tauri:portable": "tauri build --no-bundle && cargo build --release --manifest-path packages/core/Cargo.toml --bin clipnest-cli && bun run scripts/build-portable.ts"
     },
