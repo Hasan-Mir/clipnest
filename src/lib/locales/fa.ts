@@ -251,6 +251,7 @@ export const FA: Record<string, string> = {
     'History erased': 'تاریخچه پاک شد',
     'Hold Ctrl to copy instead of move': 'برای کپی به جای انتقال، کلید Ctrl را نگه دارید',
     'HTML escape': 'کدگذاری HTML',
+    Hue: 'طیف رنگ',
     'HTML unescape': 'رمزگشایی HTML',
     'How Sensitive clips are handled when detected.': 'نحوه‌ی برخورد با آیتم‌های حاوی اطلاعات حساس هنگام تشخیص.',
     'How many lines of text are previewed on each card before truncating.':
@@ -289,6 +290,7 @@ export const FA: Record<string, string> = {
     'Launch ClipNest automatically in the system tray when you sign in to Windows.':
         'اجرای خودکار ClipNest در سینی سیستم هنگام ورود به ویندوز.',
     Light: 'روشن',
+    Lightness: 'روشنایی',
     Lines: 'خطوط',
     'List display': 'نمایش لیست',
     'Loading…': 'در حال بارگذاری…',
@@ -477,6 +479,7 @@ export const FA: Record<string, string> = {
     'Run on every new copy, in order. A rule applies when ALL of its filled-in conditions match. Example: app “keepass”, action “Do not store”; or pattern “^https?://”, action “Move to category”.':
         'روی هر کپی جدید و به ترتیب اجرا می‌شوند. قانون وقتی اعمال می‌شود که همه‌ی شرط‌های پرشده برقرار باشند. مثال: برنامه «keepass» ← «ذخیره نشود»؛ یا الگوی «^https?://» ← «انتقال به دسته‌بندی».',
     'Same as global setting': 'مثل تنظیم سراسری',
+    Saturation: 'اشباع رنگ',
     Save: 'ذخیره',
     'Saved (rich formatting dropped)': 'ذخیره شد (استایل حذف شد)',
     'Saved: {p}': 'ذخیره شد: {p}',

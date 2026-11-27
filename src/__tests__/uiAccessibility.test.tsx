@@ -5,6 +5,8 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { describe, expect, it, vi } from 'vitest';
 import { api, ClipRow } from '../lib/api';
+import { ColorPicker, hexToHsl, hslToHex, isValidHex } from '../lib/ColorPicker';
+import { CustomSelect } from '../lib/CustomSelect';
 import { ContextMenu, MenuEntry } from '../popup/Overlays';
 import { Preview } from '../popup/Preview';
 import { handleFolderHeaderKeyDown } from '../queue/Queue';
@@ -376,6 +378,137 @@ describe('UI Accessibility KeyDown handlers', () => {
 
         expect(siblingClick).toHaveBeenCalled();
         expect(onClose).toHaveBeenCalled();
+
+        await act(async () => {
+            root.unmount();
+        });
+        container.remove();
+    });
+
+    it('CustomSelect applies scrollbar-gutter class only when searchable and stops Escape propagation', async () => {
+        const onChange = vi.fn();
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const root = createRoot(container);
+
+        await act(async () => {
+            root.render(
+                <CustomSelect
+                    value="compact"
+                    onChange={onChange}
+                    options={[
+                        { value: 'compact', label: 'Compact' },
+                        { value: 'comfortable', label: 'Comfortable' },
+                    ]}
+                />
+            );
+        });
+
+        const trigger = container.querySelector<HTMLButtonElement>('.cselect-btn');
+        expect(trigger).toBeTruthy();
+
+        await act(async () => {
+            trigger?.click();
+        });
+
+        const listEl = document.body.querySelector<HTMLDivElement>('.cselect-list');
+        expect(listEl).toBeTruthy();
+        expect(listEl?.classList.contains('searchable')).toBe(false);
+
+        const bubbleEscape = vi.fn();
+        window.addEventListener('keydown', bubbleEscape, false);
+        await act(async () => {
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        });
+        window.removeEventListener('keydown', bubbleEscape, false);
+        expect(bubbleEscape).not.toHaveBeenCalled();
+
+        await act(async () => {
+            root.render(
+                <CustomSelect
+                    value="en"
+                    onChange={onChange}
+                    searchable
+                    options={[
+                        { value: 'en', label: 'English' },
+                        { value: 'fa', label: 'فارسی', subLabel: 'Persian' },
+                    ]}
+                />
+            );
+        });
+
+        await act(async () => {
+            container.querySelector<HTMLButtonElement>('.cselect-btn')?.click();
+        });
+
+        const searchableList = document.body.querySelector<HTMLDivElement>('.cselect-list');
+        expect(searchableList?.classList.contains('searchable')).toBe(true);
+
+        const searchInput = document.body.querySelector<HTMLInputElement>('.cselect-search input');
+        searchInput?.focus();
+        await act(async () => {
+            searchInput?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+        });
+        const searchableTrigger = container.querySelector<HTMLButtonElement>('.cselect-btn');
+        expect(searchableTrigger?.getAttribute('aria-expanded')).toBe('false');
+        expect(document.activeElement).toBe(searchableTrigger);
+
+        await act(async () => {
+            root.unmount();
+        });
+        container.remove();
+    });
+
+    it('ColorPicker validates/converts HEX-HSL and renders custom trigger + popover without native color input', async () => {
+        expect(isValidHex('#4f8cff')).toBe(true);
+        expect(isValidHex('#fff')).toBe(false);
+        expect(isValidHex('not-a-hex')).toBe(false);
+
+        const hsl = hexToHsl('#4f8cff');
+        expect(hsl.h).toBeGreaterThanOrEqual(210);
+        expect(hsl.h).toBeLessThanOrEqual(230);
+        expect(isValidHex(hslToHex(hsl.h, hsl.s, hsl.l))).toBe(true);
+
+        const onChange = vi.fn();
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const root = createRoot(container);
+
+        await act(async () => {
+            root.render(<ColorPicker value="#4f8cff" defaultValue="#4f8cff" onChange={onChange} />);
+        });
+
+        expect(container.querySelector('input[type="color"]')).toBeNull();
+        const trigger = container.querySelector<HTMLButtonElement>('.cpicker-trigger');
+        expect(trigger).toBeTruthy();
+        expect(trigger?.textContent).toContain('#4F8CFF');
+
+        await act(async () => {
+            trigger?.click();
+        });
+
+        const popover = document.body.querySelector<HTMLDivElement>('.cpicker-popover');
+        expect(popover).toBeTruthy();
+
+        const ranges = popover?.querySelectorAll<HTMLInputElement>('input[type="range"]') ?? [];
+        expect(ranges.length).toBe(3);
+        ranges.forEach((r) => expect(r.getAttribute('dir')).toBe('ltr'));
+
+        const emeraldBtn = popover?.querySelector<HTMLButtonElement>('button[aria-label="Emerald"]');
+        await act(async () => {
+            emeraldBtn?.click();
+        });
+        expect(onChange).toHaveBeenCalledWith('#10b981');
+
+        await act(async () => {
+            root.render(<ColorPicker value=" #10b981 " defaultValue="#4f8cff" onChange={onChange} />);
+        });
+        const resetBtn = document.body.querySelector<HTMLButtonElement>('.cpicker-reset');
+        expect(resetBtn).toBeTruthy();
+        await act(async () => {
+            resetBtn?.click();
+        });
+        expect(onChange).toHaveBeenCalledWith('#4f8cff');
 
         await act(async () => {
             root.unmount();

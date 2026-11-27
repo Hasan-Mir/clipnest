@@ -78,6 +78,7 @@
     --win-ctl-hover: rgba(255, 255, 255, 0.08);
     --win-ctl-active: rgba(255, 255, 255, 0.14);
     --shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+    --popover-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.09);
     --radius: 10px;
     color-scheme: dark;
 }
@@ -96,6 +97,7 @@
     --press-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.45);
     --win-ctl-hover: rgba(255, 255, 255, 0.1);
     --win-ctl-active: rgba(255, 255, 255, 0.16);
+    --popover-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.11);
 }
 
 :root[data-theme='light'] {
@@ -118,6 +120,7 @@
     --win-ctl-hover: rgba(15, 23, 42, 0.06);
     --win-ctl-active: rgba(15, 23, 42, 0.11);
     --shadow: 0 8px 28px rgba(0, 0, 0, 0.15);
+    --popover-shadow: 0 12px 32px -6px rgba(15, 23, 42, 0.16), 0 2px 6px rgba(15, 23, 42, 0.06);
     color-scheme: light;
 }
 
@@ -186,7 +189,8 @@
 :root[data-animations='off'] .overlay,
 :root[data-animations='off'] .dialog,
 :root[data-animations='off'] .menu,
-:root[data-animations='off'] .cselect-menu {
+:root[data-animations='off'] .cselect-menu,
+:root[data-animations='off'] .cpicker-popover {
     opacity: 1 !important;
     transform: none !important;
 }
@@ -262,8 +266,24 @@ button:where(:not(:disabled):not(.no-press)):active {
 }
 
 @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation: none !important;
+        transition: none !important;
+    }
+
     button:where(:not(:disabled):not(.no-press)):active,
     .switch:active {
+        transform: none !important;
+    }
+
+    .overlay,
+    .dialog,
+    .menu,
+    .cselect-menu,
+    .cpicker-popover {
+        opacity: 1 !important;
         transform: none !important;
     }
 }
@@ -1372,7 +1392,7 @@ input.search-bare::placeholder,
     pointer-events: none;
 }
 
-/* ───────── Notion-style CustomSelect ───────── */
+/* ───────── DNSS/Notion-style CustomSelect & ColorPicker ───────── */
 .cselect {
     position: relative;
     display: inline-flex;
@@ -1381,17 +1401,18 @@ input.search-bare::placeholder,
 
 .cselect-btn {
     width: 100%;
-    min-height: 33px;
+    min-height: 34px;
     display: inline-flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    padding: 2px 10px;
-    border-radius: 8px;
+    padding: 2px 11px;
+    border-radius: 10px;
     background: var(--surface-raised);
     border: 1px solid var(--border);
     box-shadow: var(--card-shadow);
     color: var(--text);
+    font-weight: 500;
     text-align: start;
     line-height: 1.5;
 }
@@ -1404,7 +1425,7 @@ input.search-bare::placeholder,
 .cselect.open .cselect-btn,
 .cselect-btn:focus-visible {
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 .cselect-label {
@@ -1426,33 +1447,54 @@ input.search-bare::placeholder,
     justify-content: center;
     flex: none;
     transition:
-        transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
-        color 140ms ease;
+        transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
+        color 150ms ease;
 }
 
-.cselect.open .cselect-chev {
+.cselect.open .cselect-chev,
+.cpicker.open .cselect-chev {
     transform: rotate(180deg);
     color: var(--accent);
 }
 
-/* Notion-calm dropdown entrance: starts hidden/offset on frame 0 and transitions on `.entered`
- * (set via double-rAF in `useEntered`) so WebView2 never skips the opening animation on mount. */
+.cselect-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 149;
+}
+
+.cselect-backdrop.closing {
+    pointer-events: none;
+}
+
+/* DNSS/Notion-calm dropdown enter & exit motion: starts hidden/offset on frame 0 and transitions
+ * on `.entered` (via double-rAF in `useEntered`) and `.closing` (135ms) so WebView2 plays both. */
 .cselect-menu {
     z-index: 150;
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 5px;
-    box-shadow: var(--shadow);
+    background: var(--surface-raised);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    padding: 4px;
+    box-shadow: var(--popover-shadow);
     display: flex;
     flex-direction: column;
     overflow: hidden;
     transform-origin: top center;
     opacity: 0;
-    transform: translateY(-6px) scale(0.955);
+    transform: translateY(-4px) scale(0.965);
     transition:
-        opacity 210ms cubic-bezier(0.16, 1, 0.3, 1),
-        transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+        opacity 175ms cubic-bezier(0.16, 1, 0.3, 1),
+        transform 175ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:root[data-theme='light'] .cselect-menu,
+:root[data-theme='light'] .cpicker-popover {
+    background: var(--card);
+}
+
+.cselect-menu.from-top {
+    transform-origin: bottom center;
+    transform: translateY(4px) scale(0.965);
 }
 
 .cselect-menu.entered {
@@ -1460,28 +1502,53 @@ input.search-bare::placeholder,
     transform: translateY(0) scale(1);
 }
 
+.cselect-menu.closing {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.965);
+    pointer-events: none;
+    transition:
+        opacity 135ms cubic-bezier(0.4, 0, 1, 1),
+        transform 135ms cubic-bezier(0.4, 0, 1, 1);
+}
+
+.cselect-menu.from-top.closing {
+    transform: translateY(4px) scale(0.965);
+}
+
 .cselect-search {
     display: flex;
     align-items: center;
     gap: 6px;
-    height: 28px;
-    padding: 0 8px;
+    height: 30px;
+    padding: 0 9px;
     margin-bottom: 4px;
     background: var(--bg2);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: 8px;
     color: var(--muted);
     flex: none;
+    transition:
+        border-color 150ms ease,
+        box-shadow 150ms ease;
 }
 
 .cselect-search:focus-within {
     border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 .cselect-list {
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
     overflow-y: auto;
     overflow-x: hidden;
+}
+
+/* Only reserve scrollbar gutter on searchable lists so live filtering does not cause horizontal jitter,
+ * while short non-searchable selectors (e.g. Card density) stay visually balanced without dead space. */
+.cselect-list.searchable {
     scrollbar-gutter: stable;
 }
 
@@ -1493,19 +1560,18 @@ input.search-bare::placeholder,
 .cselect-opt {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 10px;
+    gap: 8px;
     min-height: 31px;
     padding: 4px 10px;
-    border-radius: 6px;
+    border-radius: 8px;
     cursor: pointer;
-    color: var(--text);
+    color: color-mix(in srgb, var(--text) 84%, var(--muted));
     font-size: 0.94em;
     line-height: 1.5;
     white-space: nowrap;
     transition:
-        background-color 0.12s ease,
-        color 0.12s ease;
+        background-color 130ms ease,
+        color 130ms ease;
 }
 
 .cselect-opt.two-line {
@@ -1518,6 +1584,7 @@ input.search-bare::placeholder,
     flex-direction: column;
     gap: 2px;
     min-width: 0;
+    flex: 1;
 }
 
 .cselect-opt-label {
@@ -1543,21 +1610,348 @@ input.search-bare::placeholder,
     white-space: nowrap;
 }
 
+:root[dir='rtl'] .cselect-opt-sub {
+    text-align: right;
+}
+
 .cselect-opt:hover,
 .cselect-opt.focus {
-    background: var(--bg2);
+    background: var(--win-ctl-hover);
+    color: var(--text);
 }
 
 .cselect-opt.sel {
+    background: var(--accent-soft);
     font-weight: 600;
-    color: var(--accent);
+    color: var(--text);
+}
+
+.cselect-opt.sel:hover,
+.cselect-opt.sel.focus {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+    color: var(--text);
 }
 
 .cselect-check {
     color: var(--accent);
     display: inline-flex;
     align-items: center;
+    justify-content: center;
+    width: 14px;
     flex: none;
+    opacity: 0;
+    transition: opacity 130ms ease;
+}
+
+.cselect-check.visible {
+    opacity: 1;
+}
+
+/* ───────── DNSS-inspired Custom ColorPicker ───────── */
+.cpicker {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+}
+
+.cpicker-trigger {
+    min-height: 34px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 10px;
+    border-radius: 10px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    box-shadow: var(--card-shadow);
+    color: var(--text);
+    font-weight: 500;
+}
+
+.cpicker-trigger.compact {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 9px;
+}
+
+.cpicker-trigger:hover {
+    background: var(--card-hover);
+    border-color: var(--border-strong);
+}
+
+.cpicker.open .cpicker-trigger,
+.cpicker-trigger:focus-visible {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.cpicker-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 9999px;
+    border: 1px solid rgba(15, 23, 42, 0.22);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+    flex: none;
+}
+
+.cpicker-dot.sm {
+    width: 14px;
+    height: 14px;
+}
+
+.cpicker-dot.transparent {
+    background:
+        linear-gradient(135deg, transparent 44%, var(--danger) 44%, var(--danger) 56%, transparent 56%),
+        repeating-conic-gradient(var(--border) 0% 25%, var(--bg2) 0% 50%) 50% / 8px 8px;
+}
+
+.cpicker-hex {
+    font-size: 0.86em;
+    letter-spacing: 0.02em;
+    color: var(--text);
+}
+
+.cpicker-popover {
+    z-index: 150;
+    width: 264px;
+    max-width: calc(100vw - 16px);
+    background: var(--surface-raised);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: var(--popover-shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    transform-origin: top right;
+    opacity: 0;
+    transform: translateY(-4px) scale(0.965);
+    transition:
+        opacity 175ms cubic-bezier(0.16, 1, 0.3, 1),
+        transform 175ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[dir='rtl'] .cpicker-popover {
+    transform-origin: top left;
+}
+
+.cpicker-popover.from-top {
+    transform-origin: bottom right;
+    transform: translateY(4px) scale(0.965);
+}
+
+[dir='rtl'] .cpicker-popover.from-top {
+    transform-origin: bottom left;
+}
+
+.cpicker-popover.entered {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.cpicker-popover.closing {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.965);
+    pointer-events: none;
+    transition:
+        opacity 135ms cubic-bezier(0.4, 0, 1, 1),
+        transform 135ms cubic-bezier(0.4, 0, 1, 1);
+}
+
+.cpicker-popover.from-top.closing {
+    transform: translateY(4px) scale(0.965);
+}
+
+.cpicker-swatches {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px;
+}
+
+.cpicker-swatch {
+    width: 24px;
+    height: 24px;
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.16);
+}
+
+.cpicker-swatch:hover {
+    transform: scale(1.08);
+}
+
+.cpicker-swatch:active {
+    transform: translateY(1px) scale(0.94);
+}
+
+.cpicker-swatch.selected {
+    border-color: var(--text);
+    box-shadow:
+        0 0 0 2px var(--surface-raised),
+        0 0 0 4px var(--accent-soft);
+}
+
+:root[data-theme='light'] .cpicker-swatch.selected {
+    box-shadow:
+        0 0 0 2px var(--card),
+        0 0 0 4px var(--accent-soft);
+}
+
+.cpicker-sliders {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 10px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+}
+
+.cpicker-slider-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.cpicker-slider-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.78em;
+    font-weight: 500;
+    color: var(--muted);
+}
+
+.cpicker-slider-val {
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+}
+
+.cpicker-range {
+    -webkit-appearance: none;
+    appearance: none;
+    direction: ltr;
+    width: 100%;
+    height: 10px;
+    border-radius: 9999px;
+    cursor: pointer;
+    outline: none;
+    margin: 0;
+}
+
+.cpicker-range:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.cpicker-hue {
+    height: 11px;
+    background: linear-gradient(
+        to right,
+        #ef4444 0%,
+        #f59e0b 17%,
+        #10b981 33%,
+        #06b6d4 50%,
+        #3b82f6 67%,
+        #8b5cf6 83%,
+        #f43f5e 100%
+    );
+}
+
+.cpicker-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 9999px;
+    background: #ffffff;
+    border: 2px solid var(--bg);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+    transition: transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cpicker-range::-webkit-slider-thumb:hover {
+    transform: scale(1.12);
+}
+
+.cpicker-range::-webkit-slider-thumb:active {
+    transform: scale(0.95);
+}
+
+.cpicker-range::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 9999px;
+    background: #ffffff;
+    border: 2px solid var(--bg);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+    transition: transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cpicker-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.cpicker-hex-box {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 30px;
+    padding: 0 9px;
+    border-radius: 8px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    transition:
+        border-color 150ms ease,
+        box-shadow 150ms ease;
+}
+
+.cpicker-hex-box:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.cpicker-hex-input {
+    width: 68px;
+    background: transparent;
+    border: 0;
+    outline: 0;
+    color: var(--text);
+    font-size: 0.84em;
+    font-weight: 500;
+    text-transform: uppercase;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.cpicker-reset {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 30px;
+    padding: 0 9px;
+    border-radius: 8px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.8em;
+    font-weight: 500;
+}
+
+.cpicker-reset:hover {
+    background: var(--card-hover);
+    color: var(--text);
+    border-color: var(--border-strong);
 }
 
 /* ───────── context menu / dialog / preview ───────── */
@@ -1798,7 +2192,7 @@ input.search-bare::placeholder,
 }
 
 .dialog input:not([type='checkbox']):not(.search-bare),
-.settings input:not([type='checkbox']):not([type='color']):not(.search-bare),
+.settings input:not([type='checkbox']):not([type='color']):not([type='range']):not(.search-bare),
 .action input {
     width: 100%;
     min-height: 31px;
@@ -1817,7 +2211,7 @@ input.search-bare::placeholder,
 }
 
 .dialog input:not([type='checkbox']):not(.search-bare):focus,
-.settings input:not([type='checkbox']):not([type='color']):not(.search-bare):focus,
+.settings input:not([type='checkbox']):not([type='color']):not([type='range']):not(.search-bare):focus,
 textarea.editor:focus {
     border-color: var(--accent);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);

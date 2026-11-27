@@ -11,6 +11,7 @@ import {
     ShortcutConflict,
     errText,
 } from '../lib/api';
+import { ColorPicker } from '../lib/ColorPicker';
 import { CustomSelect } from '../lib/CustomSelect';
 import { isRtl, LOCALES, t, useLang } from '../lib/i18n';
 import { Icon } from '../lib/icons';
@@ -1660,11 +1661,11 @@ export default function SettingsView() {
                                 label="Accent colour"
                                 hint="Choose the primary highlight colour for borders, badges, active controls, and default search highlights."
                             >
-                                <input
-                                    type="color"
+                                <ColorPicker
                                     value={s.accent}
-                                    onChange={(e) => {
-                                        const nextAccent = e.target.value;
+                                    defaultValue={DEFAULT_SETTINGS.accent}
+                                    ariaLabel={t('Accent colour')}
+                                    onChange={(nextAccent) => {
                                         const syncHl =
                                             !s.highlight_color ||
                                             s.highlight_color === 'accent' ||
@@ -1864,10 +1865,12 @@ export default function SettingsView() {
                                         placeholder="accent"
                                         onChange={(e) => set('highlight_color', e.target.value)}
                                     />
-                                    <input
-                                        type="color"
+                                    <ColorPicker
+                                        compact
                                         value={resolvedHlHex}
-                                        onChange={(e) => set('highlight_color', e.target.value)}
+                                        defaultValue={s.accent}
+                                        ariaLabel={t('Highlight text color (transparent = keep text color)')}
+                                        onChange={(hex) => set('highlight_color', hex)}
                                     />
                                 </div>
                             </Row>
@@ -1886,10 +1889,15 @@ export default function SettingsView() {
                                         placeholder="transparent"
                                         onChange={(e) => set('highlight_bg', e.target.value)}
                                     />
-                                    <input
-                                        type="color"
+                                    <ColorPicker
+                                        compact
                                         value={/^#[0-9a-fA-F]{6}$/.test(s.highlight_bg) ? s.highlight_bg : '#ffe043'}
-                                        onChange={(e) => set('highlight_bg', e.target.value)}
+                                        defaultValue="#ffe043"
+                                        isTransparent={
+                                            !s.highlight_bg || s.highlight_bg.trim().toLowerCase() === 'transparent'
+                                        }
+                                        ariaLabel={t('Highlight background color (e.g. #ffe043 for yellow marker)')}
+                                        onChange={(hex) => set('highlight_bg', hex)}
                                     />
                                 </div>
                             </Row>

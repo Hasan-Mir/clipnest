@@ -1,8 +1,21 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { autoUpdate, flip, offset, shift, size, useFloating } from '@floating-ui/react';
 import { t } from './i18n';
 import { Icon } from './icons';
 import { useEntered } from './useEntered';
+
+const EXIT_MS = 135;
+
+function prefersInstantClose(): boolean {
+    if (typeof document !== 'undefined' && document.documentElement.dataset.animations === 'off') {
+        return true;
+    }
+    if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+        return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    }
+    return false;
+}
 
 export interface SelectOption<T extends string | number> {
     value: T;
@@ -20,8 +33,8 @@ interface CustomSelectProps<T extends string | number> {
 }
 
 /**
- * Notion-style custom dropdown component powered by @floating-ui/react for collision-aware
- * positioning, dynamic max-height clamping, two-line Telegram-style options, and search filtering.
+ * DNSS/Notion-style custom dropdown component powered by @floating-ui/react for collision-aware
+ * positioning, smooth enter/exit motion, two-line options, and optional search filtering.
  */
 export function CustomSelect<T extends string | number>({
     value,
@@ -31,36 +44,89 @@ export function CustomSelect<T extends string | number>({
     searchable = false,
 }: CustomSelectProps<T>) {
     const [open, setOpen] = useState(false);
+    const [mounted, setMounted] = useState(false);
+    const [closing, setClosing] = useState(false);
+    const [anchorWidth, setAnchorWidth] = useState(0);
     const [filter, setFilter] = useState('');
     const [focusIdx, setFocusIdx] = useState(0);
+    const wrapRef = useRef<HTMLDivElement | null>(null);
+    const triggerRef = useRef<HTMLButtonElement | null>(null);
     const searchRef = useRef<HTMLInputElement>(null);
+    const closeTimerRef = useRef<number | null>(null);
     const optionsRef = useRef(options);
     optionsRef.current = options;
     const valueRef = useRef(value);
     valueRef.current = value;
 
-    const { refs, floatingStyles, isPositioned } = useFloating({
-        open,
+    const { refs, floatingStyles, isPositioned, placement } = useFloating({
+        open: mounted,
         onOpenChange: setOpen,
         placement: 'bottom-start',
         strategy: 'fixed',
         transform: false,
         whileElementsMounted: autoUpdate,
         middleware: [
-            offset(4),
+            offset(6),
             flip({ padding: 8 }),
             shift({ padding: 8 }),
             size({
                 padding: 8,
-                apply({ availableHeight, rects, elements }) {
+                apply({ availableHeight, elements }) {
+                    const maxW =
+                        typeof window !== 'undefined' ? Math.max(0, Math.round(window.innerWidth - 16)) : undefined;
                     Object.assign(elements.floating.style, {
-                        minWidth: `${Math.max(175, rects.reference.width)}px`,
-                        maxHeight: `${Math.max(120, Math.min(310, availableHeight))}px`,
+                        ...(maxW !== undefined ? { maxWidth: `${maxW}px` } : {}),
+                        maxHeight: `${Math.max(120, Math.min(300, Math.round(availableHeight)))}px`,
                     });
                 },
             }),
         ],
     });
+
+    const setWrapRef = useCallback(
+        (node: HTMLDivElement | null) => {
+            wrapRef.current = node;
+            refs.setReference(node);
+        },
+        [refs]
+    );
+
+    const clearCloseTimer = useCallback(() => {
+        if (closeTimerRef.current !== null) {
+            window.clearTimeout(closeTimerRef.current);
+            closeTimerRef.current = null;
+        }
+    }, []);
+
+    useEffect(() => clearCloseTimer, [clearCloseTimer]);
+
+    useLayoutEffect(() => {
+        if (open) {
+            clearCloseTimer();
+            const width = wrapRef.current?.offsetWidth ?? 0;
+            if (width > 0) {
+                setAnchorWidth(width);
+            }
+            setMounted(true);
+            setClosing(false);
+            return;
+        }
+        if (mounted) {
+            if (prefersInstantClose()) {
+                clearCloseTimer();
+                setMounted(false);
+                setClosing(false);
+                return;
+            }
+            setClosing(true);
+            clearCloseTimer();
+            closeTimerRef.current = window.setTimeout(() => {
+                closeTimerRef.current = null;
+                setMounted(false);
+                setClosing(false);
+            }, EXIT_MS);
+        }
+    }, [open, mounted, clearCloseTimer]);
 
     const filteredOptions = useMemo(() => {
         const q = filter.trim().toLowerCase();
@@ -75,7 +141,8 @@ export function CustomSelect<T extends string | number>({
         );
     }, [options, filter]);
 
-    const menuEntered = useEntered(open && isPositioned);
+    const menuEntered = useEntered(mounted && !closing && isPositioned);
+    const isTop = placement.startsWith('top');
     const selectedOpt = options.find((o) => o.value === value);
     const selectedLabel = selectedOpt?.label ?? String(value);
 
@@ -89,28 +156,23 @@ export function CustomSelect<T extends string | number>({
             optionsRef.current.findIndex((o) => o.value === valueRef.current)
         );
         setFocusIdx(idx);
-        if (searchable) {
-            const timer = window.setTimeout(() => {
-                searchRef.current?.focus();
-            }, 15);
-            return () => window.clearTimeout(timer);
+    }, [open]);
+
+    useEffect(() => {
+        if (!open || !searchable || !isPositioned) {
+            return;
         }
-        return undefined;
-    }, [open, searchable]);
+        searchRef.current?.focus({ preventScroll: true });
+    }, [open, searchable, isPositioned]);
+
+    const focusTrigger = useCallback(() => {
+        triggerRef.current?.focus();
+    }, []);
 
     useEffect(() => {
         if (!open) {
             return;
         }
-        const onDown = (e: MouseEvent) => {
-            const target = e.target as Node | null;
-            const domRef = refs.domReference.current;
-            const floatEl = refs.floating.current;
-            if ((domRef && domRef.contains(target)) || (floatEl && floatEl.contains(target))) {
-                return;
-            }
-            setOpen(false);
-        };
         const onScroll = (e: Event) => {
             const floatEl = refs.floating.current;
             if (floatEl && e.target instanceof Node && floatEl.contains(e.target)) {
@@ -119,22 +181,23 @@ export function CustomSelect<T extends string | number>({
             setOpen(false);
         };
         const onBlur = () => setOpen(false);
-        window.addEventListener('mousedown', onDown, true);
+        const onEscape = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                setOpen(false);
+                focusTrigger();
+            }
+        };
         window.addEventListener('scroll', onScroll, true);
         window.addEventListener('blur', onBlur);
+        window.addEventListener('keydown', onEscape, true);
         return () => {
-            window.removeEventListener('mousedown', onDown, true);
             window.removeEventListener('scroll', onScroll, true);
             window.removeEventListener('blur', onBlur);
+            window.removeEventListener('keydown', onEscape, true);
         };
-    }, [open, refs.domReference, refs.floating]);
-
-    const focusTrigger = () => {
-        const el = refs.domReference.current;
-        if (el instanceof HTMLElement) {
-            el.focus();
-        }
-    };
+    }, [open, refs.floating, focusTrigger]);
 
     const onKeyDown = (e: React.KeyboardEvent) => {
         if (!open) {
@@ -145,7 +208,12 @@ export function CustomSelect<T extends string | number>({
             }
             return;
         }
-        if (e.key === 'Escape') {
+        if (e.key === 'Tab') {
+            if (document.activeElement === searchRef.current) {
+                triggerRef.current?.focus({ preventScroll: true });
+            }
+            setOpen(false);
+        } else if (e.key === 'Escape') {
             e.preventDefault();
             e.stopPropagation();
             setOpen(false);
@@ -170,11 +238,15 @@ export function CustomSelect<T extends string | number>({
         }
     };
 
+    const viewportMaxWidth = typeof window !== 'undefined' ? Math.max(0, window.innerWidth - 16) : anchorWidth;
+    const resolvedMinWidth = anchorWidth > 0 ? Math.min(anchorWidth, viewportMaxWidth) : undefined;
+
     return (
-        <div className={`cselect${open ? ' open' : ''}${className ? ` ${className}` : ''}`}>
+        <div ref={setWrapRef} className={`cselect${open ? ' open' : ''}${className ? ` ${className}` : ''}`}>
             <button
-                ref={refs.setReference}
+                ref={triggerRef}
                 type="button"
+                role="combobox"
                 className="cselect-btn"
                 aria-haspopup="listbox"
                 aria-expanded={open}
@@ -193,77 +265,95 @@ export function CustomSelect<T extends string | number>({
                     <Icon name="chevronDown" size={13} />
                 </span>
             </button>
-            {open && (
-                <div
-                    ref={refs.setFloating}
-                    role="listbox"
-                    className={`cselect-menu${menuEntered ? ' entered' : ''}`}
-                    style={{
-                        ...floatingStyles,
-                        visibility: isPositioned ? 'visible' : 'hidden',
-                    }}
-                >
-                    {searchable && (
-                        <div className="cselect-search">
-                            <Icon name="search" size={12} />
-                            <input
-                                ref={searchRef}
-                                className="search-bare"
-                                value={filter}
-                                placeholder={t('Filter…')}
-                                onChange={(e) => {
-                                    setFilter(e.target.value);
-                                    setFocusIdx(0);
-                                }}
-                                onKeyDown={onKeyDown}
-                            />
-                        </div>
-                    )}
-                    <div className="cselect-list">
-                        {filteredOptions.length === 0 && (
-                            <div className="cselect-empty muted small">{t('Nothing found')}</div>
-                        )}
-                        {filteredOptions.map((opt, idx) => {
-                            const isSel = opt.value === value;
-                            const isFocus = idx === focusIdx;
-                            return (
-                                <div
-                                    key={String(opt.value)}
-                                    role="option"
-                                    aria-selected={isSel}
-                                    className={`cselect-opt${opt.subLabel ? ' two-line' : ''}${
-                                        isSel ? ' sel' : ''
-                                    }${isFocus ? ' focus' : ''}`}
-                                    style={
-                                        opt.fontFamily ? { fontFamily: `"${opt.fontFamily}", sans-serif` } : undefined
-                                    }
-                                    onMouseEnter={() => setFocusIdx(idx)}
-                                    onMouseDown={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        onChange(opt.value);
-                                        setOpen(false);
-                                    }}
-                                >
-                                    <div className="cselect-opt-texts">
-                                        <span className="cselect-opt-label">{opt.label}</span>
-                                        {opt.subLabel && (
-                                            <span className="cselect-opt-sub" dir="ltr">
-                                                {opt.subLabel}
-                                            </span>
-                                        )}
-                                    </div>
-                                    {isSel && (
-                                        <span className="cselect-check">
-                                            <Icon name="check" size={12} />
-                                        </span>
-                                    )}
+            {mounted &&
+                typeof document !== 'undefined' &&
+                createPortal(
+                    <>
+                        <div
+                            className={`cselect-backdrop${closing ? ' closing' : ''}`}
+                            onMouseDown={(e) => {
+                                e.preventDefault();
+                                setOpen(false);
+                            }}
+                        />
+                        <div
+                            ref={refs.setFloating}
+                            role="listbox"
+                            className={`cselect-menu${closing ? ' closing' : menuEntered ? ' entered' : ''}${
+                                isTop ? ' from-top' : ''
+                            }`}
+                            style={{
+                                ...floatingStyles,
+                                minWidth: resolvedMinWidth !== undefined ? `${resolvedMinWidth}px` : undefined,
+                                visibility: isPositioned ? 'visible' : 'hidden',
+                            }}
+                        >
+                            {searchable && (
+                                <div className="cselect-search">
+                                    <Icon name="search" size={12} />
+                                    <input
+                                        ref={searchRef}
+                                        className="search-bare"
+                                        value={filter}
+                                        placeholder={t('Filter…')}
+                                        onChange={(e) => {
+                                            setFilter(e.target.value);
+                                            setFocusIdx(0);
+                                        }}
+                                        onKeyDown={onKeyDown}
+                                    />
                                 </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
+                            )}
+                            <div className={`cselect-list${searchable ? ' searchable' : ''}`}>
+                                {filteredOptions.length === 0 && (
+                                    <div className="cselect-empty muted small">{t('Nothing found')}</div>
+                                )}
+                                {filteredOptions.map((opt, idx) => {
+                                    const isSel = opt.value === value;
+                                    const isFocus = idx === focusIdx;
+                                    return (
+                                        <div
+                                            key={String(opt.value)}
+                                            role="option"
+                                            aria-selected={isSel}
+                                            className={`cselect-opt${opt.subLabel ? ' two-line' : ''}${
+                                                isSel ? ' sel' : ''
+                                            }${isFocus ? ' focus' : ''}`}
+                                            style={
+                                                opt.fontFamily
+                                                    ? { fontFamily: `"${opt.fontFamily}", sans-serif` }
+                                                    : undefined
+                                            }
+                                            onMouseEnter={() => setFocusIdx(idx)}
+                                            onMouseDown={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                onChange(opt.value);
+                                                setOpen(false);
+                                            }}
+                                        >
+                                            <span
+                                                className={`cselect-check${isSel ? ' visible' : ''}`}
+                                                aria-hidden="true"
+                                            >
+                                                <Icon name="check" size={13} />
+                                            </span>
+                                            <div className="cselect-opt-texts">
+                                                <span className="cselect-opt-label">{opt.label}</span>
+                                                {opt.subLabel && (
+                                                    <span className="cselect-opt-sub" dir="ltr">
+                                                        {opt.subLabel}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </>,
+                    document.body
+                )}
         </div>
     );
 }
