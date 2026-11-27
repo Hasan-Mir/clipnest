@@ -3411,6 +3411,11 @@ textarea.editor {
         transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+.srow:has(.shortcut-wrap),
+.srow:has(.stack) {
+    align-items: flex-start;
+}
+
 .srow.modified {
     padding-inline-start: 11px;
 }
@@ -3566,6 +3571,35 @@ textarea.editor {
 
 .sc-status.warn {
     color: var(--warn);
+}
+
+.sc-hook-slot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    flex: none;
+}
+
+.sc-hook-info {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+    cursor: help;
+    padding: 1px;
+    border-radius: 50%;
+    transition: opacity 150ms ease;
+}
+
+.sc-hook-info:hover {
+    opacity: 0.85;
+}
+
+.sc-clear.is-hidden {
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .rules {

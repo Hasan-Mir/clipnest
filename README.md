@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="public/icon.png" alt="ClipNest Logo" width="180" />
+</p>
+
 # 📋 ClipNest — Fast, Smart & Private Clipboard Manager for Windows (with Full CLI: `clipnest` / `clipn`)
 
 **ClipNest** is a fast, secure, and 100% offline clipboard manager and file collector for **Windows 10 and 11**. It pairs the clean, distraction-free UI of Copywren and Notion with the power-user depth of CopyQ and a full command-line interface (`clipnest` and short alias `clipn`) for scripting and automation.

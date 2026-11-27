@@ -8,9 +8,11 @@ import { api, ClipRow, Pinboard } from '../lib/api';
 import { computeReorderTargetId, moveBoardId, resolveDisplayedBoards, TabRect } from '../lib/categoryReorder';
 import { ColorPicker, hexToHsl, hslToHex, isValidHex } from '../lib/ColorPicker';
 import { CustomSelect } from '../lib/CustomSelect';
+import { TooltipHost } from '../lib/TooltipHost';
 import { ContextMenu, MenuEntry } from '../popup/Overlays';
 import { Preview } from '../popup/Preview';
 import { handleFolderHeaderKeyDown } from '../queue/Queue';
+import { ShortcutInput } from '../settings/Settings';
 
 describe('UI Accessibility KeyDown handlers', () => {
     it('ContextMenu does not hijack Enter/Space on focused chip buttons', async () => {
@@ -567,5 +569,88 @@ describe('UI Accessibility KeyDown handlers', () => {
             { id: 2, left: 0, right: 80, top: 34, bottom: 62 },
         ];
         expect(computeReorderTargetId(1, 20, 48, wrappedRects, false, true)).toBe(2);
+    });
+
+    it('ShortcutInput shows hook_override info icon next to Win with hover tooltip instead of wrapping status line', async () => {
+        vi.useFakeTimers();
+        const hookMsg = 'Overrides Windows Clipboard History (Win+V) via low-level keyboard hook';
+        const conflictSpy = vi.spyOn(api, 'checkShortcutConflict').mockResolvedValue({
+            status: 'hook_override',
+            message: hookMsg,
+        });
+
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const root = createRoot(container);
+
+        try {
+            await act(async () => {
+                root.render(
+                    <>
+                        <ShortcutInput role="open" v="Super+V" on={vi.fn()} />
+                        <TooltipHost />
+                    </>
+                );
+            });
+            await act(async () => {
+                await Promise.resolve();
+            });
+
+            const infoIcon = container.querySelector<HTMLSpanElement>('.shortcut .sc-hook-slot .sc-hook-info');
+            expect(infoIcon).toBeTruthy();
+            expect(infoIcon?.getAttribute('data-tip')).toBe(hookMsg);
+            expect(container.querySelector('.sc-status')).toBeNull();
+            const clearBtn = container.querySelector<HTMLButtonElement>('.shortcut .sc-clear');
+            expect(clearBtn).toBeTruthy();
+            expect(clearBtn?.classList.contains('is-hidden')).toBe(false);
+
+            // Hovering the info icon triggers TooltipHost to render the hook override message
+            await act(async () => {
+                infoIcon?.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+                vi.advanceTimersByTime(250);
+            });
+            const tipEl = container.querySelector<HTMLDivElement>('.custom-tooltip');
+            expect(tipEl?.textContent).toBe(hookMsg);
+
+            // Standard conflict still shows .sc-status.warn and keeps .sc-hook-slot empty
+            conflictSpy.mockResolvedValueOnce({
+                status: 'conflict_os',
+                message: 'Conflicts with Windows shortcut: Win+L (Lock PC — enforced by Windows kernel)',
+            });
+            await act(async () => {
+                root.render(
+                    <>
+                        <ShortcutInput role="open" v="Super+L" on={vi.fn()} />
+                        <TooltipHost />
+                    </>
+                );
+            });
+            await act(async () => {
+                await Promise.resolve();
+            });
+            expect(container.querySelector('.sc-hook-slot')).toBeTruthy();
+            expect(container.querySelector('.sc-hook-info')).toBeNull();
+            expect(container.querySelector('.sc-status.warn')).toBeTruthy();
+
+            // Empty shortcut keeps .sc-clear placeholder hidden to preserve column alignment
+            await act(async () => {
+                root.render(
+                    <>
+                        <ShortcutInput role="pause" v="" on={vi.fn()} />
+                        <TooltipHost />
+                    </>
+                );
+            });
+            const emptyClear = container.querySelector<HTMLButtonElement>('.shortcut .sc-clear');
+            expect(emptyClear?.classList.contains('is-hidden')).toBe(true);
+            expect(emptyClear?.getAttribute('aria-hidden')).toBe('true');
+        } finally {
+            conflictSpy.mockRestore();
+            vi.useRealTimers();
+            await act(async () => {
+                root.unmount();
+            });
+            container.remove();
+        }
     });
 });

@@ -277,7 +277,7 @@ function Num({
  * Shortcut recorder with live modifier display (e.g. "Ctrl + Alt + ") while recording
  * and real-time OS / app conflict checking via `api.checkShortcutConflict`.
  */
-function ShortcutInput({
+export function ShortcutInput({
     v,
     role,
     on,
@@ -322,7 +322,7 @@ function ShortcutInput({
                 });
         };
         check();
-        const sub = onEvent('settings-changed', check);
+        const sub = onEvent('settings-changed', check).catch(() => () => {});
         return () => {
             alive = false;
             sub.then((u) => u()).catch(() => {});
@@ -423,15 +423,32 @@ function ShortcutInput({
                     />
                     <span>Win</span>
                 </label>
-                {v && !rec && (
-                    <button type="button" className="btn" onClick={() => on('')}>
-                        <span>{t('Clear')}</span>
-                    </button>
-                )}
+                <span className="sc-hook-slot">
+                    {v && conflict?.status === 'hook_override' && (
+                        <span
+                            className="sc-hook-info"
+                            data-tip={t(conflict.message)}
+                            aria-label={t(conflict.message)}
+                            role="img"
+                        >
+                            <Icon name="info" size={14} />
+                        </span>
+                    )}
+                </span>
+                <button
+                    type="button"
+                    className={`btn sc-clear${!v || rec ? ' is-hidden' : ''}`}
+                    disabled={!v || rec}
+                    tabIndex={!v || rec ? -1 : undefined}
+                    aria-hidden={!v || rec ? true : undefined}
+                    onClick={() => on('')}
+                >
+                    <span>{t('Clear')}</span>
+                </button>
             </div>
-            {v && conflict && conflict.status !== 'ok' && (
-                <div className={`sc-status ${conflict.status === 'hook_override' ? 'info' : 'warn'}`}>
-                    <Icon name={conflict.status === 'hook_override' ? 'info' : 'warning'} size={12} />
+            {v && conflict && conflict.status !== 'ok' && conflict.status !== 'hook_override' && (
+                <div className="sc-status warn">
+                    <Icon name="warning" size={12} />
                     <span>{t(conflict.message)}</span>
                 </div>
             )}
